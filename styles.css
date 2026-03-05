@@ -353,8 +353,6 @@ body.analog-only .analog-clock {
   box-shadow: 0 20px 60px rgba(15, 45, 64, 0.3);
 }
 
-
-
 /* ================================================================= */
 /* EDIT ONLY BELOW - FULLSCREEN "Analog" Button Digital Box          */
 /* ================================================================= */
@@ -386,6 +384,35 @@ body.analog-only .analog-readout {
   box-shadow: 0 4px 12px rgba(17, 56, 74, 0.15);
   white-space: nowrap;
   z-index: 0;
+}
+
+/* ================================================================= */
+/* EXIT BUTTON - Only visible in Fullscreen Analog mode              */
+/* ================================================================= */
+
+/* Hidden in normal mode */
+.exit-btn {
+  display: none;
+}
+
+/* Visible and styled in fullscreen only - Matches other buttons */
+body.analog-only .exit-btn {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;           /* Pill shape like mode buttons */
+  background: var(--accent);      /* Blue background like active button */
+  color: #fff;                    /* White text */
+  padding: 0.45rem 0.9rem;        /* Same padding as mode buttons */
+  font-weight: 600;               /* Same font weight */
+  cursor: pointer;
+  margin-top: 0.5rem;             /* Space above button */
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+/* Hover effect */
+body.analog-only .exit-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
 }
 
 /* ================================================================= */
