@@ -1,13 +1,12 @@
 :root {
-  --bg: #f2f7fb;
-  --panel: #ffffff;
-  --tile: #eef5fa;
-  --accent: #1f7ea1;
-  --accent-soft: rgba(31, 126, 161, 0.16);
-  --text: #11384a;
-  --muted: #5e7d8e;
-  --border: rgba(17, 56, 74, 0.14);
-  --danger: #df2d2d;
+  --bg-1: #e7f4f8;
+  --bg-2: #f8fcff;
+  --dial-ring: #2f8ea9;
+  --dial-ring-soft: #69b9d0;
+  --tick: #2d849f;
+  --text: #0f5065;
+  --muted: #4f7b8b;
+  --second: #d4302a;
 }
 
 * {
@@ -17,259 +16,183 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Segoe UI", Roboto, Inter, Arial, sans-serif;
-  color: var(--text);
-  background: radial-gradient(circle at 20% 20%, #ffffff, var(--bg));
-}
-
-.layout {
-  width: min(1100px, 95vw);
-  margin: 0 auto;
-  padding: 1.5rem 0 2.5rem;
-  display: grid;
-  gap: 1.25rem;
-}
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1rem 1.2rem;
-  box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07);
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(1.5rem, 3vw, 2.2rem);
-}
-
-.subtitle {
-  margin: 0.35rem 0 0;
-  color: var(--muted);
-}
-
-.logo-slot {
-  min-height: 88px;
-  min-width: 230px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
   display: grid;
   place-items: center;
-  padding: 0.4rem;
-  background: #fff;
-}
-
-.logo-image {
-  max-width: 100%;
-  max-height: 80px;
-  object-fit: contain;
-}
-
-.mode-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-}
-
-.mode-toggle {
-  display: flex;
-  gap: 0.6rem;
-}
-
-.mode-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: #fff;
+  font-family: "Segoe UI", Inter, Roboto, Arial, sans-serif;
   color: var(--text);
-  padding: 0.45rem 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
+  background: radial-gradient(circle at 20% 15%, #ffffff, var(--bg-1) 45%, var(--bg-2));
 }
 
-.mode-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-
-.clock-grid {
+.page {
+  width: min(92vw, 980px);
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 1rem;
+  place-items: center;
+  padding: 2rem 0;
 }
 
-.tile {
-  background: var(--tile);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1rem;
-}
-
-.tile.highlight {
-  border-color: rgba(31, 126, 161, 0.65);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.label {
-  margin: 0;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.72rem;
-}
-
-.value {
-  margin: 0.4rem 0 0;
-  font-size: clamp(2rem, 5.5vw, 4rem);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.analog-wrap {
-  display: grid;
-  justify-items: center;
-  gap: 0.8rem;
-}
-
-.hidden {
-  display: none;
-}
-
-.analog-clock {
-  width: min(72vw, 420px);
+.clock-shell {
+  width: min(88vw, 680px);
   aspect-ratio: 1;
   border-radius: 50%;
-  border: 12px solid var(--accent);
-  background: linear-gradient(#f6fbff, #eef5fa);
-  position: relative;
-  box-shadow: inset 0 0 0 8px rgba(31, 126, 161, 0.12);
+  padding: clamp(14px, 2.3vw, 20px);
+  background: linear-gradient(145deg, #ffffff, #dff0f6);
+  box-shadow:
+    0 20px 45px rgba(6, 58, 76, 0.18),
+    inset 0 2px 8px rgba(255, 255, 255, 0.85);
 }
 
-.dial-center {
-  position: absolute;
-  inset: 6%;
+.clock-face {
+  position: relative;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
-  border: 1px dashed rgba(31, 126, 161, 0.4);
+  border: clamp(10px, 1.8vw, 14px) solid var(--dial-ring);
+  background: linear-gradient(180deg, #fafeff 0%, #eef8fb 70%, #e5f3f8 100%);
+  box-shadow:
+    inset 0 0 0 clamp(8px, 1.5vw, 11px) rgba(64, 147, 172, 0.24),
+    inset 0 12px 14px rgba(255, 255, 255, 0.85);
+  overflow: hidden;
+}
+
+.watermark {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 50%;
+  max-width: 280px;
+  opacity: 0.14;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.ticks,
+.numbers {
+  position: absolute;
+  inset: 0;
+}
+
+.tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 13px;
+  background: rgba(20, 95, 118, 0.55);
+  transform-origin: 50% 0;
+  border-radius: 99px;
+}
+
+.tick.major {
+  width: 3.5px;
+  height: 22px;
+  background: var(--tick);
+}
+
+.number {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(1.2rem, 3.8vw, 2rem);
+  font-weight: 600;
+  color: #2d7f99;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+  z-index: 2;
+}
+
+.digital-core {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(57%, 330px);
+  aspect-ratio: 1.26;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(235, 248, 252, 0.9));
+  border: 1px solid rgba(50, 133, 157, 0.28);
+  box-shadow:
+    0 8px 16px rgba(22, 91, 113, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.35rem;
+  z-index: 3;
+  backdrop-filter: blur(1px);
+}
+
+.date-text,
+.time-text,
+.zone-text {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-text {
+  font-size: clamp(0.72rem, 1.65vw, 1rem);
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.time-text {
+  font-size: clamp(1.65rem, 5.4vw, 2.95rem);
+  font-weight: 700;
+  color: #1d728c;
+  letter-spacing: 0.08em;
+}
+
+.zone-text {
+  font-size: clamp(0.65rem, 1.5vw, 0.88rem);
+  color: #467688;
+  letter-spacing: 0.14em;
 }
 
 .hand {
   position: absolute;
   left: 50%;
-  bottom: 50%;
-  transform-origin: bottom center;
-  transform: translateX(-50%) rotate(0deg);
+  top: 50%;
+  transform-origin: 50% calc(100% - 18px);
   border-radius: 999px;
+  translate: -50% -100%;
+  z-index: 4;
 }
 
 .hour-hand {
-  width: 10px;
-  height: 28%;
-  background: rgba(31, 126, 161, 0.7);
+  width: clamp(7px, 1vw, 9px);
+  height: 25%;
+  background: linear-gradient(180deg, #216f89, #144f63);
 }
 
 .minute-hand {
-  width: 8px;
-  height: 38%;
-  background: rgba(31, 126, 161, 0.55);
+  width: clamp(4px, 0.7vw, 6px);
+  height: 35%;
+  background: linear-gradient(180deg, #2f88a4, #1b637d);
 }
 
 .second-hand {
-  width: 6px;
+  width: clamp(2px, 0.35vw, 3px);
   height: 40%;
-  background: var(--danger);
+  background: var(--second);
+  box-shadow: 0 0 8px rgba(212, 48, 42, 0.35);
 }
 
-.center-cap {
+.center-dot {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 28px;
-  height: 28px;
-  background: #fff;
-  border: 8px solid var(--danger);
-  border-radius: 50%;
+  width: clamp(16px, 2.5vw, 20px);
+  height: clamp(16px, 2.5vw, 20px);
   transform: translate(-50%, -50%);
+  border: 4px solid var(--second);
+  border-radius: 50%;
+  background: #fff;
+  z-index: 5;
 }
 
-.analog-mark {
-  position: absolute;
-  font-size: clamp(1.8rem, 5vw, 3rem);
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.n12 { top: 8%; left: 50%; transform: translateX(-50%); }
-.n3 { right: 8%; top: 50%; transform: translateY(-50%); }
-.n6 { bottom: 6%; left: 50%; transform: translateX(-50%); }
-.n9 { left: 8%; top: 50%; transform: translateY(-50%); }
-
-.analog-readout {
-  margin: 0;
-  font-size: 1.15rem;
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 1rem;
-}
-
-h2 {
-  margin: 0;
-  font-size: 0.95rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
-
-.meta-value {
-  margin: 0.7rem 0 0;
-  font-size: 1.05rem;
-}
-
-.status {
-  margin: 0.55rem 0 0;
-  color: var(--accent);
-  font-size: 0.92rem;
-}
-
-a {
-  color: var(--accent);
-}
-
-@media (max-width: 900px) {
-  .clock-grid,
-  .meta-grid {
-    grid-template-columns: repeat(2, minmax(130px, 1fr));
-  }
-}
-
-@media (max-width: 620px) {
-  .header,
-  .mode-card {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .logo-slot,
-  .mode-toggle {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .clock-grid,
-  .meta-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 520px) {
+  .digital-core {
+    width: 61%;
+    border-radius: 18px;
+    gap: 0.25rem;
   }
 }
