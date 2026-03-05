@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAFO Calibration Center Time Display</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="header card">
+        <div>
+          <h1>Royal Air Force of Oman</h1>
+          <p class="subtitle">Calibration Center — Official Time Display</p>
+        </div>
+        <div class="logo-slot" aria-label="Logo placeholder">
+          Add RAFO Calibration Center logo
+        </div>
+      </header>
+
+      <section class="clock-grid" aria-label="Current time in Oman (GST, UTC+4)">
+        <article class="tile">
+          <p class="label">Hours</p>
+          <p id="hours" class="value">--</p>
+        </article>
+        <article class="tile">
+          <p class="label">Minutes</p>
+          <p id="minutes" class="value">--</p>
+        </article>
+        <article class="tile">
+          <p class="label">Seconds</p>
+          <p id="seconds" class="value">--</p>
+        </article>
+        <article class="tile highlight">
+          <p class="label">Milliseconds</p>
+          <p id="milliseconds" class="value">---</p>
+        </article>
+      </section>
+
+      <section class="meta-grid">
+        <article class="card">
+          <h2>Date (Oman)</h2>
+          <p id="dateLine" class="meta-value">--</p>
+        </article>
+
+        <article class="card">
+          <h2>Timezone</h2>
+          <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
+        </article>
+
+        <article class="card">
+          <h2>Time source</h2>
+          <p class="meta-value">Synchronized from <a href="https://time.gov/" target="_blank" rel="noreferrer">time.gov</a> endpoint when reachable</p>
+          <p id="syncStatus" class="status">Sync status: initializing...</p>
+        </article>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
