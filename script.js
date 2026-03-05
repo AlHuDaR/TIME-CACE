@@ -8,6 +8,14 @@ const elements = {
   milliseconds: document.getElementById("milliseconds"),
   dateLine: document.getElementById("dateLine"),
   syncStatus: document.getElementById("syncStatus"),
+  hourHand: document.getElementById("hourHand"),
+  minuteHand: document.getElementById("minuteHand"),
+  secondHand: document.getElementById("secondHand"),
+  analogReadout: document.getElementById("analogReadout"),
+  digitalClock: document.getElementById("digitalClock"),
+  analogClock: document.getElementById("analogClock"),
+  digitalModeBtn: document.getElementById("digitalModeBtn"),
+  analogModeBtn: document.getElementById("analogModeBtn"),
 };
 
 let syncedEpochAtSample = Date.now();
@@ -16,6 +24,16 @@ let hasSuccessfulSync = false;
 
 function pad(value, length = 2) {
   return String(value).padStart(length, "0");
+}
+
+function setMode(mode) {
+  const isDigital = mode === "digital";
+  elements.digitalClock.classList.toggle("hidden", !isDigital);
+  elements.analogClock.classList.toggle("hidden", isDigital);
+  elements.digitalModeBtn.classList.toggle("active", isDigital);
+  elements.analogModeBtn.classList.toggle("active", !isDigital);
+  elements.digitalModeBtn.setAttribute("aria-pressed", String(isDigital));
+  elements.analogModeBtn.setAttribute("aria-pressed", String(!isDigital));
 }
 
 async function syncWithTimeGov() {
@@ -39,7 +57,6 @@ async function syncWithTimeGov() {
       throw new Error("No time field in response");
     }
 
-    // `time` is microseconds since Unix epoch.
     const epochMs = Number(data.time) / 1000;
     if (!Number.isFinite(epochMs)) {
       throw new Error("Invalid time value");
@@ -60,9 +77,7 @@ function getNowFromSyncedClock() {
   return new Date(syncedEpochAtSample + elapsedMs);
 }
 
-function render() {
-  const now = getNowFromSyncedClock();
-
+function getOmanParts(now) {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: OMAN_TIMEZONE,
     hour: "2-digit",
@@ -72,10 +87,20 @@ function render() {
   }).formatToParts(now);
 
   const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    hour: Number(partMap.hour),
+    minute: Number(partMap.minute),
+    second: Number(partMap.second),
+  };
+}
 
-  elements.hours.textContent = partMap.hour;
-  elements.minutes.textContent = partMap.minute;
-  elements.seconds.textContent = partMap.second;
+function render() {
+  const now = getNowFromSyncedClock();
+  const oman = getOmanParts(now);
+
+  elements.hours.textContent = pad(oman.hour);
+  elements.minutes.textContent = pad(oman.minute);
+  elements.seconds.textContent = pad(oman.second);
 
   const omanMs = now.getUTCMilliseconds();
   elements.milliseconds.textContent = pad(omanMs, 3);
@@ -88,9 +113,22 @@ function render() {
     year: "numeric",
   }).format(now);
 
+  const secondProgress = oman.second + omanMs / 1000;
+  const minuteProgress = oman.minute + secondProgress / 60;
+  const hourProgress = (oman.hour % 12) + minuteProgress / 60;
+
+  elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
+  elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
+  elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
+  elements.analogReadout.textContent = `${pad(oman.hour)}:${pad(oman.minute)}:${pad(oman.second)} GST`;
+
   requestAnimationFrame(render);
 }
 
+elements.digitalModeBtn.addEventListener("click", () => setMode("digital"));
+elements.analogModeBtn.addEventListener("click", () => setMode("analog"));
+
+setMode("digital");
 syncWithTimeGov();
 setInterval(syncWithTimeGov, SYNC_INTERVAL_MS);
 requestAnimationFrame(render);

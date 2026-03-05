@@ -1,11 +1,13 @@
 :root {
-  --bg: #071019;
-  --panel: #0f1a25;
-  --tile: #122638;
-  --accent: #21c5df;
-  --accent-soft: rgba(33, 197, 223, 0.15);
-  --text: #f4fbff;
-  --muted: #98b6cc;
+  --bg: #f2f7fb;
+  --panel: #ffffff;
+  --tile: #eef5fa;
+  --accent: #1f7ea1;
+  --accent-soft: rgba(31, 126, 161, 0.16);
+  --text: #11384a;
+  --muted: #5e7d8e;
+  --border: rgba(17, 56, 74, 0.14);
+  --danger: #df2d2d;
 }
 
 * {
@@ -17,7 +19,7 @@ body {
   min-height: 100vh;
   font-family: "Segoe UI", Roboto, Inter, Arial, sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 20% 20%, #10273c, var(--bg));
+  background: radial-gradient(circle at 20% 20%, #ffffff, var(--bg));
 }
 
 .layout {
@@ -29,11 +31,11 @@ body {
 }
 
 .card {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 1rem 1.2rem;
-  backdrop-filter: blur(3px);
+  box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07);
 }
 
 .header {
@@ -56,14 +58,46 @@ h1 {
 .logo-slot {
   min-height: 88px;
   min-width: 230px;
-  border: 2px dashed rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--border);
   border-radius: 12px;
   display: grid;
   place-items: center;
-  font-size: 0.9rem;
-  color: var(--muted);
-  text-align: center;
-  padding: 0.6rem;
+  padding: 0.4rem;
+  background: #fff;
+}
+
+.logo-image {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+}
+
+.mode-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.mode-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  padding: 0.45rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .clock-grid {
@@ -74,14 +108,13 @@ h1 {
 
 .tile {
   background: var(--tile);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 1rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .tile.highlight {
-  border-color: rgba(33, 197, 223, 0.65);
+  border-color: rgba(31, 126, 161, 0.65);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -98,6 +131,91 @@ h1 {
   font-size: clamp(2rem, 5.5vw, 4rem);
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.analog-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+}
+
+.hidden {
+  display: none;
+}
+
+.analog-clock {
+  width: min(72vw, 420px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 12px solid var(--accent);
+  background: linear-gradient(#f6fbff, #eef5fa);
+  position: relative;
+  box-shadow: inset 0 0 0 8px rgba(31, 126, 161, 0.12);
+}
+
+.dial-center {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  border: 1px dashed rgba(31, 126, 161, 0.4);
+}
+
+.hand {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform-origin: bottom center;
+  transform: translateX(-50%) rotate(0deg);
+  border-radius: 999px;
+}
+
+.hour-hand {
+  width: 10px;
+  height: 28%;
+  background: rgba(31, 126, 161, 0.7);
+}
+
+.minute-hand {
+  width: 8px;
+  height: 38%;
+  background: rgba(31, 126, 161, 0.55);
+}
+
+.second-hand {
+  width: 6px;
+  height: 40%;
+  background: var(--danger);
+}
+
+.center-cap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  background: #fff;
+  border: 8px solid var(--danger);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.analog-mark {
+  position: absolute;
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.n12 { top: 8%; left: 50%; transform: translateX(-50%); }
+.n3 { right: 8%; top: 50%; transform: translateY(-50%); }
+.n6 { bottom: 6%; left: 50%; transform: translateX(-50%); }
+.n9 { left: 8%; top: 50%; transform: translateY(-50%); }
+
+.analog-readout {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -138,12 +256,14 @@ a {
 }
 
 @media (max-width: 620px) {
-  .header {
+  .header,
+  .mode-card {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .logo-slot {
+  .logo-slot,
+  .mode-toggle {
     width: 100%;
     min-width: 0;
   }
