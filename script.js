@@ -52,19 +52,19 @@ function buildAnalogDial() {
     analogDial.append(tick);
   }
 
+  const numberRadius = 41;
+
   for (let i = 1; i <= 12; i += 1) {
     const number = document.createElement("span");
-    const face = document.createElement("span");
-    const angle = i * 30;
+    const angle = ((i % 12) * Math.PI) / 6;
+    const x = 50 + numberRadius * Math.sin(angle);
+    const y = 50 - numberRadius * Math.cos(angle);
 
     number.className = "analog-mark";
-    number.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+    number.textContent = String(i);
+    number.style.left = `${x}%`;
+    number.style.top = `${y}%`;
 
-    face.className = "analog-number";
-    face.style.transform = `translateY(calc(var(--number-radius) * -1)) rotate(${-angle}deg)`;
-    face.textContent = String(i);
-
-    number.append(face);
     analogDial.append(number);
   }
 
