@@ -1,5 +1,6 @@
 const OMAN_TIMEZONE = "Asia/Muscat";
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const MODE_TRANSITION_MS = 260;
 
 const elements = {
   hours: document.getElementById("hours"),
@@ -18,6 +19,8 @@ const elements = {
   analogModeBtn: document.getElementById("analogModeBtn"),
 };
 
+const analogDial = elements.analogClock.querySelector(".analog-clock");
+
 let syncedEpochAtSample = Date.now();
 let perfAtSample = performance.now();
 let hasSuccessfulSync = false;
@@ -26,10 +29,76 @@ function pad(value, length = 2) {
   return String(value).padStart(length, "0");
 }
 
+function applyFavicon() {
+  let favicon = document.querySelector("link[rel='icon']");
+  if (!favicon) {
+    favicon = document.createElement("link");
+    favicon.rel = "icon";
+    document.head.append(favicon);
+  }
+
+  favicon.href = "images/cal logo.png";
+}
+
+function buildAnalogDial() {
+  for (const mark of analogDial.querySelectorAll(".analog-mark")) {
+    mark.remove();
+  }
+
+  for (let i = 0; i < 60; i += 1) {
+    const tick = document.createElement("span");
+    tick.className = i % 5 === 0 ? "tick major" : "tick";
+    tick.style.transform = `translate(-50%, -50%) rotate(${i * 6}deg)`;
+    analogDial.append(tick);
+  }
+
+  for (let i = 1; i <= 12; i += 1) {
+    const number = document.createElement("span");
+    const face = document.createElement("span");
+    const angle = i * 30;
+
+    number.className = "analog-mark";
+    number.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+
+    face.className = "analog-number";
+    face.style.transform = `translateY(calc(-1 * min(36vw, 176px))) rotate(${-angle}deg)`;
+    face.textContent = String(i);
+
+    number.append(face);
+    analogDial.append(number);
+  }
+
+  if (elements.analogReadout.parentElement !== analogDial) {
+    analogDial.append(elements.analogReadout);
+  }
+}
+
+function showSection(section) {
+  section.classList.remove("hidden");
+  section.classList.remove("is-fading");
+  section.classList.add("is-visible");
+}
+
+function hideSection(section) {
+  section.classList.add("is-fading");
+  section.classList.remove("is-visible");
+  window.setTimeout(() => {
+    section.classList.add("hidden");
+    section.classList.remove("is-fading");
+  }, MODE_TRANSITION_MS);
+}
+
 function setMode(mode) {
   const isDigital = mode === "digital";
-  elements.digitalClock.classList.toggle("hidden", !isDigital);
-  elements.analogClock.classList.toggle("hidden", isDigital);
+
+  if (isDigital) {
+    showSection(elements.digitalClock);
+    hideSection(elements.analogClock);
+  } else {
+    showSection(elements.analogClock);
+    hideSection(elements.digitalClock);
+  }
+
   elements.digitalModeBtn.classList.toggle("active", isDigital);
   elements.analogModeBtn.classList.toggle("active", !isDigital);
   elements.digitalModeBtn.setAttribute("aria-pressed", String(isDigital));
@@ -83,6 +152,9 @@ function getOmanParts(now) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
     hour12: false,
   }).formatToParts(now);
 
@@ -91,6 +163,7 @@ function getOmanParts(now) {
     hour: Number(partMap.hour),
     minute: Number(partMap.minute),
     second: Number(partMap.second),
+    date: `${partMap.day}.${partMap.month}.${partMap.year}`,
   };
 }
 
@@ -120,7 +193,7 @@ function render() {
   elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
   elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
   elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
-  elements.analogReadout.textContent = `${pad(oman.hour)}:${pad(oman.minute)}:${pad(oman.second)} GST`;
+  elements.analogReadout.innerHTML = `${oman.date}<br>${pad(oman.hour)}:${pad(oman.minute)}<br>GMT+4 (UTC+04:00)`;
 
   requestAnimationFrame(render);
 }
@@ -128,6 +201,8 @@ function render() {
 elements.digitalModeBtn.addEventListener("click", () => setMode("digital"));
 elements.analogModeBtn.addEventListener("click", () => setMode("analog"));
 
+applyFavicon();
+buildAnalogDial();
 setMode("digital");
 syncWithTimeGov();
 setInterval(syncWithTimeGov, SYNC_INTERVAL_MS);
