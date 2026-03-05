@@ -17,6 +17,8 @@ const elements = {
   analogClock: document.getElementById("analogClock"),
   digitalModeBtn: document.getElementById("digitalModeBtn"),
   analogModeBtn: document.getElementById("analogModeBtn"),
+  analogOnlyBtn: document.getElementById("analogOnlyBtn"),
+  exitFullscreenBtn: document.getElementById("exitFullscreenBtn"), // ADDED: Exit button
 };
 
 const analogDial = elements.analogClock.querySelector(".analog-clock");
@@ -36,7 +38,6 @@ function applyFavicon() {
     favicon.rel = "icon";
     document.head.append(favicon);
   }
-
   favicon.href = "images/cal logo.png";
 }
 
@@ -88,7 +89,19 @@ function hideSection(section) {
   }, MODE_TRANSITION_MS);
 }
 
+function updateUrl(mode) {
+  const url = new URL(window.location);
+  if (mode === 'analog-only') {
+    url.searchParams.set('mode', 'analog-only');
+  } else {
+    url.searchParams.delete('mode');
+  }
+  window.history.replaceState({}, '', url);
+}
+
 function setMode(mode) {
+  document.body.classList.remove("analog-only");
+  
   const isDigital = mode === "digital";
 
   if (isDigital) {
@@ -101,8 +114,56 @@ function setMode(mode) {
 
   elements.digitalModeBtn.classList.toggle("active", isDigital);
   elements.analogModeBtn.classList.toggle("active", !isDigital);
+  elements.analogOnlyBtn.classList.remove("active");
   elements.digitalModeBtn.setAttribute("aria-pressed", String(isDigital));
   elements.analogModeBtn.setAttribute("aria-pressed", String(!isDigital));
+  elements.analogOnlyBtn.setAttribute("aria-pressed", "false");
+  
+  updateUrl(mode);
+}
+
+function setAnalogOnlyMode() {
+  document.body.classList.add("analog-only");
+  
+  elements.digitalClock.classList.add("hidden");
+  elements.digitalClock.classList.remove("is-visible");
+  elements.analogClock.classList.remove("hidden");
+  elements.analogClock.classList.add("is-visible");
+  
+  elements.digitalModeBtn.classList.remove("active");
+  elements.analogModeBtn.classList.remove("active");
+  elements.analogOnlyBtn.classList.add("active");
+  
+  elements.digitalModeBtn.setAttribute("aria-pressed", "false");
+  elements.analogModeBtn.setAttribute("aria-pressed", "false");
+  elements.analogOnlyBtn.setAttribute("aria-pressed", "true");
+  
+  updateUrl('analog-only');
+}
+
+// ADDED: Function to exit fullscreen and return to main menu
+function exitFullscreenMode() {
+  document.body.classList.remove("analog-only");
+  
+  // Return to normal digital mode (Old style watch)
+  setMode("digital");
+  
+  // Clear URL parameter
+  const url = new URL(window.location);
+  url.searchParams.delete('mode');
+  window.history.replaceState({}, '', url);
+}
+
+// ADDED: Keyboard support - Press ESC to exit fullscreen
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.body.classList.contains('analog-only')) {
+    exitFullscreenMode();
+  }
+});
+
+function checkUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('mode');
 }
 
 async function syncWithTimeGov() {
@@ -193,17 +254,37 @@ function render() {
   elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
   elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
   elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
-  elements.analogReadout.innerHTML = `${oman.date}<br>${pad(oman.hour)}:${pad(oman.minute)}:${pad(oman.second)}`;
+  
+  // EXPLICIT BLOCK DISPLAY - Time on TOP, Date on BOTTOM
+  elements.analogReadout.innerHTML = 
+    `<span style="display:block;">${pad(oman.hour)}:${pad(oman.minute)}:${pad(oman.second)}</span>` +
+    `<span style="display:block;">${oman.date}</span>`;
 
   requestAnimationFrame(render);
 }
 
+// Event listeners
 elements.digitalModeBtn.addEventListener("click", () => setMode("digital"));
 elements.analogModeBtn.addEventListener("click", () => setMode("analog"));
+elements.analogOnlyBtn.addEventListener("click", setAnalogOnlyMode);
 
+// ADDED: Exit button event listener
+if (elements.exitFullscreenBtn) {
+  elements.exitFullscreenBtn.addEventListener("click", exitFullscreenMode);
+}
+
+// Initialize
 applyFavicon();
 buildAnalogDial();
-setMode("digital");
+
+// Check URL on load - if ?mode=analog-only, show fullscreen analog immediately
+const initialMode = checkUrlParams();
+if (initialMode === 'analog-only') {
+  setAnalogOnlyMode();
+} else {
+  setMode("digital");
+}
+
 syncWithTimeGov();
 setInterval(syncWithTimeGov, SYNC_INTERVAL_MS);
 requestAnimationFrame(render);
