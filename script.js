@@ -1,134 +1,69 @@
-const OMAN_TIMEZONE = "Asia/Muscat";
-const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const ticksContainer = document.getElementById("ticks");
+const numbersContainer = document.getElementById("numbers");
+const hourHand = document.getElementById("hourHand");
+const minuteHand = document.getElementById("minuteHand");
+const secondHand = document.getElementById("secondHand");
+const dateText = document.getElementById("dateText");
+const timeText = document.getElementById("timeText");
+const zoneText = document.getElementById("zoneText");
 
-const elements = {
-  hours: document.getElementById("hours"),
-  minutes: document.getElementById("minutes"),
-  seconds: document.getElementById("seconds"),
-  milliseconds: document.getElementById("milliseconds"),
-  dateLine: document.getElementById("dateLine"),
-  syncStatus: document.getElementById("syncStatus"),
-  hourHand: document.getElementById("hourHand"),
-  minuteHand: document.getElementById("minuteHand"),
-  secondHand: document.getElementById("secondHand"),
-  analogReadout: document.getElementById("analogReadout"),
-  digitalClock: document.getElementById("digitalClock"),
-  analogClock: document.getElementById("analogClock"),
-  digitalModeBtn: document.getElementById("digitalModeBtn"),
-  analogModeBtn: document.getElementById("analogModeBtn"),
-};
+function buildDial() {
+  for (let minute = 0; minute < 60; minute += 1) {
+    const tick = document.createElement("span");
+    tick.className = `tick ${minute % 5 === 0 ? "major" : "minor"}`;
+    tick.style.transform = `translate(-50%, -50%) rotate(${minute * 6}deg) translateY(calc(-50% + -44%))`;
+    ticksContainer.appendChild(tick);
+  }
 
-let syncedEpochAtSample = Date.now();
-let perfAtSample = performance.now();
-let hasSuccessfulSync = false;
-
-function pad(value, length = 2) {
-  return String(value).padStart(length, "0");
-}
-
-function setMode(mode) {
-  const isDigital = mode === "digital";
-  elements.digitalClock.classList.toggle("hidden", !isDigital);
-  elements.analogClock.classList.toggle("hidden", isDigital);
-  elements.digitalModeBtn.classList.toggle("active", isDigital);
-  elements.analogModeBtn.classList.toggle("active", !isDigital);
-  elements.digitalModeBtn.setAttribute("aria-pressed", String(isDigital));
-  elements.analogModeBtn.setAttribute("aria-pressed", String(!isDigital));
-}
-
-async function syncWithTimeGov() {
-  const url = `https://time.gov/actualtime.cgi?lzbc=siqm9b&cacheBust=${Date.now()}`;
-
-  try {
-    const response = await fetch(url, {
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!data?.time) {
-      throw new Error("No time field in response");
-    }
-
-    const epochMs = Number(data.time) / 1000;
-    if (!Number.isFinite(epochMs)) {
-      throw new Error("Invalid time value");
-    }
-
-    syncedEpochAtSample = epochMs;
-    perfAtSample = performance.now();
-    hasSuccessfulSync = true;
-    elements.syncStatus.textContent = `Sync status: locked to time.gov (${new Date().toLocaleTimeString()})`;
-  } catch (error) {
-    const prefix = hasSuccessfulSync ? "re-using previous lock" : "using local clock until first lock";
-    elements.syncStatus.textContent = `Sync status: ${prefix} (${error.message})`;
+  for (let number = 1; number <= 12; number += 1) {
+    const el = document.createElement("span");
+    el.className = "number";
+    const angle = (number * 30 - 90) * (Math.PI / 180);
+    const radius = 40;
+    const x = 50 + radius * Math.cos(angle);
+    const y = 50 + radius * Math.sin(angle);
+    el.style.left = `${x}%`;
+    el.style.top = `${y}%`;
+    el.textContent = String(number);
+    numbersContainer.appendChild(el);
   }
 }
 
-function getNowFromSyncedClock() {
-  const elapsedMs = performance.now() - perfAtSample;
-  return new Date(syncedEpochAtSample + elapsedMs);
+function pad(value) {
+  return String(value).padStart(2, "0");
 }
 
-function getOmanParts(now) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: OMAN_TIMEZONE,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-
-  const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return {
-    hour: Number(partMap.hour),
-    minute: Number(partMap.minute),
-    second: Number(partMap.second),
-  };
+function getOffsetLabel(date) {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  const hh = pad(Math.floor(abs / 60));
+  const mm = pad(abs % 60);
+  return `UTC${sign}${hh}:${mm}`;
 }
 
-function render() {
-  const now = getNowFromSyncedClock();
-  const oman = getOmanParts(now);
+function updateClock() {
+  const now = new Date();
 
-  elements.hours.textContent = pad(oman.hour);
-  elements.minutes.textContent = pad(oman.minute);
-  elements.seconds.textContent = pad(oman.second);
+  const milliseconds = now.getMilliseconds();
+  const seconds = now.getSeconds() + milliseconds / 1000;
+  const minutes = now.getMinutes() + seconds / 60;
+  const hours = (now.getHours() % 12) + minutes / 60;
 
-  const omanMs = now.getUTCMilliseconds();
-  elements.milliseconds.textContent = pad(omanMs, 3);
+  hourHand.style.transform = `translate(-50%, -100%) rotate(${hours * 30}deg)`;
+  minuteHand.style.transform = `translate(-50%, -100%) rotate(${minutes * 6}deg)`;
+  secondHand.style.transform = `translate(-50%, -100%) rotate(${seconds * 6}deg)`;
 
-  elements.dateLine.textContent = new Intl.DateTimeFormat("en-GB", {
-    timeZone: OMAN_TIMEZONE,
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(now);
+  dateText.textContent = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()}`;
+  timeText.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-  const secondProgress = oman.second + omanMs / 1000;
-  const minuteProgress = oman.minute + secondProgress / 60;
-  const hourProgress = (oman.hour % 12) + minuteProgress / 60;
+  const zoneName = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" })
+    .formatToParts(now)
+    .find((part) => part.type === "timeZoneName")?.value;
+  zoneText.textContent = `${zoneName || "LOCAL"} (${getOffsetLabel(now)})`;
 
-  elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
-  elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
-  elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
-  elements.analogReadout.textContent = `${pad(oman.hour)}:${pad(oman.minute)}:${pad(oman.second)} GST`;
-
-  requestAnimationFrame(render);
+  requestAnimationFrame(updateClock);
 }
 
-elements.digitalModeBtn.addEventListener("click", () => setMode("digital"));
-elements.analogModeBtn.addEventListener("click", () => setMode("analog"));
-
-setMode("digital");
-syncWithTimeGov();
-setInterval(syncWithTimeGov, SYNC_INTERVAL_MS);
-requestAnimationFrame(render);
+buildDial();
+updateClock();
