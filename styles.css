@@ -25,7 +25,7 @@ body {
 .layout {
   width: min(1100px, 95vw);
   margin: 0 auto;
-  padding: 1.5rem 0 2.5rem;
+  padding: 0.5rem 0 0.5rem;
   display: grid;
   gap: 1.25rem;
 }
@@ -34,15 +34,28 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 1rem 1.2rem;
+  padding: 0.5rem 0.5rem;
   box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07);
 }
 
 .header {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;    /* Centers everything */
   align-items: center;
-  gap: 1rem;
+  gap: 2rem;                  /* Space between logos and text */
+  flex-wrap: wrap;
+  text-align: center;
+  padding: 1rem 1.2rem;
+}
+
+.header-text {
+  flex: 1;                    /* Takes available space */
+  min-width: 250px;           /* Prevents text from getting too squished */
+}
+
+/* Also ensure the text div is centered */
+.header div:first-child {
+  text-align: center;
 }
 
 h1 {
