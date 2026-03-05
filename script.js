@@ -41,7 +41,7 @@ function applyFavicon() {
 }
 
 function buildAnalogDial() {
-  for (const mark of analogDial.querySelectorAll(".analog-mark")) {
+  for (const mark of analogDial.querySelectorAll(".analog-mark, .tick")) {
     mark.remove();
   }
 
@@ -61,7 +61,7 @@ function buildAnalogDial() {
     number.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
 
     face.className = "analog-number";
-    face.style.transform = `translateY(calc(-1 * min(36vw, 176px))) rotate(${-angle}deg)`;
+    face.style.transform = `translateY(calc(var(--number-radius) * -1)) rotate(${-angle}deg)`;
     face.textContent = String(i);
 
     number.append(face);
@@ -193,7 +193,7 @@ function render() {
   elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
   elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
   elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
-  elements.analogReadout.innerHTML = `${oman.date}<br>${pad(oman.hour)}:${pad(oman.minute)}<br>GMT+4 (UTC+04:00)`;
+  elements.analogReadout.innerHTML = `${oman.date}<br>${pad(oman.hour)}:${pad(oman.minute)}:${pad(oman.second)}`;
 
   requestAnimationFrame(render);
 }
