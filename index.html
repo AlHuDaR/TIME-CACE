@@ -13,12 +13,20 @@
           <h1>Royal Air Force of Oman</h1>
           <p class="subtitle">Calibration Center — Official Time Display</p>
         </div>
-        <div class="logo-slot" aria-label="Logo placeholder">
-          Add RAFO Calibration Center logo
+        <div class="logo-slot" aria-label="RAFO Calibration Center logo">
+          <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
         </div>
       </header>
 
-      <section class="clock-grid" aria-label="Current time in Oman (GST, UTC+4)">
+      <section class="card mode-card" aria-label="Clock style controls">
+        <p class="label">Clock style</p>
+        <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
+          <button id="digitalModeBtn" class="mode-btn active" type="button" aria-pressed="true">Digital</button>
+          <button id="analogModeBtn" class="mode-btn" type="button" aria-pressed="false">Old style watch</button>
+        </div>
+      </section>
+
+      <section id="digitalClock" class="clock-grid" aria-label="Current time in Oman (GST, UTC+4)">
         <article class="tile">
           <p class="label">Hours</p>
           <p id="hours" class="value">--</p>
@@ -35,6 +43,22 @@
           <p class="label">Milliseconds</p>
           <p id="milliseconds" class="value">---</p>
         </article>
+      </section>
+
+      <section id="analogClock" class="analog-wrap card hidden" aria-label="Old style analog watch in Oman time">
+        <div class="analog-clock">
+          <div class="dial-center"></div>
+          <div class="hand hour-hand" id="hourHand"></div>
+          <div class="hand minute-hand" id="minuteHand"></div>
+          <div class="hand second-hand" id="secondHand"></div>
+          <div class="center-cap"></div>
+
+          <div class="analog-mark n12">12</div>
+          <div class="analog-mark n3">3</div>
+          <div class="analog-mark n6">6</div>
+          <div class="analog-mark n9">9</div>
+        </div>
+        <p id="analogReadout" class="analog-readout">--:--:--</p>
       </section>
 
       <section class="meta-grid">
