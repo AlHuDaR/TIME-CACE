@@ -8,25 +8,21 @@
   </head>
   <body>
     <main class="layout">
-<header class="header card">
-  <!-- Logo on LEFT -->
-  <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
-  
-  <!-- Text in MIDDLE -->
-  <div class="header-text">
-    <h1>Royal Air Force of Oman</h1>
-    <p class="subtitle">Calibration Center — Official Time Display</p>
-  </div>
-  
-  <!-- Logo on RIGHT -->
-  <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
-</header>
+      <header class="header card">
+        <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
+        <div class="header-text">
+          <h1>Royal Air Force of Oman</h1>
+          <p class="subtitle">Calibration Center — Official Time Display</p>
+        </div>
+        <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
+      </header>
 
       <section class="card mode-card" aria-label="Clock style controls">
         <p class="label">Clock style</p>
         <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
           <button id="digitalModeBtn" class="mode-btn active" type="button" aria-pressed="true">Digital</button>
           <button id="analogModeBtn" class="mode-btn" type="button" aria-pressed="false">Old style watch</button>
+          <button id="analogOnlyBtn" class="mode-btn" type="button" aria-pressed="false">Analog</button>
         </div>
       </section>
 
@@ -56,16 +52,13 @@
           <div class="hand minute-hand" id="minuteHand"></div>
           <div class="hand second-hand" id="secondHand"></div>
           <div class="center-cap"></div>
-
           <div class="analog-mark n12">12</div>
           <div class="analog-mark n3">3</div>
           <div class="analog-mark n6">6</div>
           <div class="analog-mark n9">9</div>
-		  				
-						
-		  <p id="analogReadout" class="analog-readout">--:--:--</p>
-		  
+          <p id="analogReadout" class="analog-readout">--:--:--</p>
         </div>
+		  <button id="exitFullscreenBtn" class="exit-btn">← Back to Menu</button>
       </section>
 
       <section class="meta-grid">
@@ -73,12 +66,10 @@
           <h2>Date (Oman)</h2>
           <p id="dateLine" class="meta-value">--</p>
         </article>
-
         <article class="card">
           <h2>Timezone</h2>
           <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
         </article>
-
         <article class="card">
           <h2>Time source</h2>
           <p class="meta-value">Synchronized from <a href="https://time.gov/" target="_blank" rel="noreferrer">time.gov</a> endpoint when reachable</p>
