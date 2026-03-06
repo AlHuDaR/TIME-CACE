@@ -442,11 +442,11 @@ class PrecisionClock {
     logo.append(make("line", { x1: -44, y1: -4, x2: -4, y2: -4, stroke: "#e8e8e8", "stroke-width": 3 }));
 
 
-    const dateText = make("text", { x: 400, y: 280, fill: "#1a6b8c", "font-size": 36, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const dateText = make("text", { x: 400, y: 180, fill: "#1a6b8c", "font-size": 36, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     dateText.textContent = "06.03.2026";
     svg.append(dateText);
 
-    const timeText = make("text", { x: 400, y: 340, fill: "#1a6b8c", "font-size": 48, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const timeText = make("text", { x: 400, y: 240, fill: "#1a6b8c", "font-size": 48, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     timeText.textContent = "01:36:21";
     svg.append(timeText);
 
