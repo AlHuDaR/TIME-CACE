@@ -450,7 +450,7 @@ class PrecisionClock {
     timeText.textContent = "01:36:21";
     svg.append(timeText);
 
-    const tzText = make("text", { x: 400, y: 380, fill: "#1a6b8c", "font-size": 24, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const tzText = make("text", { x: 400, y: 280, fill: "#1a6b8c", "font-size": 24, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     tzText.textContent = "MCT (UTC+04:00)";
     svg.append(tzText);
 
