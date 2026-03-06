@@ -463,10 +463,10 @@ class PrecisionClock {
     svg.append(tzText);
 
     const handsGroup = make("g", { id: "hands" });
-    const hourHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 275, stroke: "#1a6b8c", "stroke-width": 14, "stroke-linecap": "round", opacity: 0.86 });
-    const minuteHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 215, stroke: "#1f7699", "stroke-width": 10, "stroke-linecap": "round", opacity: 0.84 });
+    const hourHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 230, stroke: "#1a6b8c", "stroke-width": 14, "stroke-linecap": "round", opacity: 0.86 });
+    const minuteHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 170, stroke: "#1f7699", "stroke-width": 10, "stroke-linecap": "round", opacity: 0.84 });
     const secondHandGroup = make("g");
-    const secondHand = make("line", { x1: 400, y1: 435, x2: 400, y2: 170, stroke: "#d32f2f", "stroke-width": 3, "stroke-linecap": "round", opacity: 0.94 });
+    const secondHand = make("line", { x1: 400, y1: 435, x2: 400, y2: 140, stroke: "#d32f2f", "stroke-width": 3, "stroke-linecap": "round", opacity: 0.94 });
     const counterWeight = make("circle", { cx: 400, cy: 420, r: 10, fill: "#d32f2f" });
     secondHandGroup.append(secondHand, counterWeight);
     handsGroup.append(hourHand, minuteHand, secondHandGroup);
