@@ -454,7 +454,7 @@ class PrecisionClock {
     svg.append(timeText);
 
     const tzText = make("text", { x: 400, y: 380, fill: "#1a6b8c", "font-size": 24, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
-    tzText.textContent = "MEZ (UTC+01:00)";
+    tzText.textContent = "MCT (UTC+04:00)";
     svg.append(tzText);
 
     const deltaText = make("text", { x: 400, y: 520, fill: "#1a6b8c", "font-size": 40, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
