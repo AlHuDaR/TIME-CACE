@@ -142,12 +142,21 @@ class DisplayManager {
     localStorage.setItem("darkMode", enabled ? "1" : "0");
   }
 
-  applyPrecisionMode(enabled) {
-    this.showMilliseconds = enabled;
-    this.elements.millisecondsTile.classList.toggle("hidden", !enabled);
-    this.elements.precisionToggleBtn.textContent = `Precision: ${enabled ? "ON" : "OFF"}`;
-    this.elements.precisionToggleBtn.setAttribute("aria-pressed", String(enabled));
-    localStorage.setItem("precisionMode", enabled ? "1" : "0");
+  // FIXED: Moved updateUrl to be a proper class method
+  updateUrl(mode) {
+    const url = new URL(window.location);
+    
+    if (mode === 'analog-only') {
+      url.searchParams.set('mode', 'analog-only');
+    } else if (mode === 'analog') {
+      url.searchParams.set('mode', 'analog');
+    } else if (mode === 'digital') {
+      url.searchParams.set('mode', 'digital');
+    } else {
+      url.searchParams.delete('mode');
+    }
+    
+    window.history.replaceState({}, '', url);
   }
 
   toggleDarkMode() { this.applyDarkMode(!this.darkMode); }
@@ -172,8 +181,10 @@ class DisplayManager {
     }, MODE_TRANSITION_MS);
   }
 
+  // FIXED: Single setMode method with URL update
   setMode(mode) {
     this.mode = mode;
+    this.updateUrl(mode);  // FIXED: Use this.updateUrl
     document.body.classList.remove("analog-only", "old-style");
     const isDigital = mode === "digital";
     if (isDigital) {
@@ -195,8 +206,10 @@ class DisplayManager {
     this.elements.analogOnlyBtn.setAttribute("aria-pressed", "false");
   }
 
+  // FIXED: Single setAnalogOnlyMode method with URL update
   setAnalogOnlyMode() {
     this.mode = "analog-only";
+    this.updateUrl('analog-only');  // FIXED: Use this.updateUrl
     document.body.classList.remove("old-style");
     document.body.classList.add("analog-only");
     this.elements.digitalClock.classList.add("hidden");
@@ -205,6 +218,14 @@ class DisplayManager {
     this.elements.analogModeBtn.classList.remove("active");
     this.elements.analogOnlyBtn.classList.add("active");
     this.setPrecisionVisibility(true);
+  }
+
+  applyPrecisionMode(enabled) {
+    this.showMilliseconds = enabled;
+    this.elements.millisecondsTile.classList.toggle("hidden", !enabled);
+    this.elements.precisionToggleBtn.textContent = `Precision: ${enabled ? "ON" : "OFF"}`;
+    this.elements.precisionToggleBtn.setAttribute("aria-pressed", String(enabled));
+    localStorage.setItem("precisionMode", enabled ? "1" : "0");
   }
 
   updateDigital(oman, now) {
@@ -348,16 +369,26 @@ class PrecisionClock {
     this.boundUnload = () => this.cleanup();
   }
 
+  // FIXED: Proper init method that checks URL parameters
   init() {
     this.applyFavicon();
     this.handleLogoFallback();
     this.buildAnalogDial();
     this.displayManager.initVisualPreferences();
     this.displayManager.setPrecisionVisibility(false);
-    this.displayManager.setMode(this.getModeFromUrl() === "analog-only" ? "digital" : "digital");
-    if (this.getModeFromUrl() === "analog-only") {
+    
+    // FIXED: Check URL and set correct mode on load
+    const urlMode = new URLSearchParams(window.location.search).get("mode");
+    if (urlMode === 'analog-only') {
       this.displayManager.setAnalogOnlyMode();
+    } else if (urlMode === 'analog') {
+      this.displayManager.setMode('analog');
+    } else if (urlMode === 'digital') {
+      this.displayManager.setMode('digital');
+    } else {
+      this.displayManager.setMode("digital"); // Default
     }
+    
     this.inputHandler.init();
     document.addEventListener("visibilitychange", this.boundVisibility);
     window.addEventListener("beforeunload", this.boundUnload);
