@@ -15,7 +15,6 @@
           <h1>Royal Air Force of Oman</h1>
           <p class="subtitle">Calibration Center — Official Time Display</p>
 		  <p class="subtitle">Cesium Atomic Clock</p>
-
         </div>
         <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="true">Precision: ON</button>
         <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
@@ -71,7 +70,6 @@
           <h2>Timezone</h2>
           <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
         </article>
-        </article>
 <!--         <article class="card">
           <h2>Time source</h2>
           <p class="meta-value">Synchronized from <a href="https://time.gov/" target="_blank" rel="noreferrer">time.gov</a> endpoint when reachable</p>
@@ -82,8 +80,10 @@
 		<article class="card">
 		<h2>Primary time source</h2>
 		<p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
-		<p id="syncStatus" class="status">Status: GPS-disciplined oscillator locked</p>
-		</article>
+		<!-- <p id="syncStatus" class="status">Status: GPS-disciplined oscillator locked</p> -->  <!-- Return this when it is required -->
+<!-- 		<p class="status" style="color: var(--accent); ">Status: GPS-disciplined oscillator locked</p>-->		
+		<p class="status" style="color: #008800; font-weight: 600;">Status: GPS-disciplined oscillator locked</p>		</article>
+		
       </section>
 	  
 	  <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
