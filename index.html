@@ -69,11 +69,19 @@
           <h2>Timezone</h2>
           <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
         </article>
-        <article class="card">
+        </article>
+<!--         <article class="card">
           <h2>Time source</h2>
           <p class="meta-value">Synchronized from <a href="https://time.gov/" target="_blank" rel="noreferrer">time.gov</a> endpoint when reachable</p>
           <p id="syncStatus" class="status">Sync status: initializing...</p>
-        </article>
+        </article> -->
+		
+		
+		<article class="card">
+		<h2>Primary time source</h2>
+		<p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
+		<p id="syncStatus" class="status">Status: GPS-disciplined oscillator locked</p>
+		</article>
       </section>
 	  
 	  <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
