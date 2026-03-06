@@ -440,10 +440,7 @@ class PrecisionClock {
     logo.append(make("circle", { cx: -24, cy: -4, r: 20, fill: "none", stroke: "#e8e8e8", "stroke-width": 3 }));
     logo.append(make("line", { x1: -24, y1: -24, x2: -24, y2: 16, stroke: "#e8e8e8", "stroke-width": 3 }));
     logo.append(make("line", { x1: -44, y1: -4, x2: -4, y2: -4, stroke: "#e8e8e8", "stroke-width": 3 }));
-    const ptb = make("text", { x: 18, y: 8, fill: "#1a6b8c", "font-size": 50, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif" });
-    ptb.textContent = "PTB";
-    logo.append(ptb);
-    svg.append(logo);
+
 
     const dateText = make("text", { x: 400, y: 280, fill: "#1a6b8c", "font-size": 36, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     dateText.textContent = "06.03.2026";
