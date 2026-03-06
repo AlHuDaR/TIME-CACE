@@ -220,14 +220,15 @@ class DisplayManager {
     const minuteProgress = oman.minute + secondProgress / 60;
     const hourProgress = (oman.hour % 12) + minuteProgress / 60;
 
-    this.elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
-    this.elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
-    this.elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
+    this.elements.secondHandGroup?.setAttribute("transform", `rotate(${secondProgress * 6} 400 400)`);
+    this.elements.minuteHand?.setAttribute("transform", `rotate(${minuteProgress * 6} 400 400)`);
+    this.elements.hourHand?.setAttribute("transform", `rotate(${hourProgress * 30} 400 400)`);
 
     const timeText = this.showMilliseconds
       ? `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}.${String(ms).padStart(3, "0")}`
       : `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}`;
-    this.elements.analogReadout.innerHTML = `<span style="display:block;">${timeText}</span><span style="display:block;">${oman.date}</span>`;
+    this.elements.analogTimeText && (this.elements.analogTimeText.textContent = timeText);
+    this.elements.analogDateText && (this.elements.analogDateText.textContent = oman.date);
   }
 
   updateDrift(now) {
@@ -314,10 +315,13 @@ class PrecisionClock {
       millisecondsTile: document.getElementById("millisecondsTile"),
       dateLine: document.getElementById("dateLine"),
       syncStatus: document.getElementById("syncStatus"),
-      hourHand: document.getElementById("hourHand"),
-      minuteHand: document.getElementById("minuteHand"),
-      secondHand: document.getElementById("secondHand"),
-      analogReadout: document.getElementById("analogReadout"),
+      ptbClockSvg: document.getElementById("ptbClockSvg"),
+      hourHand: null,
+      minuteHand: null,
+      secondHand: null,
+      secondHandGroup: null,
+      analogDateText: null,
+      analogTimeText: null,
       driftMonitor: document.getElementById("driftMonitor"),
       digitalClock: document.getElementById("digitalClock"),
       analogClock: document.getElementById("analogClock"),
@@ -328,7 +332,7 @@ class PrecisionClock {
       darkModeBtn: document.getElementById("darkModeBtn"),
       precisionToggleBtn: document.getElementById("precisionToggleBtn"),
     };
-    this.analogDial = this.elements.analogClock.querySelector(".analog-clock");
+    this.analogDial = this.elements.ptbClockSvg;
     this.syncManager = new SyncManager(this.elements.syncStatus);
     this.displayManager = new DisplayManager(this.elements, this.syncManager);
     this.inputHandler = new InputHandler(this.elements, this.displayManager);
@@ -378,27 +382,104 @@ class PrecisionClock {
   }
 
   buildAnalogDial() {
-    for (const mark of this.analogDial.querySelectorAll(".analog-mark, .tick")) {
-      mark.remove();
-    }
+    const svg = this.analogDial;
+    const ns = "http://www.w3.org/2000/svg";
+    const make = (tag, attrs = {}) => {
+      const el = document.createElementNS(ns, tag);
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, String(v)));
+      return el;
+    };
+
+    svg.innerHTML = "";
+
+    const defs = make("defs");
+    const logoShadow = make("filter", { id: "logoShadow", x: "-40%", y: "-40%", width: "180%", height: "180%" });
+    logoShadow.append(make("feDropShadow", { dx: "1.4", dy: "1.6", stdDeviation: "2", "flood-color": "#0f4358", "flood-opacity": "0.55" }));
+    defs.append(logoShadow);
+    svg.append(defs);
+
+    svg.append(make("rect", { x: 0, y: 0, width: 800, height: 800, fill: "#e8e8e8" }));
+    svg.append(make("circle", { cx: 400, cy: 400, r: 380, fill: "none", stroke: "#1a6b8c", "stroke-width": 6 }));
+
+    const tickGroup = make("g", { id: "ticks" });
     for (let i = 0; i < 60; i += 1) {
-      const tick = document.createElement("span");
-      tick.className = i % 5 === 0 ? "tick major" : "tick";
-      tick.style.transform = `translate(-50%, -50%) rotate(${i * 6}deg)`;
-      this.analogDial.append(tick);
+      const angle = ((i * 6 - 90) * Math.PI) / 180;
+      const isHour = i % 5 === 0;
+      const outerRadius = 370;
+      const length = isHour ? 25 : 15;
+      const innerRadius = outerRadius - length;
+      const x1 = 400 + innerRadius * Math.cos(angle);
+      const y1 = 400 + innerRadius * Math.sin(angle);
+      const x2 = 400 + outerRadius * Math.cos(angle);
+      const y2 = 400 + outerRadius * Math.sin(angle);
+      tickGroup.append(make("line", {
+        x1: x1.toFixed(3),
+        y1: y1.toFixed(3),
+        x2: x2.toFixed(3),
+        y2: y2.toFixed(3),
+        stroke: isHour ? "#1a6b8c" : "#2a7a98",
+        "stroke-width": isHour ? 8 : 4,
+        "stroke-linecap": "round",
+      }));
     }
+    svg.append(tickGroup);
+
+    const numbers = make("g", { id: "numbers", fill: "#1a6b8c", "font-family": "Arial, Helvetica, sans-serif", "font-size": 60, "text-anchor": "middle", "dominant-baseline": "middle" });
     for (let i = 1; i <= 12; i += 1) {
-      const number = document.createElement("span");
-      const angle = ((i % 12) * Math.PI) / 6;
-      number.className = "analog-mark";
-      number.textContent = String(i);
-      number.style.left = `${50 + 41 * Math.sin(angle)}%`;
-      number.style.top = `${50 - 41 * Math.cos(angle)}%`;
-      this.analogDial.append(number);
+      const angle = ((i * 30 - 90) * Math.PI) / 180;
+      const x = 400 + 300 * Math.cos(angle);
+      const y = 400 + 300 * Math.sin(angle);
+      const t = make("text", { x: x.toFixed(3), y: y.toFixed(3) });
+      t.textContent = String(i);
+      numbers.append(t);
     }
-    if (this.elements.analogReadout.parentElement !== this.analogDial) {
-      this.analogDial.append(this.elements.analogReadout);
-    }
+    svg.append(numbers);
+
+    const logo = make("g", { transform: "translate(250 400)", opacity: 0.88, filter: "url(#logoShadow)" });
+    logo.append(make("circle", { cx: -24, cy: -4, r: 30, fill: "#1a6b8c" }));
+    logo.append(make("circle", { cx: -24, cy: -4, r: 20, fill: "none", stroke: "#e8e8e8", "stroke-width": 3 }));
+    logo.append(make("line", { x1: -24, y1: -24, x2: -24, y2: 16, stroke: "#e8e8e8", "stroke-width": 3 }));
+    logo.append(make("line", { x1: -44, y1: -4, x2: -4, y2: -4, stroke: "#e8e8e8", "stroke-width": 3 }));
+    const ptb = make("text", { x: 18, y: 8, fill: "#1a6b8c", "font-size": 50, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif" });
+    ptb.textContent = "PTB";
+    logo.append(ptb);
+    svg.append(logo);
+
+    const dateText = make("text", { x: 400, y: 280, fill: "#1a6b8c", "font-size": 36, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    dateText.textContent = "06.03.2026";
+    svg.append(dateText);
+
+    const timeText = make("text", { x: 400, y: 340, fill: "#1a6b8c", "font-size": 48, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    timeText.textContent = "01:36:21";
+    svg.append(timeText);
+
+    const tzText = make("text", { x: 400, y: 380, fill: "#1a6b8c", "font-size": 24, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    tzText.textContent = "MEZ (UTC+01:00)";
+    svg.append(tzText);
+
+    const deltaText = make("text", { x: 400, y: 520, fill: "#1a6b8c", "font-size": 40, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    deltaText.textContent = "Δt";
+    svg.append(deltaText);
+
+    const handsGroup = make("g", { id: "hands" });
+    const hourHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 275, stroke: "#1a6b8c", "stroke-width": 14, "stroke-linecap": "round", opacity: 0.86 });
+    const minuteHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 215, stroke: "#1f7699", "stroke-width": 10, "stroke-linecap": "round", opacity: 0.84 });
+    const secondHandGroup = make("g");
+    const secondHand = make("line", { x1: 400, y1: 435, x2: 400, y2: 170, stroke: "#d32f2f", "stroke-width": 3, "stroke-linecap": "round", opacity: 0.94 });
+    const counterWeight = make("circle", { cx: 400, cy: 420, r: 10, fill: "#d32f2f" });
+    secondHandGroup.append(secondHand, counterWeight);
+    handsGroup.append(hourHand, minuteHand, secondHandGroup);
+    svg.append(handsGroup);
+
+    svg.append(make("circle", { cx: 400, cy: 400, r: 15, fill: "#d32f2f" }));
+    svg.append(make("circle", { cx: 400, cy: 400, r: 5, fill: "#ffffff" }));
+
+    this.elements.hourHand = hourHand;
+    this.elements.minuteHand = minuteHand;
+    this.elements.secondHand = secondHand;
+    this.elements.secondHandGroup = secondHandGroup;
+    this.elements.analogDateText = dateText;
+    this.elements.analogTimeText = timeText;
   }
 
   getModeFromUrl() {
