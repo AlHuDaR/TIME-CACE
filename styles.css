@@ -150,6 +150,8 @@ body.old-style .meta-grid > .card:nth-child(2) {
   border-left: 1px solid var(--border);
 }
 
+body.old-style .analog-nav { display: none; }
+
 @media (max-width: 900px) {
   .header { grid-template-columns: 1fr; }
   .clock-grid, .meta-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); }

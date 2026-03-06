@@ -154,6 +154,10 @@ class DisplayManager {
   togglePrecisionMode() { this.applyPrecisionMode(!this.showMilliseconds); }
   togglePause() { this.paused = !this.paused; }
 
+  setPrecisionVisibility(isVisible) {
+    this.elements.precisionToggleBtn.classList.toggle("hidden", !isVisible);
+  }
+
   showSection(section) {
     section.classList.remove("hidden", "is-fading");
     section.classList.add("is-visible");
@@ -175,7 +179,9 @@ class DisplayManager {
     if (isDigital) {
       this.showSection(this.elements.digitalClock);
       this.hideSection(this.elements.analogClock);
+      this.setPrecisionVisibility(false);
     } else {
+      this.setPrecisionVisibility(true);
       document.body.classList.add("old-style");
       this.showSection(this.elements.analogClock);
       this.hideSection(this.elements.digitalClock);
@@ -198,6 +204,7 @@ class DisplayManager {
     this.elements.digitalModeBtn.classList.remove("active");
     this.elements.analogModeBtn.classList.remove("active");
     this.elements.analogOnlyBtn.classList.add("active");
+    this.setPrecisionVisibility(true);
   }
 
   updateDigital(oman, now) {
@@ -346,6 +353,7 @@ class PrecisionClock {
     this.handleLogoFallback();
     this.buildAnalogDial();
     this.displayManager.initVisualPreferences();
+    this.displayManager.setPrecisionVisibility(false);
     this.displayManager.setMode(this.getModeFromUrl() === "analog-only" ? "digital" : "digital");
     if (this.getModeFromUrl() === "analog-only") {
       this.displayManager.setAnalogOnlyMode();
