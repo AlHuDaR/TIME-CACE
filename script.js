@@ -457,10 +457,6 @@ class PrecisionClock {
     tzText.textContent = "MCT (UTC+04:00)";
     svg.append(tzText);
 
-    const deltaText = make("text", { x: 400, y: 520, fill: "#1a6b8c", "font-size": 40, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
-    deltaText.textContent = "Δt";
-    svg.append(deltaText);
-
     const handsGroup = make("g", { id: "hands" });
     const hourHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 275, stroke: "#1a6b8c", "stroke-width": 14, "stroke-linecap": "round", opacity: 0.86 });
     const minuteHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 215, stroke: "#1f7699", "stroke-width": 10, "stroke-linecap": "round", opacity: 0.84 });
