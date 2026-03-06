@@ -9,12 +9,16 @@
   <body>
     <main class="layout">
       <header class="header card">
-        <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
+        <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
         <div class="header-text">
           <h1>Royal Air Force of Oman</h1>
           <p class="subtitle">Calibration Center — Official Time Display</p>
         </div>
-        <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" />
+        <div class="header-actions">
+          <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="false">Precision: OFF</button>
+          <button id="darkModeBtn" class="mode-btn" type="button" aria-pressed="false">Dark mode</button>
+        </div>
+        <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
       </header>
 
       <section class="card mode-card" aria-label="Clock style controls">
@@ -39,7 +43,7 @@
           <p class="label">Seconds</p>
           <p id="seconds" class="value">--</p>
         </article>
-        <article class="tile highlight">
+        <article id="millisecondsTile" class="tile highlight hidden">
           <p class="label">Milliseconds</p>
           <p id="milliseconds" class="value">---</p>
         </article>
@@ -52,13 +56,10 @@
           <div class="hand minute-hand" id="minuteHand"></div>
           <div class="hand second-hand" id="secondHand"></div>
           <div class="center-cap"></div>
-          <div class="analog-mark n12">12</div>
-          <div class="analog-mark n3">3</div>
-          <div class="analog-mark n6">6</div>
-          <div class="analog-mark n9">9</div>
           <p id="analogReadout" class="analog-readout">--:--:--</p>
         </div>
-		  <button id="exitFullscreenBtn" class="exit-btn">← Back to Menu</button>
+        <p id="driftMonitor" class="drift hidden" aria-live="polite">Δ +0.000s</p>
+        <button id="exitFullscreenBtn" class="exit-btn" type="button">← Back to Menu</button>
       </section>
 
       <section class="meta-grid">
