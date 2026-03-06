@@ -57,7 +57,7 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
   position: absolute;
   top: 50%;
   left: 50%;  
-  width: min(60vw, 325px);  /* 28% of screen width, max 190px */
+  width: min(60vw, 325px);
   transform: translate(-50%, -50%);
   opacity: 0.5;
   pointer-events: none;
@@ -100,8 +100,14 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 }
 
 .analog-clock .clock-center-logo {
-  width: min(60vw, 325px);  /* 28% of screen width, max 190px */
+  width: min(60vw, 325px);
   z-index: 2;
+}
+
+/* FIX: Ensure Old Style mode has same logo size as fullscreen */
+body.old-style .analog-clock .clock-center-logo {
+  width: min(60vw, 425px);
+  opacity: 0.5;
 }
 
 .ptb-clock-svg {
@@ -148,6 +154,47 @@ h2 { margin: 0; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0
 .status { margin: 0.55rem 0 0; color: var(--accent); font-size: 0.92rem; }
 .status.warn { color: var(--warn); }
 a { color: var(--accent); }
+
+/* ============================================================
+   CODER CREDIT - AlHuDaR
+   ============================================================ */
+
+.coder-credit {
+  text-align: center;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.coder-credit a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.coder-credit a:hover {
+  text-decoration: underline;
+}
+
+body.analog-only .coder-credit {
+  position: fixed;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+body.dark-mode body.analog-only .coder-credit {
+  background: rgba(0, 0, 0, 0.2);
+}
 
 /* ============================================================
    ANALOG-ONLY (FULLSCREEN) MODE - BUTTONS AT CLOCK EDGES
@@ -201,12 +248,12 @@ body.analog-only .analog-nav {
   bottom: 8%;
   left: 50%;
   transform: translateX(-50%);
-  width: min(88vh, 88vw);        /* MATCH clock width exactly */
+  width: min(88vh, 88vw);
   max-width: 88vw;
   display: flex;
-  justify-content: space-between; /* Push to left and right edges */
+  justify-content: space-between;
   align-items: center;
-  padding: 0;                    /* Remove padding - use full width */
+  padding: 0;
   z-index: 10;
   
   /* No white background box */
@@ -301,6 +348,12 @@ body.old-style .analog-nav {
   body.analog-only .nav-pill {
     font-size: 0.8rem;
     padding: 0.3rem 0.6rem;
+  }
+  
+  /* Mobile: smaller coder credit */
+  body.analog-only .coder-credit {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.8rem;
   }
 }
 
