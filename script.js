@@ -179,7 +179,7 @@ class DisplayManager {
     if (isDigital) {
       this.showSection(this.elements.digitalClock);
       this.hideSection(this.elements.analogClock);
-      this.setPrecisionVisibility(false);
+      this.setPrecisionVisibility(true);
     } else {
       this.setPrecisionVisibility(true);
       document.body.classList.add("old-style");
@@ -450,15 +450,15 @@ class PrecisionClock {
     logo.append(make("line", { x1: -44, y1: -4, x2: -4, y2: -4, stroke: "#e8e8e8", "stroke-width": 3 }));
 
 
-    const dateText = make("text", { x: 400, y: 180, fill: "#1a6b8c", "font-size": 36, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const dateText = make("text", { x: 400, y: 160, fill: "#1a6b8c", "font-size": 26, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     dateText.textContent = "06.03.2026";
     svg.append(dateText);
 
-    const timeText = make("text", { x: 400, y: 240, fill: "#1a6b8c", "font-size": 48, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const timeText = make("text", { x: 400, y: 655, fill: "#1a6b8c", "font-size": 25, "font-weight": 700, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     timeText.textContent = "01:36:21";
     svg.append(timeText);
 
-    const tzText = make("text", { x: 400, y: 280, fill: "#1a6b8c", "font-size": 24, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const tzText = make("text", { x: 400, y: 560, fill: "#1a6b8c", "font-size": 17, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
     tzText.textContent = "MCT (UTC+04:00)";
     svg.append(tzText);
 
