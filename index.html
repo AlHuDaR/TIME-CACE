@@ -15,7 +15,6 @@
           <p class="subtitle">Calibration Center — Official Time Display</p>
         </div>
         <div class="header-actions">
-          <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="false">Precision: OFF</button>
           <button id="darkModeBtn" class="mode-btn" type="button" aria-pressed="false">Dark mode</button>
         </div>
         <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
@@ -27,6 +26,7 @@
           <button id="digitalModeBtn" class="mode-btn active" type="button" aria-pressed="true">Digital</button>
           <button id="analogModeBtn" class="mode-btn" type="button" aria-pressed="false">Old style watch</button>
           <button id="analogOnlyBtn" class="mode-btn" type="button" aria-pressed="false">Analog</button>
+          <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="true">Precision: ON</button>
         </div>
       </section>
 
@@ -59,7 +59,10 @@
           <p id="analogReadout" class="analog-readout">--:--:--</p>
         </div>
         <p id="driftMonitor" class="drift hidden" aria-live="polite">Δ +0.000s</p>
-        <button id="exitFullscreenBtn" class="exit-btn" type="button">← Back to Menu</button>
+        <div class="analog-nav" aria-label="Analog navigation links">
+          <button id="backToDigitalBtn" class="nav-pill" type="button">← Back to Digital</button>
+          <a class="nav-pill" href="https://www.rafo.gov.om" target="_blank" rel="noreferrer">Main Website →</a>
+        </div>
       </section>
 
       <section class="meta-grid">
