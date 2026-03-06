@@ -6,7 +6,7 @@ A web-based tiled clock inspired by PTB's time display, customized for **Royal A
 
 - Tiled layout for Hours, Minutes, Seconds, and **Milliseconds**.
 - Fixed display in **Oman time (GST / UTC+4)**.
-- Attempts to synchronize against `time.gov` (`/actualtime.cgi`) and continuously renders a smooth local high-resolution clock between syncs.
+- Attempts to synchronize against the API Ninjas `worldtime` endpoint for Muscat and continuously renders a smooth local high-resolution clock between syncs.
 - Dedicated placeholder to insert the RAFO Calibration Center logo.
 - Static-site friendly: deploy directly to Netlify.
 
