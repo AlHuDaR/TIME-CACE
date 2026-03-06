@@ -94,7 +94,7 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 
 .analog-clock {
   grid-area: dial;
-  width: min(90vw, 780px);
+  width: min(90vw, 500px);
   aspect-ratio: 1;
   position: relative;
 }
@@ -106,7 +106,7 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 
 /* FIX: Ensure Old Style mode has same logo size as fullscreen */
 body.old-style .analog-clock .clock-center-logo {
-  width: min(60vw, 425px);
+  width: min(60vw, 279px);
   opacity: 0.5;
 }
 
