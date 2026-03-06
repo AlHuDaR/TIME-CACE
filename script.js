@@ -1,4 +1,6 @@
 const OMAN_TIMEZONE = "Asia/Muscat";
+const API_NINJAS_WORLD_TIME_URL = "https://api.api-ninjas.com/v1/worldtime?city=Muscat";
+const API_NINJAS_KEY = "bxp7AxM4Ij6DDptimm6KRTqVXlOxmWuxn0Vphym8";
 const MODE_TRANSITION_MS = 260;
 const SYNC_SUCCESS_DELAY_MS = 5 * 60 * 1000;
 const SYNC_INITIAL_RETRY_MS = 15 * 1000;
@@ -47,22 +49,24 @@ class SyncManager {
   }
 
   async sync() {
-    const url = `https://time.gov/actualtime.cgi?lzbc=siqm9b&cacheBust=${Date.now()}`;
+    const url = `${API_NINJAS_WORLD_TIME_URL}&cacheBust=${Date.now()}`;
     const startedAt = performance.now();
 
     try {
-      const response = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" } });
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "X-Api-Key": API_NINJAS_KEY,
+        },
+      });
       this.lastRttMs = performance.now() - startedAt;
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
-      if (!data?.time) {
-        throw new Error("No time field in response");
-      }
-
-      const epochMs = Number(data.time) / 1000;
+      const epochMs = this.extractEpochMs(data);
       if (!Number.isFinite(epochMs)) {
         throw new Error("Invalid time value");
       }
@@ -86,6 +90,21 @@ class SyncManager {
         : `Local clock fallback active (${message}).`;
       this.scheduleNext(this.calculateBackoff());
     }
+  }
+
+  extractEpochMs(data) {
+    if (Number.isFinite(data?.unix_time)) {
+      return Number(data.unix_time) * 1000;
+    }
+
+    if (typeof data?.datetime === "string") {
+      const parsed = Date.parse(data.datetime);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    throw new Error("No supported time field in response");
   }
 
   scheduleNext(delay) {
