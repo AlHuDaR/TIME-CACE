@@ -37,7 +37,14 @@ body.dark-mode { background: radial-gradient(circle at 20% 20%, #102837, var(--b
 
 .layout { width: min(1100px, 95vw); margin: 0 auto; padding: 0.5rem 0; display: grid; gap: 1.25rem; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 0.5rem; box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07); }
-.header { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 1rem; text-align: center; padding: 1rem 1.2rem; }
+.header { 
+  display: grid; 
+  grid-template-columns: auto auto 1fr auto auto;  /* Changed from: auto 1fr auto auto */
+  align-items: center; 
+  gap: 1rem; 
+  text-align: center; 
+  padding: 1rem 1.2rem; 
+}
 .header-text { min-width: 220px; }
 .header-actions { display: flex; gap: 0.5rem; justify-content: center; }
 h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
