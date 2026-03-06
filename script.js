@@ -107,7 +107,7 @@ class DisplayManager {
     this.elements = elements;
     this.syncManager = syncManager;
     this.mode = "digital";
-    this.showMilliseconds = localStorage.getItem("precisionMode") === "1";
+    this.showMilliseconds = this.resolveInitialPrecisionMode();
     this.darkMode = this.resolveInitialDarkMode();
     this.paused = false;
     this.lastDriftSecond = -1;
@@ -119,6 +119,14 @@ class DisplayManager {
       return stored === "1";
     }
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  resolveInitialPrecisionMode() {
+    const stored = localStorage.getItem("precisionMode");
+    if (stored !== null) {
+      return stored === "1";
+    }
+    return true;
   }
 
   initVisualPreferences() {
@@ -162,12 +170,13 @@ class DisplayManager {
 
   setMode(mode) {
     this.mode = mode;
-    document.body.classList.remove("analog-only");
+    document.body.classList.remove("analog-only", "old-style");
     const isDigital = mode === "digital";
     if (isDigital) {
       this.showSection(this.elements.digitalClock);
       this.hideSection(this.elements.analogClock);
     } else {
+      document.body.classList.add("old-style");
       this.showSection(this.elements.analogClock);
       this.hideSection(this.elements.digitalClock);
     }
@@ -182,6 +191,7 @@ class DisplayManager {
 
   setAnalogOnlyMode() {
     this.mode = "analog-only";
+    document.body.classList.remove("old-style");
     document.body.classList.add("analog-only");
     this.elements.digitalClock.classList.add("hidden");
     this.elements.analogClock.classList.remove("hidden");
@@ -258,7 +268,7 @@ class InputHandler {
     this.add(this.elements.digitalModeBtn, "click", () => this.displayManager.setMode("digital"));
     this.add(this.elements.analogModeBtn, "click", () => this.displayManager.setMode("analog"));
     this.add(this.elements.analogOnlyBtn, "click", () => this.displayManager.setAnalogOnlyMode());
-    this.add(this.elements.exitFullscreenBtn, "click", () => this.displayManager.setMode("digital"));
+    this.add(this.elements.backToDigitalBtn, "click", () => this.displayManager.setMode("digital"));
     this.add(this.elements.darkModeBtn, "click", () => this.displayManager.toggleDarkMode());
     this.add(this.elements.precisionToggleBtn, "click", () => this.displayManager.togglePrecisionMode());
     this.add(document, "keydown", (e) => this.handleKeys(e));
@@ -314,7 +324,7 @@ class PrecisionClock {
       digitalModeBtn: document.getElementById("digitalModeBtn"),
       analogModeBtn: document.getElementById("analogModeBtn"),
       analogOnlyBtn: document.getElementById("analogOnlyBtn"),
-      exitFullscreenBtn: document.getElementById("exitFullscreenBtn"),
+      backToDigitalBtn: document.getElementById("backToDigitalBtn"),
       darkModeBtn: document.getElementById("darkModeBtn"),
       precisionToggleBtn: document.getElementById("precisionToggleBtn"),
     };
