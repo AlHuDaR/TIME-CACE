@@ -520,6 +520,207 @@ class GPSDisplayManager {
   }
 }
 
+
+class GPSSystemStatusManager {
+  constructor(elements) {
+    this.elements = elements;
+    this.pollMs = 5000;
+    this.pollHandle = null;
+    this.deviceIp = localStorage.getItem('gpsDeviceIp') || '';
+  }
+
+  init() {
+    if (this.elements.gpsDeviceIpInput) {
+      this.elements.gpsDeviceIpInput.value = this.deviceIp;
+    }
+    this.updateDeviceIpLabel();
+
+    if (this.elements.saveGpsIpBtn) {
+      this.elements.saveGpsIpBtn.addEventListener('click', () => {
+        const nextIp = (this.elements.gpsDeviceIpInput?.value || '').trim();
+        this.deviceIp = nextIp;
+        localStorage.setItem('gpsDeviceIp', this.deviceIp);
+        this.updateDeviceIpLabel();
+        this.fetchAndRenderStatus();
+      });
+    }
+
+    this.fetchAndRenderStatus();
+    this.pollHandle = setInterval(() => this.fetchAndRenderStatus(), this.pollMs);
+  }
+
+  cleanup() {
+    if (this.pollHandle) {
+      clearInterval(this.pollHandle);
+      this.pollHandle = null;
+    }
+  }
+
+  async fetchAndRenderStatus() {
+    if (!this.deviceIp) {
+      this.markDisconnected('GPS SYSTEM DISCONNECTED (SET DEVICE IP)');
+      return;
+    }
+
+    const endpoint = `http://${this.deviceIp}/status`;
+    const started = performance.now();
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(endpoint, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const latencyMs = Math.round(performance.now() - started);
+      const payloadText = await response.text();
+      const parsed = this.parsePayload(payloadText);
+      const normalized = this.normalizeStatus(parsed, latencyMs);
+      this.renderStatus(normalized);
+    } catch (error) {
+      console.warn('GPS System Status fetch failed:', error.message);
+      this.markDisconnected('GPS SYSTEM DISCONNECTED');
+    }
+  }
+
+  parsePayload(payloadText) {
+    try {
+      return JSON.parse(payloadText);
+    } catch (_) {
+      const data = {};
+      payloadText.split(/\r?\n/).forEach((line) => {
+        const match = line.match(/^\s*([\w\s\-/.]+)\s*[:=]\s*(.+)\s*$/);
+        if (!match) return;
+        const key = match[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        data[key] = match[2].trim();
+      });
+      return data;
+    }
+  }
+
+  normalizeStatus(data, latencyMs) {
+    const pick = (...keys) => {
+      for (const key of keys) {
+        if (data[key] !== undefined && data[key] !== null && data[key] !== '') return data[key];
+      }
+      return '--';
+    };
+
+    const gpsLock = pick('gps_lock_status', 'lock_status', 'gps_lock');
+    const holdover = pick('holdover_mode', 'holdover');
+
+    return {
+      reachable: 'Yes',
+      ip: this.deviceIp,
+      latency: `${latencyMs} ms`,
+      connectionStatus: 'Online',
+      gpsLockStatus: gpsLock,
+      satellitesInView: pick('satellites_in_view', 'sv_in_view', 'sat_in_view'),
+      satellitesUsed: pick('satellites_used', 'sv_used', 'sat_used'),
+      signalStrength: pick('signal_strength', 'snr', 'signal'),
+      gpsTime: pick('gps_time', 'time_gps'),
+      utcTime: pick('utc_time', 'time_utc'),
+      systemOffset: pick('system_time_offset', 'time_offset', 'offset'),
+      leapSecondStatus: pick('leap_second_status', 'leap_seconds'),
+      latitude: pick('latitude', 'lat'),
+      longitude: pick('longitude', 'lon', 'longitude_deg'),
+      altitude: pick('altitude', 'altitude_m', 'alt'),
+      oscType: pick('oscillator_type', 'osc_type'),
+      oscLockStatus: pick('oscillator_lock_status', 'osc_lock_status', 'osc_lock'),
+      holdoverMode: holdover,
+      frequencyOffset: pick('frequency_offset', 'freq_offset'),
+      ppsStatus: pick('one_pps_status', 'pps_status', '1pps_status'),
+      irigStatus: pick('irig_b_status', 'irig_status'),
+      mhz10Status: pick('mhz_10_output_status', 'output_10mhz_status', '10mhz_output_status'),
+      ntpEnabled: pick('ntp_enabled', 'ntp_server_enabled'),
+      ntpStratum: pick('stratum_level', 'ntp_stratum'),
+      ntpClients: pick('ntp_clients_connected', 'ntp_clients'),
+      ntpSyncStatus: pick('synchronization_status', 'ntp_sync_status'),
+      firmwareVersion: pick('firmware_version', 'fw_version'),
+      systemUptime: pick('system_uptime', 'uptime'),
+      deviceTemperature: pick('temperature', 'device_temperature'),
+      alarmStatus: pick('alarm_status', 'alarms')
+    };
+  }
+
+  renderStatus(status) {
+    this.setIndicator(this.elements.gpsConnectionDot, true);
+    this.setIndicator(this.elements.gpsLockDot, /lock|ok|yes|track/i.test(String(status.gpsLockStatus)));
+    this.setIndicator(this.elements.oscLockDot, /lock|ok|yes/i.test(String(status.oscLockStatus)), /holdover/i.test(String(status.holdoverMode)));
+
+    this.setText('gpsReachable', status.reachable);
+    this.setText('gpsDeviceIp', status.ip);
+    this.setText('gpsLatency', status.latency);
+    this.setText('gpsConnectionStatus', status.connectionStatus);
+    this.setText('gpsLockStatus', status.gpsLockStatus);
+    this.setText('gpsSatellitesView', status.satellitesInView);
+    this.setText('gpsSatellitesUsed', status.satellitesUsed);
+    this.setText('gpsSignalStrength', status.signalStrength);
+    this.setText('gpsTime', status.gpsTime);
+    this.setText('utcTime', status.utcTime);
+    this.setText('systemOffset', status.systemOffset);
+    this.setText('leapSecondStatus', status.leapSecondStatus);
+    this.setText('gpsLatitude', status.latitude);
+    this.setText('gpsLongitude', status.longitude);
+    this.setText('gpsAltitude', status.altitude);
+    this.setText('oscType', status.oscType);
+    this.setText('oscLockStatus', status.oscLockStatus);
+    this.setText('holdoverMode', status.holdoverMode);
+    this.setText('frequencyOffset', status.frequencyOffset);
+    this.setText('ppsStatus', status.ppsStatus);
+    this.setText('irigStatus', status.irigStatus);
+    this.setText('mhz10Status', status.mhz10Status);
+    this.setText('ntpEnabled', status.ntpEnabled);
+    this.setText('ntpStratum', status.ntpStratum);
+    this.setText('ntpClients', status.ntpClients);
+    this.setText('ntpSyncStatus', status.ntpSyncStatus);
+    this.setText('firmwareVersion', status.firmwareVersion);
+    this.setText('systemUptime', status.systemUptime);
+    this.setText('deviceTemperature', status.deviceTemperature);
+    this.setText('alarmStatus', status.alarmStatus);
+
+    this.setBannerState('GPS SYSTEM CONNECTED', 'up');
+  }
+
+  markDisconnected(message) {
+    this.setIndicator(this.elements.gpsConnectionDot, false);
+    this.setIndicator(this.elements.gpsLockDot, false);
+    this.setIndicator(this.elements.oscLockDot, false);
+    this.setText('gpsReachable', 'No');
+    this.setText('gpsConnectionStatus', 'Offline');
+    this.setText('gpsLatency', '--');
+    this.setBannerState(message, 'down');
+  }
+
+  updateDeviceIpLabel() {
+    this.setText('gpsDeviceIp', this.deviceIp || '--');
+  }
+
+  setText(key, value) {
+    const element = this.elements[key];
+    if (element) element.textContent = value ?? '--';
+  }
+
+  setBannerState(message, level) {
+    if (!this.elements.gpsSystemBanner || !this.elements.gpsSystemBannerText) return;
+    this.elements.gpsSystemBanner.classList.remove('status-up', 'status-down', 'status-warn');
+    this.elements.gpsSystemBanner.classList.add(level === 'up' ? 'status-up' : level === 'warn' ? 'status-warn' : 'status-down');
+    this.elements.gpsSystemBannerText.textContent = message;
+  }
+
+  setIndicator(dotElement, isGood, isWarning = false) {
+    if (!dotElement) return;
+    dotElement.classList.remove('status-green', 'status-red', 'status-yellow');
+    if (isWarning) {
+      dotElement.classList.add('status-yellow');
+      return;
+    }
+    dotElement.classList.add(isGood ? 'status-green' : 'status-red');
+  }
+}
+
 class DisplayManager {
   constructor(elements, syncManager, gpsTimeSync) {
     this.elements = elements;
@@ -623,7 +824,18 @@ class DisplayManager {
     this.elements.analogOnlyBtn.setAttribute("aria-pressed", "false");
   }
 
+  setActiveTab(tab) {
+    const isGps = tab === "gps-status";
+    this.elements.clockTabPanel?.classList.toggle("hidden", isGps);
+    this.elements.gpsStatusTabPanel?.classList.toggle("hidden", !isGps);
+    this.elements.tabClockBtn?.classList.toggle("active", !isGps);
+    this.elements.tabGpsStatusBtn?.classList.toggle("active", isGps);
+    this.elements.tabClockBtn?.setAttribute("aria-pressed", String(!isGps));
+    this.elements.tabGpsStatusBtn?.setAttribute("aria-pressed", String(isGps));
+  }
+
   setAnalogOnlyMode() {
+    this.setActiveTab("clock");
     this.mode = "analog-only";
     this.updateUrl('analog-only');
     document.body.classList.remove("old-style");
@@ -716,6 +928,8 @@ class InputHandler {
     this.add(this.elements.backToDigitalBtn, "click", () => this.displayManager.setMode("digital"));
     this.add(this.elements.darkModeBtn, "click", () => this.displayManager.toggleDarkMode());
     this.add(this.elements.precisionToggleBtn, "click", () => this.displayManager.togglePrecisionMode());
+    this.add(this.elements.tabClockBtn, "click", () => this.displayManager.setActiveTab("clock"));
+    this.add(this.elements.tabGpsStatusBtn, "click", () => this.displayManager.setActiveTab("gps-status"));
     this.add(document, "keydown", (e) => this.handleKeys(e));
   }
 
@@ -779,7 +993,48 @@ class PrecisionClock {
       lockStatus: document.getElementById("lockStatus"),
       lockPulse: document.getElementById("lockPulse"),
       lastSyncTime: document.getElementById("lastSyncTime"),
-      offsetDisplay: document.getElementById("offsetDisplay")
+      offsetDisplay: document.getElementById("offsetDisplay"),
+      tabClockBtn: document.getElementById("tabClockBtn"),
+      tabGpsStatusBtn: document.getElementById("tabGpsStatusBtn"),
+      clockTabPanel: document.getElementById("clockTabPanel"),
+      gpsStatusTabPanel: document.getElementById("gpsStatusTabPanel"),
+      gpsDeviceIpInput: document.getElementById("gpsDeviceIpInput"),
+      saveGpsIpBtn: document.getElementById("saveGpsIpBtn"),
+      gpsSystemBanner: document.getElementById("gpsSystemBanner"),
+      gpsSystemBannerText: document.getElementById("gpsSystemBannerText"),
+      gpsConnectionDot: document.getElementById("gpsConnectionDot"),
+      gpsLockDot: document.getElementById("gpsLockDot"),
+      oscLockDot: document.getElementById("oscLockDot"),
+      gpsReachable: document.getElementById("gpsReachable"),
+      gpsDeviceIp: document.getElementById("gpsDeviceIp"),
+      gpsLatency: document.getElementById("gpsLatency"),
+      gpsConnectionStatus: document.getElementById("gpsConnectionStatus"),
+      gpsLockStatus: document.getElementById("gpsLockStatus"),
+      gpsSatellitesView: document.getElementById("gpsSatellitesView"),
+      gpsSatellitesUsed: document.getElementById("gpsSatellitesUsed"),
+      gpsSignalStrength: document.getElementById("gpsSignalStrength"),
+      gpsTime: document.getElementById("gpsTime"),
+      utcTime: document.getElementById("utcTime"),
+      systemOffset: document.getElementById("systemOffset"),
+      leapSecondStatus: document.getElementById("leapSecondStatus"),
+      gpsLatitude: document.getElementById("gpsLatitude"),
+      gpsLongitude: document.getElementById("gpsLongitude"),
+      gpsAltitude: document.getElementById("gpsAltitude"),
+      oscType: document.getElementById("oscType"),
+      oscLockStatus: document.getElementById("oscLockStatus"),
+      holdoverMode: document.getElementById("holdoverMode"),
+      frequencyOffset: document.getElementById("frequencyOffset"),
+      ppsStatus: document.getElementById("ppsStatus"),
+      irigStatus: document.getElementById("irigStatus"),
+      mhz10Status: document.getElementById("mhz10Status"),
+      ntpEnabled: document.getElementById("ntpEnabled"),
+      ntpStratum: document.getElementById("ntpStratum"),
+      ntpClients: document.getElementById("ntpClients"),
+      ntpSyncStatus: document.getElementById("ntpSyncStatus"),
+      firmwareVersion: document.getElementById("firmwareVersion"),
+      systemUptime: document.getElementById("systemUptime"),
+      deviceTemperature: document.getElementById("deviceTemperature"),
+      alarmStatus: document.getElementById("alarmStatus")
     };
     this.analogDial = this.elements.ptbClockSvg;
     
@@ -787,6 +1042,7 @@ class PrecisionClock {
     this.syncManager = new SyncManager(this.elements.syncStatus, this.gpsTimeSync);
     this.gpsDisplay = new GPSDisplayManager(this.elements, this.gpsTimeSync);
     this.displayManager = new DisplayManager(this.elements, this.syncManager, this.gpsTimeSync);
+    this.gpsSystemStatus = new GPSSystemStatusManager(this.elements);
     this.inputHandler = new InputHandler(this.elements, this.displayManager);
     this.rafId = null;
     this.boundVisibility = () => this.handleVisibilityChange();
@@ -798,6 +1054,7 @@ class PrecisionClock {
     this.handleLogoFallback();
     this.buildAnalogDial();
     this.displayManager.initVisualPreferences();
+    this.displayManager.setActiveTab("clock");
     this.displayManager.setPrecisionVisibility(false);
     
     await this.gpsTimeSync.init();
@@ -815,6 +1072,7 @@ class PrecisionClock {
     }
     
     this.inputHandler.init();
+    this.gpsSystemStatus.init();
     document.addEventListener("visibilitychange", this.boundVisibility);
     window.addEventListener("beforeunload", this.boundUnload);
     this.syncManager.sync();
@@ -1000,6 +1258,7 @@ class PrecisionClock {
     this.inputHandler.cleanup();
     this.syncManager.cleanup();
     this.gpsTimeSync.stopAutoSync();
+    this.gpsSystemStatus.cleanup();
   }
 }
 

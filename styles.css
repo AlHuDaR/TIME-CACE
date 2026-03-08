@@ -173,6 +173,98 @@ h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 2.2rem); line-height: 1.2; }
   padding: 0.3rem 0.6rem;
 }
 
+
+.tab-nav {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tab-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.tab-panel.hidden {
+  display: none !important;
+}
+
+.gps-status-header {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.gps-config-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.gps-input {
+  border: 1px solid var(--border);
+  background: var(--tile);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.4rem 0.6rem;
+  min-width: 220px;
+}
+
+.gps-system-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+}
+
+.status-up {
+  background: rgba(18, 124, 56, 0.15);
+  color: var(--ok);
+}
+
+.status-down {
+  background: rgba(223, 45, 45, 0.15);
+  color: var(--danger);
+}
+
+.status-warn {
+  background: rgba(192, 108, 0, 0.18);
+  color: var(--warn);
+}
+
+.gps-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.gps-panel h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.gps-panel p {
+  margin: 0.35rem 0;
+  font-size: 0.95rem;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  background: #9ca3af;
+}
+
+.status-green { background: var(--ok); }
+.status-red { background: var(--danger); }
+.status-yellow { background: var(--warn); }
+
 .mode-card { 
   display: flex; 
   justify-content: center;
@@ -359,7 +451,9 @@ body.analog-only .header,
 body.analog-only .mode-card, 
 body.analog-only .meta-grid, 
 body.analog-only #digitalClock,
-body.analog-only .gps-status-bar { 
+body.analog-only .gps-status-bar,
+body.analog-only .tab-nav,
+body.analog-only #gpsStatusTabPanel { 
   display: none !important; 
 }
 
@@ -484,7 +578,7 @@ body.old-style .analog-nav {
   #darkModeBtn { grid-area: left-btn; }
   #precisionToggleBtn { grid-area: right-btn; }
 
-  .clock-grid, .meta-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+  .clock-grid, .meta-grid, .gps-dashboard-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
 }
 
 /* Phones */
@@ -504,7 +598,7 @@ body.old-style .analog-nav {
 
   .mode-card { flex-direction: column; align-items: stretch; }
   .mode-toggle, .header-actions { width: 100%; }
-  .clock-grid, .meta-grid { grid-template-columns: 1fr; }
+  .clock-grid, .meta-grid, .gps-dashboard-grid { grid-template-columns: 1fr; }
   
   /* Mobile analog adjustments */
   body.analog-only {

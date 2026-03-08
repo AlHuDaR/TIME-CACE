@@ -40,61 +40,97 @@
         </div>
       </section>
 
-      <section class="card mode-card" aria-label="Clock style controls">
-        <p class="label">Clock style</p>
-        <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
-          <button id="digitalModeBtn" class="mode-btn active" type="button" aria-pressed="true">Digital</button>
-          <button id="analogModeBtn" class="mode-btn" type="button" aria-pressed="false">Old style watch</button>
-          <button id="analogOnlyBtn" class="mode-btn" type="button" aria-pressed="false">Analog</button>
-        </div>
-      </section>
+      <nav class="card tab-nav" aria-label="Dashboard tabs">
+        <button id="tabClockBtn" class="mode-btn active" type="button" aria-pressed="true">CLOCK DISPLAY</button>
+        <button id="tabGpsStatusBtn" class="mode-btn" type="button" aria-pressed="false">GPS SYSTEM STATUS</button>
+      </nav>
 
-      <section id="digitalClock" class="clock-grid" aria-label="Current time in Oman (GST, UTC+4)">
-        <img src="images/cal%20logo.png" alt="" class="clock-center-logo" aria-hidden="true" />
-        <article class="tile">
-          <p class="label">Hours</p>
-          <p id="hours" class="value">--</p>
-        </article>
-        <article class="tile">
-          <p class="label">Minutes</p>
-          <p id="minutes" class="value">--</p>
-        </article>
-        <article class="tile">
-          <p class="label">Seconds</p>
-          <p id="seconds" class="value">--</p>
-        </article>
-        <article id="millisecondsTile" class="tile highlight hidden">
-          <p class="label">Milliseconds</p>
-          <p id="milliseconds" class="value">---</p>
-        </article>
-      </section>
+      <section id="clockTabPanel" class="tab-panel is-active" aria-label="Clock dashboard panel">
+        <section class="card mode-card" aria-label="Clock style controls">
+          <p class="label">Clock style</p>
+          <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
+            <button id="digitalModeBtn" class="mode-btn active" type="button" aria-pressed="true">Digital</button>
+            <button id="analogModeBtn" class="mode-btn" type="button" aria-pressed="false">Old style watch</button>
+            <button id="analogOnlyBtn" class="mode-btn" type="button" aria-pressed="false">Analog</button>
+          </div>
+        </section>
 
-      <section id="analogClock" class="analog-wrap card hidden" aria-label="Old style analog watch in Oman time">
-        <div class="analog-clock">
-          <svg id="ptbClockSvg" class="ptb-clock-svg" viewBox="0 0 800 800" role="img" aria-label="PTB style atomic analog clock"></svg>
+        <section id="digitalClock" class="clock-grid" aria-label="Current time in Oman (GST, UTC+4)">
           <img src="images/cal%20logo.png" alt="" class="clock-center-logo" aria-hidden="true" />
-        </div>
-        <p id="driftMonitor" class="drift hidden" aria-live="polite">Δ +0.000s</p>
-        <div class="analog-nav" aria-label="Analog navigation links">
-          <button id="backToDigitalBtn" class="nav-pill" type="button">Back to Digital</button>
-          <a class="nav-pill" href="https://www.rafo.gov.om" target="_blank" rel="noreferrer">Main Website</a>
-        </div>
+          <article class="tile">
+            <p class="label">Hours</p>
+            <p id="hours" class="value">--</p>
+          </article>
+          <article class="tile">
+            <p class="label">Minutes</p>
+            <p id="minutes" class="value">--</p>
+          </article>
+          <article class="tile">
+            <p class="label">Seconds</p>
+            <p id="seconds" class="value">--</p>
+          </article>
+          <article id="millisecondsTile" class="tile highlight hidden">
+            <p class="label">Milliseconds</p>
+            <p id="milliseconds" class="value">---</p>
+          </article>
+        </section>
+
+        <section id="analogClock" class="analog-wrap card hidden" aria-label="Old style analog watch in Oman time">
+          <div class="analog-clock">
+            <svg id="ptbClockSvg" class="ptb-clock-svg" viewBox="0 0 800 800" role="img" aria-label="PTB style atomic analog clock"></svg>
+            <img src="images/cal%20logo.png" alt="" class="clock-center-logo" aria-hidden="true" />
+          </div>
+          <p id="driftMonitor" class="drift hidden" aria-live="polite">Δ +0.000s</p>
+          <div class="analog-nav" aria-label="Analog navigation links">
+            <button id="backToDigitalBtn" class="nav-pill" type="button">Back to Digital</button>
+            <a class="nav-pill" href="https://www.rafo.gov.om" target="_blank" rel="noreferrer">Main Website</a>
+          </div>
+        </section>
+
+        <section class="meta-grid">
+          <article class="card">
+            <h2>Date (Oman)</h2>
+            <p id="dateLine" class="meta-value">--</p>
+          </article>
+          <article class="card">
+            <h2>Timezone</h2>
+            <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
+          </article>
+          <article class="card">
+            <h2>Primary time source</h2>
+            <p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
+            <p id="syncStatus" class="status">Status: Initializing...</p>
+          </article>
+        </section>
       </section>
 
-      <section class="meta-grid">
-        <article class="card">
-          <h2>Date (Oman)</h2>
-          <p id="dateLine" class="meta-value">--</p>
-        </article>
-        <article class="card">
-          <h2>Timezone</h2>
-          <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
-        </article>
-        <article class="card">
-          <h2>Primary time source</h2>
-          <p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
-          <p id="syncStatus" class="status">Status: Initializing...</p>
-        </article>
+      <section id="gpsStatusTabPanel" class="tab-panel hidden" aria-label="GPS system status dashboard">
+        <section class="card gps-status-header">
+          <div>
+            <h2>📡 GPS SYSTEM STATUS</h2>
+            <p class="meta-value">Monitor Symmetricom XLi receiver health and timing outputs over LAN.</p>
+          </div>
+          <div class="gps-config-row">
+            <label for="gpsDeviceIpInput" class="label">Device IP</label>
+            <input id="gpsDeviceIpInput" class="gps-input" type="text" placeholder="e.g. 192.168.1.50" />
+            <button id="saveGpsIpBtn" class="mode-btn" type="button">Save IP</button>
+          </div>
+          <div id="gpsSystemBanner" class="gps-system-banner status-down">
+            <span class="status-dot status-red"></span>
+            <span id="gpsSystemBannerText">GPS SYSTEM DISCONNECTED</span>
+          </div>
+        </section>
+
+        <section class="gps-dashboard-grid" aria-live="polite">
+          <article class="card gps-panel"><h3>🌐 CONNECTION</h3><p><span class="status-dot" id="gpsConnectionDot"></span> <strong>Device reachable:</strong> <span id="gpsReachable">--</span></p><p><strong>Device IP address:</strong> <span id="gpsDeviceIp">--</span></p><p><strong>Network latency:</strong> <span id="gpsLatency">--</span></p><p><strong>Connection status:</strong> <span id="gpsConnectionStatus">--</span></p></article>
+          <article class="card gps-panel"><h3>🛰 GPS RECEIVER</h3><p><span class="status-dot" id="gpsLockDot"></span> <strong>GPS lock status:</strong> <span id="gpsLockStatus">--</span></p><p><strong>Satellites in view:</strong> <span id="gpsSatellitesView">--</span></p><p><strong>Satellites used:</strong> <span id="gpsSatellitesUsed">--</span></p><p><strong>Signal strength:</strong> <span id="gpsSignalStrength">--</span></p></article>
+          <article class="card gps-panel"><h3>⏱ TIME INFORMATION</h3><p><strong>GPS time:</strong> <span id="gpsTime">--</span></p><p><strong>UTC time:</strong> <span id="utcTime">--</span></p><p><strong>System time offset:</strong> <span id="systemOffset">--</span></p><p><strong>Leap second status:</strong> <span id="leapSecondStatus">--</span></p></article>
+          <article class="card gps-panel"><h3>📍 LOCATION</h3><p><strong>Latitude:</strong> <span id="gpsLatitude">--</span></p><p><strong>Longitude:</strong> <span id="gpsLongitude">--</span></p><p><strong>Altitude:</strong> <span id="gpsAltitude">--</span></p></article>
+          <article class="card gps-panel"><h3>⚙ OSCILLATOR</h3><p><strong>Oscillator type:</strong> <span id="oscType">--</span></p><p><span class="status-dot" id="oscLockDot"></span> <strong>Oscillator lock status:</strong> <span id="oscLockStatus">--</span></p><p><strong>Holdover mode:</strong> <span id="holdoverMode">--</span></p><p><strong>Frequency offset:</strong> <span id="frequencyOffset">--</span></p></article>
+          <article class="card gps-panel"><h3>🌐 NTP SERVER</h3><p><strong>NTP enabled:</strong> <span id="ntpEnabled">--</span></p><p><strong>Stratum level:</strong> <span id="ntpStratum">--</span></p><p><strong>NTP clients connected:</strong> <span id="ntpClients">--</span></p><p><strong>Synchronization status:</strong> <span id="ntpSyncStatus">--</span></p></article>
+          <article class="card gps-panel"><h3>⏱ TIMING OUTPUTS</h3><p><strong>1PPS status:</strong> <span id="ppsStatus">--</span></p><p><strong>IRIG-B status:</strong> <span id="irigStatus">--</span></p><p><strong>10 MHz output status:</strong> <span id="mhz10Status">--</span></p></article>
+          <article class="card gps-panel"><h3>📡 DEVICE INFORMATION</h3><p><strong>Firmware version:</strong> <span id="firmwareVersion">--</span></p><p><strong>System uptime:</strong> <span id="systemUptime">--</span></p><p><strong>Temperature:</strong> <span id="deviceTemperature">--</span></p><p><strong>Alarm status:</strong> <span id="alarmStatus">--</span></p></article>
+        </section>
       </section>
 	  
       <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
