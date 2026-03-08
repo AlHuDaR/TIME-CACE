@@ -20,6 +20,26 @@
         <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
       </header>
 
+      <!-- GPS Status Bar -->
+      <section class="card gps-status-bar" aria-label="GPS Synchronization Status">
+        <div class="gps-indicator">
+          <div id="lockPulse" class="lock-pulse"></div>
+          <div class="gps-info">
+            <span id="sourceIndicator" class="source-badge source-local">LOCAL TIME</span>
+            <span id="lockStatus" class="lock-text">No GPS Lock</span>
+          </div>
+        </div>
+        <div class="gps-details">
+          <span id="lastSyncTime">Last sync: Never</span>
+          <span id="offsetDisplay">Offset: 0ms</span>
+          <!-- ONLY in Digital view: Set GPS Time buttons -->
+          <span id="digitalOnlyControls" style="margin-left: 15px;">
+            <button id="setTimeComputerBtn" class="mode-btn" style="font-size: 0.75rem; padding: 0.3rem 0.6rem;" title="Set GPS time from this computer">Set GPS (PC)</button>
+            <button id="setTimeInternetBtn" class="mode-btn" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; margin-left: 5px;" title="Set GPS time from Internet (more precise)">Set GPS (Internet)</button>
+          </span>
+        </div>
+      </section>
+
       <section class="card mode-card" aria-label="Clock style controls">
         <p class="label">Clock style</p>
         <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
@@ -70,26 +90,81 @@
           <h2>Timezone</h2>
           <p class="meta-value">Gulf Standard Time (GST, UTC+04:00)</p>
         </article>
-<!--         <article class="card">
-          <h2>Time source</h2>
-          <p class="meta-value">Synchronized from <a href="https://time.gov/" target="_blank" rel="noreferrer">time.gov</a> endpoint when reachable</p>
-          <p id="syncStatus" class="status">Sync status: initializing...</p>
-        </article> -->
-		
-		
-		<article class="card">
-		<h2>Primary time source</h2>
-		<p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
-		<!-- <p id="syncStatus" class="status">Status: GPS-disciplined oscillator locked</p> -->  <!-- Return this when it is required -->
-<!-- 		<p class="status" style="color: var(--accent); ">Status: GPS-disciplined oscillator locked</p>-->		
-		<p class="status" style="color: #008800; font-weight: 600;">Status: GPS-disciplined oscillator locked</p>		</article>
-		
+        <article class="card">
+          <h2>Primary time source</h2>
+          <p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
+          <p id="syncStatus" class="status">Status: Initializing...</p>
+        </article>
       </section>
 	  
-	  <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
+      <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
 	  
     </main>
 
     <script src="script.js"></script>
+    
+    <!-- Digital-only controls handler -->
+    <script>
+      // Digital-only controls: Show only in digital mode
+      function updateDigitalControls() {
+        const controls = document.getElementById('digitalOnlyControls');
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode') || 'digital';
+        
+        if (controls) {
+          controls.style.display = (mode === 'digital') ? 'inline-block' : 'none';
+        }
+      }
+      
+      // Check on load and when URL changes
+      updateDigitalControls();
+      window.addEventListener('popstate', updateDigitalControls);
+      
+      // Set GPS Time from Computer
+      document.getElementById('setTimeComputerBtn')?.addEventListener('click', async () => {
+        if (!confirm('Set GPS receiver time from THIS COMPUTER?\n\nMake sure your computer time is accurate!')) return;
+        
+        try {
+          const response = await fetch('http://localhost:3000/api/time/set', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ useInternet: false })
+          });
+          const result = await response.json();
+          
+          if (result.success) {
+            alert(`✅ GPS time set from COMPUTER:\nDate: ${result.date}\nTime: ${result.time}\n\nPage will refresh.`);
+            location.reload();
+          } else {
+            alert('❌ Failed: ' + result.error);
+          }
+        } catch (error) {
+          alert('❌ Error: ' + error.message);
+        }
+      });
+      
+      // Set GPS Time from Internet (more precise)
+      document.getElementById('setTimeInternetBtn')?.addEventListener('click', async () => {
+        if (!confirm('Set GPS receiver time from INTERNET?\n\nThis is more precise than computer time.')) return;
+        
+        try {
+          const response = await fetch('http://localhost:3000/api/time/set', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ useInternet: true })
+          });
+          const result = await response.json();
+          
+          if (result.success) {
+            alert(`✅ GPS time set from INTERNET:\nDate: ${result.date}\nTime: ${result.time}\nSource: ${result.source}\n\nPage will refresh.`);
+            location.reload();
+          } else {
+            alert('❌ Failed: ' + result.error);
+          }
+        } catch (error) {
+          alert('❌ Error: ' + error.message);
+        }
+      });
+    </script>
   </body>
 </html>

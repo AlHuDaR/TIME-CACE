@@ -1,0 +1,16 @@
+{
+  "name": "rafo-gps-time-display",
+  "version": "1.0.0",
+  "description": "RAFO Calibration Center GPS Time Display with 1510-602 Receiver Integration",
+  "main": "gps-proxy.js",
+  "scripts": {
+    "start": "node gps-proxy.js",
+    "dev": "nodemon gps-proxy.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0",
+    "telnet-client": "^2.0.8"
+  }
+}

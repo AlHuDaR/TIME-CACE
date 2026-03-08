@@ -1,3 +1,4 @@
+/* styles.css - Updated with GPS status indicators and animations */
 :root {
   --bg: #f2f7fb;
   --panel: #ffffff;
@@ -10,6 +11,8 @@
   --danger: #df2d2d;
   --warn: #c06c00;
   --ok: #127c38;
+  --gps-green: #00aa44;
+  --gps-pulse: rgba(0, 170, 68, 0.3);
 }
 
 body.dark-mode {
@@ -21,6 +24,8 @@ body.dark-mode {
   --text: #e0f0f5;
   --muted: #a8c5d3;
   --border: rgba(224, 240, 245, 0.16);
+  --gps-green: #00dd55;
+  --gps-pulse: rgba(0, 221, 85, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -39,7 +44,7 @@ body.dark-mode { background: radial-gradient(circle at 20% 20%, #102837, var(--b
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 0.5rem; box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07); }
 .header { 
   display: grid; 
-  grid-template-columns: auto auto 1fr auto auto;  /* Changed from: auto 1fr auto auto */
+  grid-template-columns: auto auto 1fr auto auto;
   align-items: center; 
   gap: 1rem; 
   text-align: center; 
@@ -51,7 +56,103 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 .subtitle { margin: 0.35rem 0 0; color: var(--muted); }
 .logo-image { max-width: 80px; max-height: 80px; object-fit: contain; }
 
-.mode-card { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+/* GPS Status Bar Styles */
+.gps-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.2rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gps-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lock-pulse {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--danger);
+  position: relative;
+  transition: background 0.3s ease;
+}
+
+.lock-pulse.locked {
+  background: var(--gps-green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--gps-pulse);
+  }
+  70% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.gps-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.source-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.3s ease;
+}
+
+.source-gps {
+  background: rgba(0, 170, 68, 0.15);
+  color: var(--gps-green);
+  border: 1px solid var(--gps-green);
+}
+
+.source-internet {
+  background: rgba(192, 108, 0, 0.15);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}
+
+.source-local {
+  background: rgba(223, 45, 45, 0.15);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.lock-text {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.gps-details {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.mode-card { 
+  display: flex; 
+  justify-content: center;
+  align-items: center; 
+  gap: 1rem; 
+  flex-wrap: wrap;
+  text-align: center;
+}
 .mode-toggle { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 .mode-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); padding: 0.45rem 0.9rem; font-weight: 600; cursor: pointer; }
 .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -88,6 +189,14 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 @media (max-width: 620px) {
   .precision-control { margin-left: 0; margin-top: 0.5rem; width: 100%; }
   .precision-control .mode-btn { width: 100%; }
+  .gps-status-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .gps-details {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 /* Hide center logo in digital view */
@@ -162,10 +271,7 @@ h2 { margin: 0; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0
 .status.warn { color: var(--warn); }
 a { color: var(--accent); }
 
-/* ============================================================
-   CODER CREDIT - AlHuDaR
-   ============================================================ */
-
+/* CODER CREDIT - AlHuDaR */
 .coder-credit {
   text-align: center;
   padding: 0.5rem;
@@ -203,10 +309,7 @@ body.dark-mode body.analog-only .coder-credit {
   background: rgba(0, 0, 0, 0.2);
 }
 
-/* ============================================================
-   ANALOG-ONLY (FULLSCREEN) MODE - BUTTONS AT CLOCK EDGES
-   ============================================================ */
-
+/* ANALOG-ONLY (FULLSCREEN) MODE - BUTTONS AT CLOCK EDGES */
 body.analog-only {
   overflow: hidden;
 }
@@ -214,7 +317,8 @@ body.analog-only {
 body.analog-only .header, 
 body.analog-only .mode-card, 
 body.analog-only .meta-grid, 
-body.analog-only #digitalClock { 
+body.analog-only #digitalClock,
+body.analog-only .gps-status-bar { 
   display: none !important; 
 }
 
@@ -322,10 +426,7 @@ body.old-style .analog-nav {
   gap: 0.75rem;
 }
 
-/* ============================================================
-   RESPONSIVE ADJUSTMENTS
-   ============================================================ */
-
+/* RESPONSIVE ADJUSTMENTS */
 @media (max-width: 900px) {
   .header { grid-template-columns: 1fr; }
   .clock-grid, .meta-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
@@ -362,6 +463,41 @@ body.old-style .analog-nav {
     font-size: 0.7rem;
     padding: 0.2rem 0.8rem;
   }
+}
+
+/* Centered Notification Styles */
+#notification-container {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 90% !important;
+  max-width: 250px !important;
+  z-index: 10000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 16px !important;
+  pointer-events: none !important;
+}
+
+#notification-container > div {
+  width: 100% !important;
+  text-align: center !important;
+  border-width: 2px !important;
+  padding: 24px 28px !important;
+  border-radius: 16px !important;
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.05) !important;
+  pointer-events: auto !important;
+}
+
+#notification-container .close-btn {
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 24px !important;
 }
 
 /* Landscape mode (wide but short screens) */
