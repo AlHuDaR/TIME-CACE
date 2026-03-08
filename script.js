@@ -191,14 +191,8 @@ class GPSTimeSync {
     this.dispatchUpdate(localResult);
     
     if (!this.hasShownInitialSync) {
-      this.notifications.show(
-        `Using local computer time<br>
-         <strong>Date:</strong> ${localResult.date}<br>
-         <strong>Time:</strong> ${localResult.time}<br>
-         <strong>Note:</strong> No GPS or Internet time available`,
-        'warning',
-        8000
-      );
+      // Keep local fallback silent to avoid disruptive startup warnings.
+      // Status is already visible in the sync bar and primary status card.
       this.hasShownInitialSync = true;
     }
     
