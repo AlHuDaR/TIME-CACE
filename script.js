@@ -621,6 +621,10 @@ class DisplayManager {
     this.elements.digitalModeBtn.setAttribute("aria-pressed", String(isDigital));
     this.elements.analogModeBtn.setAttribute("aria-pressed", String(!isDigital));
     this.elements.analogOnlyBtn.setAttribute("aria-pressed", "false");
+
+    if (typeof window.updateDigitalControls === "function") {
+      window.updateDigitalControls();
+    }
   }
 
   setAnalogOnlyMode() {
@@ -634,6 +638,10 @@ class DisplayManager {
     this.elements.analogModeBtn.classList.remove("active");
     this.elements.analogOnlyBtn.classList.add("active");
     this.setPrecisionVisibility(true);
+
+    if (typeof window.updateDigitalControls === "function") {
+      window.updateDigitalControls();
+    }
   }
 
   applyPrecisionMode(enabled) {

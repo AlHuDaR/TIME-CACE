@@ -346,7 +346,7 @@ body.analog-only .coder-credit {
   margin: 0;
 }
 
-body.dark-mode body.analog-only .coder-credit {
+body.dark-mode.analog-only .coder-credit {
   background: rgba(0, 0, 0, 0.2);
 }
 
@@ -429,7 +429,7 @@ body.analog-only .nav-pill {
 }
 
 /* Dark mode adjustment for buttons */
-body.dark-mode body.analog-only .nav-pill {
+body.dark-mode.analog-only .nav-pill {
   background: rgba(0, 0, 0, 0.2);
 }
 
@@ -453,7 +453,7 @@ body.old-style .meta-grid > .card:nth-child(2) {
 
 /* In old-style mode, keep buttons below clock (not inside) */
 body.old-style .analog-nav { 
-  display: none;
+  display: flex;
   position: static;
   transform: none;
   width: 100%;
