@@ -521,6 +521,7 @@ class GPSSystemStatusManager {
     this.pollMs = 5000;
     this.pollHandle = null;
     this.deviceIp = localStorage.getItem('gpsDeviceIp') || '';
+    this.proxyUrl = localStorage.getItem('gpsProxyUrl') || 'http://localhost:3000';
   }
 
   init() {
@@ -551,12 +552,7 @@ class GPSSystemStatusManager {
   }
 
   async fetchAndRenderStatus() {
-    if (!this.deviceIp) {
-      this.markDisconnected('GPS SYSTEM DISCONNECTED (SET DEVICE IP)');
-      return;
-    }
-
-    const endpoint = `http://${this.deviceIp}/status`;
+    const endpoint = `${this.proxyUrl}/api/gps/status${this.deviceIp ? `?ip=${encodeURIComponent(this.deviceIp)}` : ''}`;
     const started = performance.now();
 
     try {
@@ -572,6 +568,7 @@ class GPSSystemStatusManager {
       const payloadText = await response.text();
       const parsed = this.parsePayload(payloadText);
       const normalized = this.normalizeStatus(parsed, latencyMs);
+      normalized.ip = parsed.host || this.deviceIp || '--';
       this.renderStatus(normalized);
     } catch (error) {
       console.warn('GPS System Status fetch failed:', error.message);
