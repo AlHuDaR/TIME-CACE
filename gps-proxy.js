@@ -13,7 +13,7 @@ let lastConnectionAttempt = 0;
 const MIN_CONNECTION_INTERVAL = 5000;
 
 // GPS Configuration
-const GPS_HOST = '192.168.50.2';
+const GPS_DEFAULT_HOST = '192.168.50.2';
 const GPS_PORT = 23;
 const GPS_USERNAME = 'operator';
 const GPS_PASSWORD = 'janus';
@@ -97,7 +97,7 @@ async function getPreciseInternetTime() {
 }
 
 // Helper: Connect to GPS
-function connectToGPS(command, expectOk = false) {
+function connectToGPS(command, expectOk = false, host = GPS_DEFAULT_HOST) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let buffer = '';
@@ -108,7 +108,7 @@ function connectToGPS(command, expectOk = false) {
       reject(new Error('Connection timeout'));
     }, 15000);
     
-    socket.connect(GPS_PORT, GPS_HOST, () => {
+    socket.connect(GPS_PORT, host, () => {
       console.log('TCP socket connected');
     });
     
@@ -179,7 +179,7 @@ app.get('/api/time', async (req, res) => {
   lastConnectionAttempt = Date.now();
   
   try {
-    const response = await connectToGPS('F3\r\n');
+    const response = await connectToGPS('F3\r\n', false, GPS_DEFAULT_HOST);
     
     // Parse: "F3 UTC 03/08/2026 00:46:00" (already Oman time!)
     const match = response.match(/F3\s+\w+\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
@@ -253,7 +253,7 @@ app.post('/api/time/set', async (req, res) => {
     
     // Send Oman time directly (receiver handles it as local time)
     const command = `F3 UTC ${mm}/${dd}/${yyyy} ${hh}:${min}:${ss}\r\n`;
-    await connectToGPS(command, true);
+    await connectToGPS(command, true, GPS_DEFAULT_HOST);
     
     // FIXED: Return flat structure
     res.json({
@@ -304,12 +304,85 @@ app.get('/api/time/ntp', async (req, res) => {
   }
 });
 
+
+// GET /api/gps/status - Poll receiver status through backend proxy (avoids browser CORS/LAN restrictions)
+app.get('/api/gps/status', async (req, res) => {
+  const host = (req.query.ip || '').trim() || GPS_DEFAULT_HOST;
+
+  const safe = (value, fallback = '--') => {
+    if (value === undefined || value === null) return fallback;
+    const normalized = String(value).trim();
+    return normalized || fallback;
+  };
+
+  try {
+    // F3 is supported on XLi and returns date/time + lock context in many deployments.
+    const f3Raw = await connectToGPS('F3\r\n', false, host);
+    const f3DateTime = f3Raw.match(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
+    const gpsDate = f3DateTime ? f3DateTime[1] : '--';
+    const gpsTime = f3DateTime ? f3DateTime[2] : '--';
+
+    // Try extra telemetry command (if unsupported, continue with defaults).
+    let statusRaw = '';
+    try {
+      statusRaw = await connectToGPS('STAT?\r\n', false, host);
+    } catch (_) {
+      statusRaw = '';
+    }
+
+    const mergedRaw = `${f3Raw || ''}
+${statusRaw || ''}`;
+    const hasLock = /lock|tracking|track|sync/i.test(mergedRaw) && !/unlock|holdover/i.test(mergedRaw);
+    const inHoldover = /holdover/i.test(mergedRaw);
+
+    res.json({
+      success: true,
+      host,
+      fetchedAt: Date.now(),
+      gps_lock_status: hasLock ? 'LOCKED' : inHoldover ? 'HOLDOVER' : 'UNLOCKED',
+      satellites_in_view: safe((mergedRaw.match(/sat(?:ellites)?\s*(?:in\s*view)?\s*[:=]\s*(\d{1,2})/i) || [])[1]),
+      satellites_used: safe((mergedRaw.match(/sat(?:ellites)?\s*(?:used|tracked)\s*[:=]\s*(\d{1,2})/i) || [])[1]),
+      signal_strength: safe((mergedRaw.match(/(?:snr|signal(?:\s*strength)?)\s*[:=]\s*([\d.]+\s*(?:dB|dBm)?)/i) || [])[1]),
+      gps_time: gpsTime !== '--' ? `${gpsDate} ${gpsTime}` : '--',
+      utc_time: gpsTime,
+      system_time_offset: safe((mergedRaw.match(/offset\s*[:=]\s*([+-]?[\d.]+\s*(?:ns|us|ms|s))/i) || [])[1]),
+      leap_second_status: safe((mergedRaw.match(/leap\s*seconds?\s*[:=]\s*([+\-]?\d+)/i) || [])[1]),
+      latitude: safe((mergedRaw.match(/lat(?:itude)?\s*[:=]\s*([+\-]?\d+(?:\.\d+)?)/i) || [])[1]),
+      longitude: safe((mergedRaw.match(/lon(?:gitude)?\s*[:=]\s*([+\-]?\d+(?:\.\d+)?)/i) || [])[1]),
+      altitude: safe((mergedRaw.match(/alt(?:itude)?\s*[:=]\s*([+\-]?\d+(?:\.\d+)?\s*(?:m|ft)?)/i) || [])[1]),
+      oscillator_type: /rubidium|rb/i.test(mergedRaw) ? 'Rubidium' : /ocxo/i.test(mergedRaw) ? 'OCXO' : '--',
+      oscillator_lock_status: hasLock ? 'LOCKED' : inHoldover ? 'HOLDOVER' : 'UNLOCKED',
+      holdover_mode: inHoldover ? 'ACTIVE' : 'INACTIVE',
+      frequency_offset: safe((mergedRaw.match(/freq(?:uency)?\s*offset\s*[:=]\s*([+-]?[\d.eE-]+\s*(?:Hz|ppb|ppm)?)/i) || [])[1]),
+      one_pps_status: /1pps\s*[:=]?\s*(on|ok|enabled|active)/i.test(mergedRaw) ? 'ON' : '--',
+      irig_b_status: /irig[- ]?b\s*[:=]?\s*(on|ok|enabled|active)/i.test(mergedRaw) ? 'ON' : '--',
+      output_10mhz_status: /10\s*mhz\s*[:=]?\s*(on|ok|enabled|active)/i.test(mergedRaw) ? 'ON' : '--',
+      ntp_enabled: /ntp\s*[:=]?\s*(on|enabled|yes)/i.test(mergedRaw) ? 'YES' : '--',
+      stratum_level: safe((mergedRaw.match(/stratum\s*[:=]\s*(\d{1,2})/i) || [])[1]),
+      ntp_clients_connected: safe((mergedRaw.match(/ntp\s*clients?\s*[:=]\s*(\d+)/i) || [])[1]),
+      synchronization_status: hasLock ? 'SYNCHRONIZED' : inHoldover ? 'HOLDOVER' : 'UNLOCKED',
+      firmware_version: safe((mergedRaw.match(/(?:firmware|fw)\s*(?:version)?\s*[:=]\s*([\w.\-]+)/i) || [])[1]),
+      system_uptime: safe((mergedRaw.match(/uptime\s*[:=]\s*([^\r\n]+)/i) || [])[1]),
+      temperature: safe((mergedRaw.match(/temp(?:erature)?\s*[:=]\s*([+-]?[\d.]+\s*(?:C|°C|F|°F)?)/i) || [])[1]),
+      alarm_status: /alarm\s*[:=]?\s*(none|ok|clear)/i.test(mergedRaw) ? 'CLEAR' : /alarm/i.test(mergedRaw) ? 'ACTIVE' : '--',
+      raw: mergedRaw.trim()
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      host,
+      error: error.message,
+      fetchedAt: Date.now()
+    });
+  }
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
   console.log(`GPS Server running on port ${PORT}`);
-  console.log(`GPS Receiver: ${GPS_HOST}:${GPS_PORT}`);
+  console.log(`GPS Receiver: ${GPS_DEFAULT_HOST}:${GPS_PORT}`);
   console.log(`Mode: F69 UTC (receiver shows Oman time)`);
 });
