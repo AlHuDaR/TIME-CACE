@@ -40,21 +40,34 @@ body {
 
 body.dark-mode { background: radial-gradient(circle at 20% 20%, #102837, var(--bg)); }
 
-.layout { width: min(1100px, 95vw); margin: 0 auto; padding: 0.5rem 0; display: grid; gap: 1.25rem; }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 0.5rem; box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07); }
+/* === Main page container ===
+   Increase/decrease max width for large displays by changing 1180px. */
+.layout { width: min(1180px, 96vw); margin: 0 auto; padding: clamp(0.4rem, 1vw, 0.8rem) 0; display: grid; gap: clamp(0.9rem, 1.6vw, 1.25rem); }
+
+/* Reusable card surface */
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: clamp(0.5rem, 1.3vw, 0.85rem); box-shadow: 0 8px 18px rgba(15, 45, 64, 0.07); }
+
+/* === Header row ===
+   Change logo size from .logo-image width below.
+   Change text size from h1/.subtitle rules below. */
 .header { 
   display: grid; 
-  grid-template-columns: auto auto 1fr auto auto;
+  grid-template-columns: auto auto minmax(220px, 1fr) auto auto;
   align-items: center; 
-  gap: 1rem; 
+  gap: clamp(0.5rem, 1.3vw, 1rem); 
   text-align: center; 
-  padding: 1rem 1.2rem; 
+  padding: clamp(0.7rem, 1.8vw, 1rem) clamp(0.8rem, 2.2vw, 1.2rem); 
 }
-.header-text { min-width: 220px; }
+.header-text { min-width: min(55vw, 220px); }
 .header-actions { display: flex; gap: 0.5rem; justify-content: center; }
-h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
-.subtitle { margin: 0.35rem 0 0; color: var(--muted); }
-.logo-image { max-width: 80px; max-height: 80px; object-fit: contain; }
+/* Main title size (increase upper value 2.2rem for bigger desktop heading) */
+h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 2.2rem); line-height: 1.2; }
+
+/* Subtitle text size */
+.subtitle { margin: 0.35rem 0 0; color: var(--muted); font-size: clamp(0.8rem, 1.8vw, 1rem); }
+
+/* Header logos (edit max-width/max-height to grow or shrink logos globally) */
+.logo-image { width: clamp(44px, 8vw, 80px); max-width: 100%; max-height: clamp(44px, 8vw, 80px); object-fit: contain; }
 
 /* GPS Status Bar Styles */
 .gps-status-bar {
@@ -141,8 +154,23 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 .gps-details {
   display: flex;
   gap: 1rem;
-  font-size: 0.8rem;
+  font-size: clamp(0.75rem, 1.7vw, 0.85rem);
   color: var(--muted);
+  flex-wrap: wrap;
+}
+
+/* Digital-only quick controls near GPS status */
+.digital-controls {
+  margin-left: 0.75rem;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* Change font-size/padding here if Set GPS buttons look too small or too big */
+.digital-controls-btn {
+  font-size: clamp(0.7rem, 1.8vw, 0.78rem);
+  padding: 0.3rem 0.6rem;
 }
 
 .mode-card { 
@@ -157,8 +185,10 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
 .mode-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); padding: 0.45rem 0.9rem; font-weight: 600; cursor: pointer; }
 .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-.clock-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 1rem; transition: opacity 260ms ease, transform 260ms ease; position: relative; }
-.tile { background: var(--tile); border: 1px solid var(--border); border-radius: 16px; padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 160px; }
+.clock-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: clamp(0.65rem, 1.6vw, 1rem); transition: opacity 260ms ease, transform 260ms ease; position: relative; }
+
+/* Time tiles: min-height controls vertical size consistency across devices */
+.tile { background: var(--tile); border: 1px solid var(--border); border-radius: 16px; padding: clamp(0.75rem, 2vw, 1rem); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: clamp(120px, 21vw, 160px); }
 .tile.highlight { border-color: rgba(31, 126, 161, 0.65); box-shadow: 0 0 0 3px var(--accent-soft); }
 .clock-grid .tile { position: relative; z-index: 1; }
 .clock-center-logo {
@@ -172,7 +202,7 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
   z-index: 0;
 }
 .label { margin: 0; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; }
-.value { margin: 0.4rem 0 0; font-size: clamp(2rem, 5.5vw, 4rem); line-height: 1; font-variant-numeric: tabular-nums; font-weight: 600; }
+.value { margin: 0.4rem 0 0; font-size: clamp(1.8rem, 5.5vw, 4rem); line-height: 1; font-variant-numeric: tabular-nums; font-weight: 600; }
 
 .analog-wrap {
   display: grid;
@@ -196,6 +226,17 @@ h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); }
   .gps-details {
     width: 100%;
     justify-content: space-between;
+    gap: 0.45rem;
+  }
+
+  .digital-controls {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .digital-controls-btn {
+    flex: 1 1 48%;
+    min-width: 120px;
   }
 }
 
@@ -427,12 +468,40 @@ body.old-style .analog-nav {
 }
 
 /* RESPONSIVE ADJUSTMENTS */
-@media (max-width: 900px) {
-  .header { grid-template-columns: 1fr; }
-  .clock-grid, .meta-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+/* Tablet layout (iPad portrait + small laptops) */
+@media (max-width: 1024px) {
+  .header {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "left-logo header-text right-logo"
+      "left-btn header-text right-btn";
+    justify-items: center;
+  }
+
+  .header .logo-image:first-of-type { grid-area: left-logo; }
+  .header .logo-image:last-of-type { grid-area: right-logo; }
+  .header-text { grid-area: header-text; }
+  #darkModeBtn { grid-area: left-btn; }
+  #precisionToggleBtn { grid-area: right-btn; }
+
+  .clock-grid, .meta-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
 }
 
+/* Phones */
 @media (max-width: 620px) {
+  .header {
+    grid-template-columns: 1fr;
+    grid-template-areas: none;
+    gap: 0.6rem;
+  }
+
+  .header .logo-image,
+  .header-text,
+  #darkModeBtn,
+  #precisionToggleBtn {
+    grid-area: auto;
+  }
+
   .mode-card { flex-direction: column; align-items: stretch; }
   .mode-toggle, .header-actions { width: 100%; }
   .clock-grid, .meta-grid { grid-template-columns: 1fr; }
