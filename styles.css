@@ -267,6 +267,11 @@ body.old-style .analog-clock .clock-center-logo {
   opacity: 0.5;
 }
 
+/* In old-style mode, keep the dial clean (no overlay logo image). */
+body.old-style .analog-clock .clock-center-logo {
+  display: none;
+}
+
 .ptb-clock-svg {
   width: 100%;
   height: 100%;
@@ -396,12 +401,11 @@ body.analog-only .analog-clock {
 
 /* Position buttons at left and right edges OF THE CLOCK (not screen) */
 body.analog-only .analog-nav { 
-  position: absolute;
-  bottom: 8%;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
+  transform: none;
   width: min(88vh, 88vw);
   max-width: 88vw;
+  margin-top: 0.85rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
