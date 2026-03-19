@@ -1,31 +1,6 @@
-const fs = require("fs");
+require("dotenv").config();
+
 const path = require("path");
-
-function loadDotEnv(filePath = path.join(__dirname, ".env")) {
-  if (!fs.existsSync(filePath)) {
-    return;
-  }
-
-  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
-      continue;
-    }
-
-    const separatorIndex = trimmed.indexOf("=");
-    const key = trimmed.slice(0, separatorIndex).trim();
-    const rawValue = trimmed.slice(separatorIndex + 1).trim();
-    const value = rawValue.replace(/^(["'])(.*)\1$/, "$2");
-
-    if (key && process.env[key] === undefined) {
-      process.env[key] = value;
-    }
-  }
-}
-
-loadDotEnv();
-
 const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch");
@@ -39,13 +14,34 @@ const CONFIG = Object.freeze({
   gpsPort: Number(process.env.GPS_PORT || 23),
   gpsUsername: process.env.GPS_USERNAME || "",
   gpsPassword: process.env.GPS_PASSWORD || "",
-  allowedOrigin: process.env.ALLOWED_ORIGIN || "",
+  allowedOrigins: Object.freeze(
+    (process.env.ALLOWED_ORIGIN || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ),
+  serveStatic: process.env.SERVE_STATIC
+    ? process.env.SERVE_STATIC === "true"
+    : process.env.NODE_ENV !== "production",
+  nodeEnv: process.env.NODE_ENV || "development",
   omanOffsetMs: 4 * 60 * 60 * 1000,
   minConnectionIntervalMs: 5000,
   requestTimeoutMs: 15000,
 });
 
 const publicPath = path.resolve(__dirname);
+const isProduction = CONFIG.nodeEnv === "production";
+const devOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5500",
+  "http://127.0.0.1:5500",
+];
+const allowedOrigins = new Set([
+  ...CONFIG.allowedOrigins,
+  ...(!isProduction ? devOrigins : []),
+]);
+
 let lastConnectionAttempt = 0;
 let lastReceiverSnapshot = {
   backendOnline: true,
@@ -58,23 +54,33 @@ let lastReceiverSnapshot = {
   checkedAt: null,
 };
 
+function isOriginAllowed(origin) {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowedOrigins.size > 0) {
+    return allowedOrigins.has(origin);
+  }
+
+  return !isProduction;
+}
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
       return;
     }
 
-    if (!CONFIG.allowedOrigin) {
-      callback(null, true);
-      return;
-    }
-
-    callback(origin === CONFIG.allowedOrigin ? null : new Error("Origin not allowed by CORS"), origin === CONFIG.allowedOrigin);
+    callback(new Error("Origin not allowed by CORS"));
   },
 }));
 app.use(express.json());
-app.use(express.static(publicPath));
+
+if (CONFIG.serveStatic) {
+  app.use(express.static(publicPath));
+}
 
 function createOmanDateFormatter(options = {}) {
   return new Intl.DateTimeFormat("en-US", {
@@ -346,6 +352,7 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     backendOnline: true,
+    serveStatic: CONFIG.serveStatic,
   });
 });
 
@@ -466,14 +473,14 @@ app.post("/api/time/set", async (req, res) => {
   }
 });
 
-app.get("/api/time/ntp", async (req, res) => {
+app.get("/api/time/internet", async (req, res) => {
   try {
     const internetTime = await getPreciseInternetTime();
     const omanDisplayTime = new Date(internetTime.timestamp + CONFIG.omanOffsetMs);
 
     res.json({
       success: true,
-      source: "internet-ntp",
+      source: "internet-http-date",
       currentSource: "internet-fallback",
       currentSourceLabel: "Internet fallback",
       date: formatOmanDate(omanDisplayTime),
@@ -500,12 +507,17 @@ app.get("/api/time/ntp", async (req, res) => {
   }
 });
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
+if (CONFIG.serveStatic) {
+  app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+  });
+}
 
 app.listen(CONFIG.port, () => {
   console.log(`GPS backend listening on http://localhost:${CONFIG.port}`);
   console.log(`Receiver target: ${CONFIG.gpsHost}:${CONFIG.gpsPort}`);
-  console.log(`CORS origin: ${CONFIG.allowedOrigin || "* (unset)"}`);
+  console.log(`Static frontend serving: ${CONFIG.serveStatic ? "enabled" : "disabled"}`);
+  console.log(
+    `CORS policy: ${allowedOrigins.size > 0 ? Array.from(allowedOrigins).join(", ") : isProduction ? "same-origin / non-browser only until ALLOWED_ORIGIN is set" : "development-open"}`,
+  );
 });
