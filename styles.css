@@ -603,11 +603,13 @@ body.old-style .analog-nav {
 
 #notification-container {
   position: fixed;
-  top: 1rem;
-  right: 1rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 10000;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.75rem;
   width: min(90vw, 420px);
   pointer-events: none;
@@ -825,13 +827,6 @@ body.old-style .analog-nav {
     padding: 0.2rem 0.8rem;
   }
 
-  #notification-container {
-    top: auto;
-    right: 0.5rem;
-    left: 0.5rem;
-    width: auto;
-    bottom: 0.75rem;
-  }
 }
 
 @media (max-width: 420px) {
