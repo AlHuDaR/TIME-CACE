@@ -7,6 +7,7 @@ const fetch = require("node-fetch");
 const net = require("net");
 
 const app = express();
+app.set("trust proxy", 1);
 
 const CONFIG = Object.freeze({
   port: Number(process.env.PORT || 3000),
@@ -25,8 +26,16 @@ const CONFIG = Object.freeze({
     : process.env.NODE_ENV !== "production",
   nodeEnv: process.env.NODE_ENV || "development",
   omanOffsetMs: 4 * 60 * 60 * 1000,
-  minConnectionIntervalMs: 5000,
-  requestTimeoutMs: 15000,
+  minConnectionIntervalMs: Number(process.env.MIN_CONNECTION_INTERVAL_MS || 5000),
+  requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 15000),
+  receiverStatusCacheMs: Number(process.env.RECEIVER_STATUS_CACHE_MS || 4000),
+  authEnabled: process.env.API_AUTH_ENABLED === "true",
+  authToken: process.env.API_AUTH_TOKEN || "",
+  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
+  rateLimitTimeMax: Number(process.env.RATE_LIMIT_TIME_MAX || 90),
+  rateLimitStatusMax: Number(process.env.RATE_LIMIT_STATUS_MAX || 30),
+  rateLimitInternetMax: Number(process.env.RATE_LIMIT_INTERNET_MAX || 60),
+  rateLimitSetMax: Number(process.env.RATE_LIMIT_SET_MAX || 8),
 });
 
 const publicPath = path.resolve(__dirname);
@@ -53,6 +62,13 @@ let lastReceiverSnapshot = {
   lastError: null,
   checkedAt: null,
 };
+let receiverStatusCache = {
+  expiresAt: 0,
+  promise: null,
+  data: null,
+};
+
+const rateLimitStore = new Map();
 
 function isOriginAllowed(origin) {
   if (!origin) {
@@ -112,6 +128,88 @@ function formatOmanTime(date) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseBoolean(value) {
+  return value === true || value === "true" || value === "1";
+}
+
+function getAuthTokenFromRequest(req) {
+  const authorization = req.get("authorization") || "";
+  if (/^Bearer\s+/i.test(authorization)) {
+    return authorization.replace(/^Bearer\s+/i, "").trim();
+  }
+
+  const apiKey = req.get("x-api-key");
+  if (typeof apiKey === "string" && apiKey.trim()) {
+    return apiKey.trim();
+  }
+
+  return "";
+}
+
+function jsonError(res, statusCode, error, extras = {}) {
+  res.status(statusCode).json({
+    success: false,
+    error,
+    backendOnline: true,
+    ...extras,
+  });
+}
+
+function requireApiAuth(req, res, next) {
+  if (!CONFIG.authEnabled) {
+    next();
+    return;
+  }
+
+  if (!CONFIG.authToken) {
+    jsonError(res, 500, "API auth is enabled but API_AUTH_TOKEN is not configured");
+    return;
+  }
+
+  const providedToken = getAuthTokenFromRequest(req);
+  if (providedToken && providedToken === CONFIG.authToken) {
+    next();
+    return;
+  }
+
+  res.set("WWW-Authenticate", 'Bearer realm="RAFO Calibration Center API"');
+  jsonError(res, 401, "Authentication required");
+}
+
+function getClientIdentifier(req) {
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
+function createRateLimiter({ key, windowMs, maxRequests }) {
+  return (req, res, next) => {
+    const now = Date.now();
+    const clientKey = `${key}:${getClientIdentifier(req)}`;
+    const entry = rateLimitStore.get(clientKey);
+
+    if (!entry || entry.resetAt <= now) {
+      rateLimitStore.set(clientKey, {
+        count: 1,
+        resetAt: now + windowMs,
+      });
+      next();
+      return;
+    }
+
+    entry.count += 1;
+    if (entry.count <= maxRequests) {
+      next();
+      return;
+    }
+
+    const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+    res.set("Retry-After", String(retryAfterSeconds));
+    jsonError(res, 429, "Rate limit exceeded", {
+      route: key,
+      retryAfterSeconds,
+    });
+  };
 }
 
 async function throttleReceiverAccess() {
@@ -313,6 +411,19 @@ function updateReceiverSnapshot(snapshot) {
   return lastReceiverSnapshot;
 }
 
+function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot) {
+  return {
+    backendOnline: true,
+    receiverReachable: Boolean(snapshot.receiverReachable),
+    loginOk: Boolean(snapshot.loginOk),
+    isLocked: Boolean(snapshot.isLocked),
+    statusText: snapshot.statusText || "Receiver status unavailable",
+    currentSource: snapshot.currentSource || "local",
+    lastError: snapshot.lastError || null,
+    checkedAt: snapshot.checkedAt || null,
+  };
+}
+
 async function readReceiverTime() {
   await throttleReceiverAccess();
 
@@ -347,28 +458,82 @@ async function readReceiverTime() {
   };
 }
 
+async function readReceiverStatusCached({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && receiverStatusCache.data && receiverStatusCache.expiresAt > now) {
+    return receiverStatusCache.data;
+  }
+
+  if (!force && receiverStatusCache.promise) {
+    return receiverStatusCache.promise;
+  }
+
+  receiverStatusCache.promise = readReceiverTime()
+    .then((receiverTime) => {
+      const status = sanitizeReceiverStatus({
+        ...lastReceiverSnapshot,
+        receiverReachable: receiverTime.receiverReachable,
+        loginOk: receiverTime.loginOk,
+        isLocked: receiverTime.isLocked,
+        statusText: receiverTime.statusText,
+        currentSource: receiverTime.currentSource,
+        lastError: null,
+      });
+      receiverStatusCache = {
+        promise: null,
+        data: status,
+        expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+      };
+      return status;
+    })
+    .catch((error) => {
+      receiverStatusCache = {
+        promise: null,
+        data: null,
+        expiresAt: 0,
+      };
+      throw error;
+    });
+
+  return receiverStatusCache.promise;
+}
+
+const timeRateLimiter = createRateLimiter({
+  key: "api-time",
+  windowMs: CONFIG.rateLimitWindowMs,
+  maxRequests: CONFIG.rateLimitTimeMax,
+});
+const statusRateLimiter = createRateLimiter({
+  key: "api-status",
+  windowMs: CONFIG.rateLimitWindowMs,
+  maxRequests: CONFIG.rateLimitStatusMax,
+});
+const internetRateLimiter = createRateLimiter({
+  key: "api-time-internet",
+  windowMs: CONFIG.rateLimitWindowMs,
+  maxRequests: CONFIG.rateLimitInternetMax,
+});
+const setTimeRateLimiter = createRateLimiter({
+  key: "api-time-set",
+  windowMs: CONFIG.rateLimitWindowMs,
+  maxRequests: CONFIG.rateLimitSetMax,
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
     backendOnline: true,
     serveStatic: CONFIG.serveStatic,
+    authEnabled: CONFIG.authEnabled,
   });
 });
 
-app.get("/api/status", async (req, res) => {
+app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
   try {
-    const receiverTime = await readReceiverTime();
-    res.json({
-      backendOnline: true,
-      receiverReachable: receiverTime.receiverReachable,
-      loginOk: receiverTime.loginOk,
-      isLocked: receiverTime.isLocked,
-      statusText: receiverTime.statusText,
-      currentSource: receiverTime.currentSource,
-      lastError: null,
-      checkedAt: lastReceiverSnapshot.checkedAt,
-    });
+    const forceRefresh = parseBoolean(req.query.refresh);
+    const status = await readReceiverStatusCached({ force: forceRefresh });
+    res.json(status);
   } catch (error) {
     const snapshot = updateReceiverSnapshot({
       receiverReachable: false,
@@ -379,16 +544,18 @@ app.get("/api/status", async (req, res) => {
       lastError: error.message,
     });
 
-    res.status(503).json({
-      ...snapshot,
-      backendOnline: true,
-    });
+    res.status(503).json(sanitizeReceiverStatus(snapshot));
   }
 });
 
-app.get("/api/time", async (req, res) => {
+app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
   try {
     const receiverTime = await readReceiverTime();
+    receiverStatusCache = {
+      promise: null,
+      data: sanitizeReceiverStatus(lastReceiverSnapshot),
+      expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+    };
     res.json(receiverTime);
   } catch (error) {
     const fallback = createLocalFallback({
@@ -406,11 +573,17 @@ app.get("/api/time", async (req, res) => {
       lastError: error.message,
     });
 
+    receiverStatusCache = {
+      promise: null,
+      data: sanitizeReceiverStatus(lastReceiverSnapshot),
+      expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+    };
+
     res.status(503).json(fallback);
   }
 });
 
-app.post("/api/time/set", async (req, res) => {
+app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) => {
   try {
     const useInternet = Boolean(req.body?.useInternet);
     let omanTimestamp;
@@ -446,6 +619,12 @@ app.post("/api/time/set", async (req, res) => {
       lastError: null,
     });
 
+    receiverStatusCache = {
+      promise: null,
+      data: sanitizeReceiverStatus(lastReceiverSnapshot),
+      expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+    };
+
     res.json({
       success: true,
       message: "GPS time set successfully",
@@ -465,6 +644,12 @@ app.post("/api/time/set", async (req, res) => {
       lastError: error.message,
     });
 
+    receiverStatusCache = {
+      promise: null,
+      data: sanitizeReceiverStatus(lastReceiverSnapshot),
+      expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+    };
+
     res.status(500).json({
       success: false,
       error: error.message,
@@ -473,7 +658,7 @@ app.post("/api/time/set", async (req, res) => {
   }
 });
 
-app.get("/api/time/internet", async (req, res) => {
+app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, res) => {
   try {
     const internetTime = await getPreciseInternetTime();
     const omanDisplayTime = new Date(internetTime.timestamp + CONFIG.omanOffsetMs);
@@ -517,6 +702,7 @@ app.listen(CONFIG.port, () => {
   console.log(`GPS backend listening on http://localhost:${CONFIG.port}`);
   console.log(`Receiver target: ${CONFIG.gpsHost}:${CONFIG.gpsPort}`);
   console.log(`Static frontend serving: ${CONFIG.serveStatic ? "enabled" : "disabled"}`);
+  console.log(`API auth: ${CONFIG.authEnabled ? "enabled" : "disabled"}`);
   console.log(
     `CORS policy: ${allowedOrigins.size > 0 ? Array.from(allowedOrigins).join(", ") : isProduction ? "same-origin / non-browser only until ALLOWED_ORIGIN is set" : "development-open"}`,
   );

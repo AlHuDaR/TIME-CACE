@@ -3,9 +3,17 @@ const APP_CONFIG = Object.freeze({
   timezoneLabel: "Gulf Standard Time (GST, UTC+04:00)",
   modeTransitionMs: 260,
   syncIntervalMs: 30000,
+  statusPollingEnabled: window.APP_CONFIG?.STATUS_POLLING_ENABLED !== false,
+  statusPollingIntervalMs: Number(window.APP_CONFIG?.STATUS_POLLING_INTERVAL_MS) > 0
+    ? Number(window.APP_CONFIG.STATUS_POLLING_INTERVAL_MS)
+    : 15000,
+  statusFreshnessWindowMs: 45000,
   localApiPort: 3000,
   localDevPorts: Object.freeze([3000]),
   localhostNames: Object.freeze(["localhost", "127.0.0.1"]),
+  apiAuthToken: typeof window.APP_CONFIG?.API_AUTH_TOKEN === "string"
+    ? window.APP_CONFIG.API_AUTH_TOKEN.trim()
+    : "",
   statusLabels: Object.freeze({
     success: "Success",
     error: "Error",
@@ -175,11 +183,29 @@ class GPSTimeSync {
     this.eventTarget = new EventTarget();
     this.syncInterval = null;
     this.syncInFlight = null;
+    this.statusPollInterval = null;
+    this.statusPollInFlight = null;
     this.hasShownInitialSync = false;
     this.timeOffset = 0;
     this.lastSyncTime = null;
     this.lastSyncTimestamp = null;
+    this.receiverStatus = this.createReceiverStatus();
     this.currentState = this.createState({ currentSource: "local" });
+  }
+
+  createReceiverStatus(overrides = {}) {
+    return {
+      backendOnline: false,
+      receiverReachable: false,
+      loginOk: false,
+      isLocked: false,
+      statusText: "System status not checked yet",
+      currentSource: "local",
+      lastError: null,
+      checkedAt: null,
+      stale: true,
+      ...overrides,
+    };
   }
 
   createState(overrides = {}) {
@@ -202,8 +228,26 @@ class GPSTimeSync {
 
   async init() {
     await this.syncTime();
+    if (APP_CONFIG.statusPollingEnabled) {
+      await this.pollStatus();
+      this.startStatusPolling();
+    }
     this.startAutoSync();
     return this;
+  }
+
+  getRequestHeaders(extraHeaders = {}) {
+    const headers = {
+      Accept: "application/json",
+      ...extraHeaders,
+    };
+
+    if (APP_CONFIG.apiAuthToken) {
+      headers.Authorization = `Bearer ${APP_CONFIG.apiAuthToken}`;
+      headers["X-API-Key"] = APP_CONFIG.apiAuthToken;
+    }
+
+    return headers;
   }
 
   async syncTime() {
@@ -293,14 +337,60 @@ class GPSTimeSync {
     }
 
     this.applyState(nextState);
+    this.mergeReceiverStatus(nextState, { checkedAt: new Date().toISOString(), stale: false });
     this.dispatchUpdate();
     this.maybeShowInitialNotification();
     return this.currentState;
   }
 
-  async fetchJson(path) {
+  async pollStatus() {
+    if (!APP_CONFIG.statusPollingEnabled) {
+      return this.receiverStatus;
+    }
+
+    if (this.statusPollInFlight) {
+      return this.statusPollInFlight;
+    }
+
+    this.statusPollInFlight = this.performStatusPoll().finally(() => {
+      this.statusPollInFlight = null;
+    });
+
+    return this.statusPollInFlight;
+  }
+
+  async performStatusPoll() {
+    try {
+      const statusResult = await this.fetchJson("/status");
+      this.mergeReceiverStatus(statusResult, { stale: false });
+    } catch (error) {
+      this.mergeReceiverStatus({
+        backendOnline: false,
+        receiverReachable: false,
+        loginOk: false,
+        isLocked: false,
+        statusText: `Status polling unavailable: ${error.message}`,
+        currentSource: "local",
+        lastError: error.message,
+      }, { stale: true });
+    }
+
+    this.dispatchUpdate();
+    return this.receiverStatus;
+  }
+
+  mergeReceiverStatus(statusUpdate, overrides = {}) {
+    this.receiverStatus = this.createReceiverStatus({
+      ...this.receiverStatus,
+      ...statusUpdate,
+      ...overrides,
+    });
+  }
+
+  async fetchJson(path, options = {}) {
     const response = await fetch(`${this.apiBaseUrl}${path}`, {
-      headers: { Accept: "application/json" },
+      ...options,
+      headers: this.getRequestHeaders(options.headers || {}),
     });
 
     let payload = null;
@@ -370,6 +460,7 @@ class GPSTimeSync {
   dispatchUpdate() {
     const detail = {
       ...this.currentState,
+      receiverStatus: this.getReceiverStatus(),
       offset: this.timeOffset,
       lastSyncTimestamp: this.lastSyncTimestamp,
     };
@@ -388,12 +479,31 @@ class GPSTimeSync {
     }[source] || source.toUpperCase();
   }
 
+  getReceiverSourceDisplayName(source = this.receiverStatus.currentSource) {
+    return {
+      "gps-locked": "GPS receiver locked",
+      "gps-unlocked": "GPS receiver unlocked",
+      "internet-fallback": "Internet fallback",
+      local: this.receiverStatus.backendOnline ? "Local fallback" : "Backend offline",
+    }[source] || source.replace(/-/g, " ");
+  }
+
   getNow() {
     return new Date(Date.now() + this.timeOffset);
   }
 
   getCurrentState() {
     return this.currentState;
+  }
+
+  getReceiverStatus() {
+    const status = this.receiverStatus;
+    const checkedAtMs = status.checkedAt ? new Date(status.checkedAt).getTime() : 0;
+    const isFresh = checkedAtMs > 0 && (Date.now() - checkedAtMs) <= APP_CONFIG.statusFreshnessWindowMs;
+    return {
+      ...status,
+      stale: status.stale || !isFresh,
+    };
   }
 
   getCurrentSource() {
@@ -414,10 +524,27 @@ class GPSTimeSync {
     }, APP_CONFIG.syncIntervalMs);
   }
 
+  startStatusPolling() {
+    if (this.statusPollInterval || !APP_CONFIG.statusPollingEnabled) {
+      return;
+    }
+
+    this.statusPollInterval = window.setInterval(() => {
+      this.pollStatus();
+    }, APP_CONFIG.statusPollingIntervalMs);
+  }
+
   stopAutoSync() {
     if (this.syncInterval) {
       window.clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+  }
+
+  stopStatusPolling() {
+    if (this.statusPollInterval) {
+      window.clearInterval(this.statusPollInterval);
+      this.statusPollInterval = null;
     }
   }
 
@@ -480,6 +607,7 @@ class GPSDisplayManager {
       "internet-fallback": "source-internet",
       local: "source-local",
     };
+    this.lastSystemStatusSignature = "";
   }
 
   init() {
@@ -489,6 +617,7 @@ class GPSDisplayManager {
 
     this.updateDisplay({
       ...this.gpsTimeSync.getCurrentState(),
+      receiverStatus: this.gpsTimeSync.getReceiverStatus(),
       offset: this.gpsTimeSync.timeOffset,
       lastSyncTimestamp: this.gpsTimeSync.lastSyncTimestamp,
     });
@@ -501,30 +630,82 @@ class GPSDisplayManager {
 
     const lockText = this.getLockText(data);
     this.elements.lockStatus.textContent = lockText;
-    this.elements.lockPulse.classList.toggle("locked", data.currentSource === "gps-locked");
-    this.elements.lockPulse.classList.toggle("warning", data.currentSource === "gps-unlocked");
+
+    const receiverStatus = data.receiverStatus || this.gpsTimeSync.getReceiverStatus();
+    this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.isLocked);
+    this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && !receiverStatus.isLocked && receiverStatus.receiverReachable);
 
     if (data.lastSyncTimestamp) {
       this.elements.lastSyncTime.textContent = `Last sync: ${new Date(data.lastSyncTimestamp).toLocaleTimeString()}`;
     }
 
     this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
+    this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
 
-    const sourceDescription = this.getPrimarySourceDescription(data);
-    const sourceNote = this.getPrimarySourceNote(data);
+    const sourceDescription = this.getPrimarySourceDescription(data, receiverStatus);
+    const sourceNote = this.getPrimarySourceNote(data, receiverStatus);
     this.elements.primarySourceDescription.textContent = sourceDescription;
     this.elements.primarySourceNote.textContent = sourceNote;
     this.elements.syncStatus.textContent = this.syncManager.formatStatus();
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
+
+    this.updateSystemStatus(receiverStatus);
   }
 
   refreshLiveStatus() {
     const data = this.gpsTimeSync.getCurrentState();
+    const receiverStatus = this.gpsTimeSync.getReceiverStatus();
     this.elements.syncStatus.textContent = this.syncManager.formatStatus();
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
+    this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
+    this.updateSystemStatus(receiverStatus);
+  }
+
+  updateSystemStatus(receiverStatus) {
+    const next = {
+      backend: receiverStatus.backendOnline ? "Online" : "Offline",
+      receiver: receiverStatus.receiverReachable ? "Reachable" : "Unreachable",
+      login: receiverStatus.loginOk ? "OK" : receiverStatus.receiverReachable ? "Failed" : "Unavailable",
+      lock: receiverStatus.isLocked ? "Locked" : receiverStatus.receiverReachable ? "Unlocked" : "Unavailable",
+      source: this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus.currentSource),
+      error: receiverStatus.lastError || "None",
+    };
+
+    const signature = JSON.stringify(next);
+    if (signature === this.lastSystemStatusSignature) {
+      return;
+    }
+
+    this.lastSystemStatusSignature = signature;
+    this.elements.systemBackend.textContent = next.backend;
+    this.elements.systemReceiver.textContent = next.receiver;
+    this.elements.systemLogin.textContent = next.login;
+    this.elements.systemLock.textContent = next.lock;
+    this.elements.systemSource.textContent = next.source;
+    this.elements.systemError.textContent = next.error;
+  }
+
+  getStatusFreshnessText(receiverStatus) {
+    if (!APP_CONFIG.statusPollingEnabled) {
+      return "System status: Polling disabled";
+    }
+
+    if (!receiverStatus.checkedAt) {
+      return receiverStatus.backendOnline
+        ? "System status: Waiting for first poll"
+        : "System status: Backend unavailable";
+    }
+
+    const checkedAt = new Date(receiverStatus.checkedAt);
+    const suffix = receiverStatus.stale ? " (stale)" : "";
+    return `System status: ${checkedAt.toLocaleTimeString()}${suffix}`;
   }
 
   getLockText(data) {
+    const receiverStatus = data.receiverStatus || this.gpsTimeSync.getReceiverStatus();
+    if (!receiverStatus.backendOnline) {
+      return "Backend offline — local fallback active";
+    }
     if (data.currentSource === "gps-locked") {
       return "GPS receiver locked";
     }
@@ -532,12 +713,16 @@ class GPSDisplayManager {
       return "GPS receiver reachable but unlocked";
     }
     if (data.currentSource === "internet-fallback") {
-      return "Receiver unavailable — Internet fallback active";
+      return receiverStatus.receiverReachable
+        ? "Receiver unlocked — Internet fallback active"
+        : "Receiver unavailable — Internet fallback active";
     }
-    return "Receiver unavailable — local fallback active";
+    return receiverStatus.receiverReachable
+      ? "Receiver reachable — local fallback active"
+      : "Receiver unavailable — local fallback active";
   }
 
-  getPrimarySourceDescription(data) {
+  getPrimarySourceDescription(data, receiverStatus) {
     if (data.currentSource === "gps-locked") {
       return "Primary source: Symmetricom XLi receiver is reachable, authenticated, and locked.";
     }
@@ -547,19 +732,25 @@ class GPSDisplayManager {
     if (data.currentSource === "internet-fallback") {
       return "Primary GPS receiver is not providing locked time, so Internet time fallback is active via the backend.";
     }
+    if (!receiverStatus.backendOnline) {
+      return "The backend is currently unavailable, so the display is using local computer time until remote sync resumes.";
+    }
     return "Remote time sources are unavailable, so the display is currently using local computer time.";
   }
 
-  getPrimarySourceNote(data) {
+  getPrimarySourceNote(data, receiverStatus) {
     const parts = [];
     parts.push(`Runtime source: ${this.gpsTimeSync.getSourceDisplayName(data.currentSource)}.`);
-    if (data.receiverReachable) {
-      parts.push(data.loginOk ? "Receiver login succeeded." : "Receiver reachable but login failed.");
-    } else {
+    parts.push(`System status: ${receiverStatus.statusText}.`);
+    if (receiverStatus.receiverReachable) {
+      parts.push(receiverStatus.loginOk ? "Receiver login succeeded." : "Receiver reachable but login failed.");
+    } else if (receiverStatus.backendOnline) {
       parts.push("Receiver is not currently reachable.");
+    } else {
+      parts.push("Backend status polling is unavailable.");
     }
-    if (data.lastError) {
-      parts.push(`Last error: ${data.lastError}`);
+    if (receiverStatus.lastError) {
+      parts.push(`Last error: ${receiverStatus.lastError}`);
     }
     return parts.join(" ");
   }
@@ -812,13 +1003,13 @@ class InputHandler {
     button.textContent = "Updating…";
 
     try {
-      const response = await fetch(`${this.gpsTimeSync.apiBaseUrl}/time/set`, {
+      const result = await this.gpsTimeSync.fetchJson("/time/set", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ useInternet }),
       });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
+
+      if (!result.success) {
         throw new Error(result.error || `Failed to set GPS time from ${sourceLabel}`);
       }
 
@@ -835,6 +1026,7 @@ class InputHandler {
       );
 
       await this.gpsTimeSync.syncTime();
+      await this.gpsTimeSync.pollStatus();
     } catch (error) {
       window.showNotification(error.message, "error", 5000);
     } finally {
@@ -906,9 +1098,16 @@ class PrecisionClock {
       lockPulse: document.getElementById("lockPulse"),
       lastSyncTime: document.getElementById("lastSyncTime"),
       offsetDisplay: document.getElementById("offsetDisplay"),
+      statusFreshness: document.getElementById("statusFreshness"),
       digitalOnlyControls: document.getElementById("digitalOnlyControls"),
       setTimeComputerBtn: document.getElementById("setTimeComputerBtn"),
       setTimeInternetBtn: document.getElementById("setTimeInternetBtn"),
+      systemBackend: document.getElementById("systemBackend"),
+      systemReceiver: document.getElementById("systemReceiver"),
+      systemLogin: document.getElementById("systemLogin"),
+      systemLock: document.getElementById("systemLock"),
+      systemSource: document.getElementById("systemSource"),
+      systemError: document.getElementById("systemError"),
     };
 
     this.analogDial = this.elements.ptbClockSvg;
@@ -1117,6 +1316,7 @@ class PrecisionClock {
     this.inputHandler.cleanup();
     this.syncManager.cleanup();
     this.gpsTimeSync.stopAutoSync();
+    this.gpsTimeSync.stopStatusPolling();
   }
 }
 
