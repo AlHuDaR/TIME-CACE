@@ -4,7 +4,6 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const path = require('path');
 const net = require('net');
-const { exec } = require('child_process'); // Added for optional auto-open
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -333,7 +332,7 @@ app.listen(PORT, () => {
   console.log(`Timezone: Server timezone independent (uses UTC math)`);
   console.log(`Press Ctrl+Click the link above to open browser`);
   
-  // Optional: Auto-open browser on Windows (uncomment below to enable)
+  // Optional: Auto-open browser on Windows (require child_process before enabling)
   /*
   exec(`start ${localUrl}`, (err) => {
     if (err) console.log('Could not auto-open browser');

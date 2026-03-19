@@ -10,13 +10,15 @@
     <main class="layout">
       <header class="header card">
         <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
-        <button id="darkModeBtn" class="mode-btn" type="button" aria-pressed="false">Dark mode</button>
         <div class="header-text">
           <h1>Royal Air Force of Oman</h1>
           <p class="subtitle">Calibration Center — Official Time Display</p>
-		  <p class="subtitle">Cesium Atomic Clock</p>
+          <p class="subtitle">Cesium Atomic Clock</p>
         </div>
-        <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="true">Precision: ON</button>
+        <div class="header-actions" aria-label="Display settings">
+          <button id="darkModeBtn" class="mode-btn" type="button" aria-pressed="false">Dark mode</button>
+          <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="true">Precision: ON</button>
+        </div>
         <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
       </header>
 
@@ -102,69 +104,5 @@
     </main>
 
     <script src="script.js"></script>
-    
-    <!-- Digital-only controls handler -->
-    <script>
-      // Digital-only controls: Show only in digital mode
-      function updateDigitalControls() {
-        const controls = document.getElementById('digitalOnlyControls');
-        const urlParams = new URLSearchParams(window.location.search);
-        const mode = urlParams.get('mode') || 'digital';
-        
-        if (controls) {
-          controls.style.display = (mode === 'digital') ? 'inline-block' : 'none';
-        }
-      }
-      
-      // Check on load and when URL changes
-      updateDigitalControls();
-      window.addEventListener('popstate', updateDigitalControls);
-      
-      // Set GPS Time from Computer
-      document.getElementById('setTimeComputerBtn')?.addEventListener('click', async () => {
-        if (!confirm('Set GPS receiver time from THIS COMPUTER?\n\nMake sure your computer time is accurate!')) return;
-        
-        try {
-          const response = await fetch('http://localhost:3000/api/time/set', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ useInternet: false })
-          });
-          const result = await response.json();
-          
-          if (result.success) {
-            alert(`✅ GPS time set from COMPUTER:\nDate: ${result.date}\nTime: ${result.time}\n\nPage will refresh.`);
-            location.reload();
-          } else {
-            alert('❌ Failed: ' + result.error);
-          }
-        } catch (error) {
-          alert('❌ Error: ' + error.message);
-        }
-      });
-      
-      // Set GPS Time from Internet (more precise)
-      document.getElementById('setTimeInternetBtn')?.addEventListener('click', async () => {
-        if (!confirm('Set GPS receiver time from INTERNET?\n\nThis is more precise than computer time.')) return;
-        
-        try {
-          const response = await fetch('http://localhost:3000/api/time/set', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ useInternet: true })
-          });
-          const result = await response.json();
-          
-          if (result.success) {
-            alert(`✅ GPS time set from INTERNET:\nDate: ${result.date}\nTime: ${result.time}\nSource: ${result.source}\n\nPage will refresh.`);
-            location.reload();
-          } else {
-            alert('❌ Failed: ' + result.error);
-          }
-        } catch (error) {
-          alert('❌ Error: ' + error.message);
-        }
-      });
-    </script>
   </body>
 </html>
