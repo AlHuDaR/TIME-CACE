@@ -141,7 +141,8 @@ class GPSTimeSync {
     this.lastSyncTime = null;
     this.isLocked = false;
     this.syncInterval = null;
-    this.proxyUrl = 'http://localhost:3000';
+    const isHttpContext = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    this.proxyUrl = isHttpContext ? window.location.origin : 'http://localhost:3000';
     this.eventTarget = new EventTarget();
     this.notifications = new NotificationManager();
     this.hasShownInitialSync = false;
