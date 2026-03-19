@@ -406,8 +406,14 @@ class SyncManager {
 
   formatStatus() {
     const source = this.gpsTimeSync.getCurrentSource();
-    const locked = this.gpsTimeSync.isGPSLocked() ? "LOCKED" : "UNLOCKED";
-    return `Source: ${source.toUpperCase()} | ${locked} | Last sync: ${this.getRelativeLastSync()}`;
+
+    if (source === "gps-receiver" || source === "gps-antenna") {
+      return "Source: RX Time";
+    }
+    if (source === "internet-ntp") {
+      return "Source: Internet Time";
+    }
+    return "Source: Local Time";
   }
 
   async sync() {
