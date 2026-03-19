@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node gps-proxy.js",
     "dev": "nodemon gps-proxy.js",
+    "start:api": "SERVE_STATIC=false NODE_ENV=production node gps-proxy.js",
+    "start:full": "SERVE_STATIC=true node gps-proxy.js",
     "check": "node --check gps-proxy.js && node --check script.js"
   },
   "engines": {

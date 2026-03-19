@@ -3,6 +3,7 @@ const APP_CONFIG = Object.freeze({
   timezoneLabel: "Gulf Standard Time (GST, UTC+04:00)",
   modeTransitionMs: 260,
   syncIntervalMs: 30000,
+  localApiPort: 3000,
   localDevPorts: Object.freeze([3000]),
   localhostNames: Object.freeze(["localhost", "127.0.0.1"]),
   statusLabels: Object.freeze({
@@ -46,12 +47,23 @@ const OMAN_ANALOG_PARTS_FORMATTER = new Intl.DateTimeFormat("en-GB", {
 function resolveApiBaseUrl() {
   const configured = window.APP_CONFIG?.API_BASE_URL;
   if (typeof configured === "string" && configured.trim()) {
-    return configured.replace(/\/$/, "");
+    return configured.trim().replace(/\/$/, "");
   }
 
-  const { origin, hostname } = window.location;
-  if (APP_CONFIG.localhostNames.includes(hostname)) {
-    return `${origin}/api`;
+  const { protocol, hostname, origin, port } = window.location;
+  const isHttp = protocol === "http:" || protocol === "https:";
+  const isLocalhost = APP_CONFIG.localhostNames.includes(hostname);
+
+  if (isLocalhost && isHttp) {
+    if (!port || APP_CONFIG.localDevPorts.includes(Number(port))) {
+      return `${origin}/api`;
+    }
+
+    return `${protocol}//${hostname}:${APP_CONFIG.localApiPort}/api`;
+  }
+
+  if (!isHttp) {
+    return `http://localhost:${APP_CONFIG.localApiPort}/api`;
   }
 
   return "/api";
@@ -73,6 +85,20 @@ class NotificationManager {
     container.id = "notification-container";
     document.body.appendChild(container);
     return container;
+  }
+
+  appendMessage(content, message) {
+    if (Array.isArray(message)) {
+      message.filter(Boolean).forEach((line, index) => {
+        if (index > 0) {
+          content.append(document.createElement("br"));
+        }
+        content.append(document.createTextNode(String(line)));
+      });
+      return;
+    }
+
+    content.textContent = String(message ?? "");
   }
 
   show(message, type = "info", duration = 5000) {
@@ -99,7 +125,7 @@ class NotificationManager {
 
     const body = document.createElement("div");
     body.className = "notification-message";
-    body.innerHTML = message;
+    this.appendMessage(body, message);
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";
@@ -224,8 +250,8 @@ class GPSTimeSync {
 
     if (!nextState || nextState.currentSource === "local") {
       try {
-        const ntpResult = await this.fetchJson("/time/ntp");
-        if (ntpResult.success && ntpResult.timestamp) {
+        const internetResult = await this.fetchJson("/time/internet");
+        if (internetResult.success && internetResult.timestamp) {
           nextState = this.createState({
             backendOnline: true,
             receiverReachable: Boolean(nextState?.receiverReachable),
@@ -234,9 +260,9 @@ class GPSTimeSync {
             statusText: "Using Internet time fallback via backend",
             currentSource: "internet-fallback",
             lastError: nextState?.lastError || null,
-            date: ntpResult.date,
-            time: ntpResult.time,
-            timestamp: ntpResult.timestamp,
+            date: internetResult.date,
+            time: internetResult.time,
+            timestamp: internetResult.timestamp,
             raw: null,
             sourceLabel: "Internet fallback",
           });
@@ -329,11 +355,11 @@ class GPSTimeSync {
 
     this.notifications.show(
       [
-        `<strong>Source:</strong> ${this.getSourceDisplayName(currentSource)}`,
-        date ? `<strong>Date:</strong> ${date}` : null,
-        time ? `<strong>Time:</strong> ${time}` : null,
-        `<strong>Status:</strong> ${statusText}`,
-      ].filter(Boolean).join("<br>"),
+        `Source: ${this.getSourceDisplayName(currentSource)}`,
+        date ? `Date: ${date}` : null,
+        time ? `Time: ${time}` : null,
+        `Status: ${statusText}`,
+      ],
       type,
       6000,
     );
@@ -357,7 +383,7 @@ class GPSTimeSync {
     return {
       "gps-locked": "GPS RECEIVER",
       "gps-unlocked": "GPS RECEIVER",
-      "internet-fallback": "INTERNET/NTP",
+      "internet-fallback": "INTERNET/HTTP DATE",
       local: "LOCAL TIME",
     }[source] || source.toUpperCase();
   }
@@ -405,8 +431,7 @@ class GPSTimeSync {
 }
 
 class SyncManager {
-  constructor(statusElement, gpsTimeSync) {
-    this.statusElement = statusElement;
+  constructor(gpsTimeSync) {
     this.gpsTimeSync = gpsTimeSync;
     this.hasSuccessfulSync = false;
   }
@@ -439,23 +464,16 @@ class SyncManager {
 
   markSuccessfulSync() {
     this.hasSuccessfulSync = true;
-    const currentSource = this.gpsTimeSync.getCurrentSource();
-    this.statusElement.classList.toggle("warn", currentSource !== "gps-locked");
-    this.statusElement.textContent = this.formatStatus();
-  }
-
-  markWarning(message) {
-    this.statusElement.classList.add("warn");
-    this.statusElement.textContent = `Status: ${message}`;
   }
 
   cleanup() {}
 }
 
 class GPSDisplayManager {
-  constructor(elements, gpsTimeSync) {
+  constructor(elements, gpsTimeSync, syncManager) {
     this.elements = elements;
     this.gpsTimeSync = gpsTimeSync;
+    this.syncManager = syncManager;
     this.sourceClasses = {
       "gps-locked": "source-gps",
       "gps-unlocked": "source-gps-warn",
@@ -496,7 +514,13 @@ class GPSDisplayManager {
     const sourceNote = this.getPrimarySourceNote(data);
     this.elements.primarySourceDescription.textContent = sourceDescription;
     this.elements.primarySourceNote.textContent = sourceNote;
-    this.elements.syncStatus.textContent = `Status: ${data.statusText}`;
+    this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+    this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
+  }
+
+  refreshLiveStatus() {
+    const data = this.gpsTimeSync.getCurrentState();
+    this.elements.syncStatus.textContent = this.syncManager.formatStatus();
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
   }
 
@@ -800,12 +824,12 @@ class InputHandler {
 
       window.showNotification(
         [
-          `<strong>GPS time updated</strong>`,
-          `<strong>Source:</strong> ${result.source}`,
-          `<strong>Date:</strong> ${result.date}`,
-          `<strong>Time:</strong> ${result.time}`,
-          `<strong>Status:</strong> Refreshing display…`,
-        ].join("<br>"),
+          "GPS time updated",
+          `Source: ${result.source}`,
+          `Date: ${result.date}`,
+          `Time: ${result.time}`,
+          "Status: Refreshing display…",
+        ],
         "success",
         4200,
       );
@@ -889,8 +913,8 @@ class PrecisionClock {
 
     this.analogDial = this.elements.ptbClockSvg;
     this.gpsTimeSync = new GPSTimeSync();
-    this.syncManager = new SyncManager(this.elements.syncStatus, this.gpsTimeSync);
-    this.gpsDisplay = new GPSDisplayManager(this.elements, this.gpsTimeSync);
+    this.syncManager = new SyncManager(this.gpsTimeSync);
+    this.gpsDisplay = new GPSDisplayManager(this.elements, this.gpsTimeSync, this.syncManager);
     this.displayManager = new DisplayManager(this.elements, this.syncManager, this.gpsTimeSync);
     this.inputHandler = new InputHandler(this.elements, this.displayManager, this.gpsTimeSync);
     this.rafId = null;
@@ -920,6 +944,7 @@ class PrecisionClock {
 
     this.gpsTimeSync.addEventListener("gpstimeupdate", () => {
       this.syncManager.markSuccessfulSync();
+      this.gpsDisplay.refreshLiveStatus();
     });
 
     this.inputHandler.init();
@@ -961,7 +986,7 @@ class PrecisionClock {
       return el;
     };
 
-    svg.innerHTML = "";
+    svg.replaceChildren();
 
     const defs = make("defs");
     const logoShadow = make("filter", { id: "logoShadow", x: "-40%", y: "-40%", width: "180%", height: "180%" });
@@ -1064,7 +1089,7 @@ class PrecisionClock {
         this.displayManager.updateDrift(now);
       }
 
-      this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+      this.gpsDisplay.refreshLiveStatus();
       this.rafId = window.requestAnimationFrame(renderFrame);
     };
 

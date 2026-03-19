@@ -13,7 +13,7 @@
         <div class="header-text">
           <h1>Royal Air Force of Oman</h1>
           <p class="subtitle">Calibration Center — Official Time Display</p>
-          <p class="subtitle">Cesium Atomic Clock</p>
+          <p class="subtitle">Managed reference time display</p>
         </div>
         <div class="header-actions" aria-label="Display settings">
           <button id="darkModeBtn" class="mode-btn" type="button" aria-pressed="false">Dark mode</button>
@@ -35,7 +35,7 @@
           <span id="offsetDisplay">Offset: 0 ms</span>
           <span id="digitalOnlyControls" class="digital-controls">
             <button id="setTimeComputerBtn" class="mode-btn digital-controls-btn" title="Set GPS time from this computer">Set GPS (PC)</button>
-            <button id="setTimeInternetBtn" class="mode-btn digital-controls-btn" title="Set GPS time from Internet (more precise)">Set GPS (Internet)</button>
+            <button id="setTimeInternetBtn" class="mode-btn digital-controls-btn" title="Set GPS time from Internet fallback">Set GPS (Internet)</button>
           </span>
         </div>
       </section>
@@ -71,7 +71,7 @@
 
       <section id="analogClock" class="analog-wrap card hidden" aria-label="Old style analog watch in Oman time">
         <div class="analog-clock">
-          <svg id="ptbClockSvg" class="ptb-clock-svg" viewBox="0 0 800 800" role="img" aria-label="PTB style atomic analog clock"></svg>
+          <svg id="ptbClockSvg" class="ptb-clock-svg" viewBox="0 0 800 800" role="img" aria-label="PTB style analog clock face"></svg>
           <img src="images/cal%20logo.png" alt="" class="clock-center-logo" aria-hidden="true" />
         </div>
         <p id="driftMonitor" class="drift hidden" aria-live="polite">Δ +0.000s</p>
