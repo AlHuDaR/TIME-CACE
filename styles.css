@@ -50,16 +50,16 @@ body.dark-mode { background: radial-gradient(circle at 20% 20%, #102837, var(--b
 /* === Header row ===
    Change logo size from .logo-image width below.
    Change text size from h1/.subtitle rules below. */
-.header { 
-  display: grid; 
-  grid-template-columns: auto auto minmax(220px, 1fr) auto auto;
-  align-items: center; 
-  gap: clamp(0.5rem, 1.3vw, 1rem); 
-  text-align: center; 
-  padding: clamp(0.7rem, 1.8vw, 1rem) clamp(0.8rem, 2.2vw, 1.2rem); 
+.header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: clamp(0.5rem, 1.3vw, 1rem);
+  text-align: center;
+  padding: clamp(0.7rem, 1.8vw, 1rem) clamp(0.8rem, 2.2vw, 1.2rem);
 }
-.header-text { min-width: min(55vw, 220px); }
-.header-actions { display: flex; gap: 0.5rem; justify-content: center; }
+.header-text { min-width: 0; }
+.header-actions { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
 /* Main title size (increase upper value 2.2rem for bigger desktop heading) */
 h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 2.2rem); line-height: 1.2; }
 
@@ -157,6 +157,9 @@ h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 2.2rem); line-height: 1.2; }
   font-size: clamp(0.75rem, 1.7vw, 0.85rem);
   color: var(--muted);
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 320px;
 }
 
 /* Digital-only quick controls near GPS status */
@@ -182,10 +185,11 @@ h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 2.2rem); line-height: 1.2; }
   text-align: center;
 }
 .mode-toggle { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-.mode-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); padding: 0.45rem 0.9rem; font-weight: 600; cursor: pointer; }
+.mode-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); padding: 0.45rem 0.9rem; font-weight: 600; cursor: pointer; transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, opacity 160ms ease; }
+.mode-btn:disabled { cursor: wait; opacity: 0.7; }
 .mode-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-.clock-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: clamp(0.65rem, 1.6vw, 1rem); transition: opacity 260ms ease, transform 260ms ease; position: relative; }
+.clock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: clamp(0.65rem, 1.6vw, 1rem); transition: opacity 260ms ease, transform 260ms ease; position: relative; }
 
 /* Time tiles: min-height controls vertical size consistency across devices */
 .tile { background: var(--tile); border: 1px solid var(--border); border-radius: 16px; padding: clamp(0.75rem, 2vw, 1rem); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: clamp(120px, 21vw, 160px); }
@@ -346,7 +350,7 @@ body.analog-only .coder-credit {
   margin: 0;
 }
 
-body.dark-mode body.analog-only .coder-credit {
+body.dark-mode.analog-only .coder-credit {
   background: rgba(0, 0, 0, 0.2);
 }
 
@@ -429,7 +433,7 @@ body.analog-only .nav-pill {
 }
 
 /* Dark mode adjustment for buttons */
-body.dark-mode body.analog-only .nav-pill {
+body.dark-mode.analog-only .nav-pill {
   background: rgba(0, 0, 0, 0.2);
 }
 
@@ -472,20 +476,19 @@ body.old-style .analog-nav {
 /* Tablet layout (iPad portrait + small laptops) */
 @media (max-width: 1024px) {
   .header {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
       "left-logo header-text right-logo"
-      "left-btn header-text right-btn";
+      "header-actions header-actions header-actions";
     justify-items: center;
   }
 
   .header .logo-image:first-of-type { grid-area: left-logo; }
   .header .logo-image:last-of-type { grid-area: right-logo; }
   .header-text { grid-area: header-text; }
-  #darkModeBtn { grid-area: left-btn; }
-  #precisionToggleBtn { grid-area: right-btn; }
+  .header-actions { grid-area: header-actions; }
 
-  .clock-grid, .meta-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+  .meta-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
 }
 
 /* Phones */
@@ -498,14 +501,14 @@ body.old-style .analog-nav {
 
   .header .logo-image,
   .header-text,
-  #darkModeBtn,
-  #precisionToggleBtn {
+  .header-actions {
     grid-area: auto;
   }
 
   .mode-card { flex-direction: column; align-items: stretch; }
   .mode-toggle, .header-actions { width: 100%; }
-  .clock-grid, .meta-grid { grid-template-columns: 1fr; }
+  .header-actions .mode-btn { flex: 1 1 160px; }
+  .meta-grid { grid-template-columns: 1fr; }
   
   /* Mobile analog adjustments */
   body.analog-only {

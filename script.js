@@ -1,9 +1,40 @@
 // script.js - Fully Fixed with Modern Notifications
 const OMAN_TIMEZONE = "Asia/Muscat";
 const MODE_TRANSITION_MS = 260;
-const SYNC_INTERVAL_MS = 1000;
 const GPS_RETRY_MS = 30000;
-const NTP_RETRY_MS = 10000;
+const STATUS_LABELS = {
+  success: "Success",
+  error: "Error",
+  warning: "Warning",
+  info: "Information",
+};
+const OMAN_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: OMAN_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+const OMAN_DATE_LINE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: OMAN_TIMEZONE,
+  weekday: "long",
+  day: "2-digit",
+  month: "long",
+  year: "numeric",
+});
+const OMAN_ANALOG_PARTS_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: OMAN_TIMEZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour12: false,
+});
 
 // Modern Notification System - ADDED
 class NotificationManager {
@@ -62,7 +93,7 @@ class NotificationManager {
         </div>
         <div style="flex: 1; min-width: 0;">
           <div style="font-weight: 600; color: ${theme.text}; font-size: 14px; margin-bottom: 4px; line-height: 1.4;">
-            ${type === 'success' ? 'Success' : type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Information'}
+            ${STATUS_LABELS[type] || STATUS_LABELS.info}
           </div>
           <div style="color: ${theme.text}; opacity: 0.9; font-size: 13px; line-height: 1.5;">
             ${message}
@@ -272,18 +303,7 @@ class GPSTimeSync {
 
   getLocalTime() {
     const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: OMAN_TIMEZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-    
-    const parts = formatter.formatToParts(now);
+    const parts = OMAN_DATE_TIME_FORMATTER.formatToParts(now);
     const date = `${parts.find(p => p.type === 'month').value}/${parts.find(p => p.type === 'day').value}/${parts.find(p => p.type === 'year').value}`;
     const time = `${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value}`;
     
@@ -530,6 +550,8 @@ class DisplayManager {
     this.darkMode = this.resolveInitialDarkMode();
     this.paused = false;
     this.lastDriftSecond = -1;
+    this.lastRenderedDigital = {};
+    this.lastRenderedAnalog = {};
   }
 
   resolveInitialDarkMode() {
@@ -585,6 +607,10 @@ class DisplayManager {
     this.elements.precisionToggleBtn.classList.toggle("hidden", !isVisible);
   }
 
+  setDigitalControlsVisibility(isVisible) {
+    this.elements.digitalOnlyControls?.classList.toggle("hidden", !isVisible);
+  }
+
   showSection(section) {
     section.classList.remove("hidden", "is-fading");
     section.classList.add("is-visible");
@@ -608,8 +634,10 @@ class DisplayManager {
       this.showSection(this.elements.digitalClock);
       this.hideSection(this.elements.analogClock);
       this.setPrecisionVisibility(true);
+      this.setDigitalControlsVisibility(true);
     } else {
       this.setPrecisionVisibility(true);
+      this.setDigitalControlsVisibility(false);
       document.body.classList.add("old-style");
       this.showSection(this.elements.analogClock);
       this.hideSection(this.elements.digitalClock);
@@ -634,6 +662,7 @@ class DisplayManager {
     this.elements.analogModeBtn.classList.remove("active");
     this.elements.analogOnlyBtn.classList.add("active");
     this.setPrecisionVisibility(true);
+    this.setDigitalControlsVisibility(false);
   }
 
   applyPrecisionMode(enabled) {
@@ -645,17 +674,31 @@ class DisplayManager {
   }
 
   updateDigital(oman, now) {
-    this.elements.hours.textContent = String(oman.hour).padStart(2, "0");
-    this.elements.minutes.textContent = String(oman.minute).padStart(2, "0");
-    this.elements.seconds.textContent = String(oman.second).padStart(2, "0");
-    this.elements.milliseconds.textContent = String(now.getUTCMilliseconds()).padStart(3, "0");
-    this.elements.dateLine.textContent = new Intl.DateTimeFormat("en-GB", {
-      timeZone: OMAN_TIMEZONE,
-      weekday: "long",
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    }).format(now);
+    const digitalState = {
+      hours: String(oman.hour).padStart(2, "0"),
+      minutes: String(oman.minute).padStart(2, "0"),
+      seconds: String(oman.second).padStart(2, "0"),
+      milliseconds: String(now.getUTCMilliseconds()).padStart(3, "0"),
+      dateLine: OMAN_DATE_LINE_FORMATTER.format(now),
+    };
+
+    if (digitalState.hours !== this.lastRenderedDigital.hours) {
+      this.elements.hours.textContent = digitalState.hours;
+    }
+    if (digitalState.minutes !== this.lastRenderedDigital.minutes) {
+      this.elements.minutes.textContent = digitalState.minutes;
+    }
+    if (digitalState.seconds !== this.lastRenderedDigital.seconds) {
+      this.elements.seconds.textContent = digitalState.seconds;
+    }
+    if (digitalState.milliseconds !== this.lastRenderedDigital.milliseconds) {
+      this.elements.milliseconds.textContent = digitalState.milliseconds;
+    }
+    if (digitalState.dateLine !== this.lastRenderedDigital.dateLine) {
+      this.elements.dateLine.textContent = digitalState.dateLine;
+    }
+
+    this.lastRenderedDigital = digitalState;
   }
 
   updateAnalog(oman, now) {
@@ -671,8 +714,13 @@ class DisplayManager {
     const timeText = this.showMilliseconds
       ? `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}.${String(ms).padStart(3, "0")}`
       : `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}`;
-    this.elements.analogTimeText && (this.elements.analogTimeText.textContent = timeText);
-    this.elements.analogDateText && (this.elements.analogDateText.textContent = oman.date);
+    if (this.elements.analogTimeText && timeText !== this.lastRenderedAnalog.timeText) {
+      this.elements.analogTimeText.textContent = timeText;
+    }
+    if (this.elements.analogDateText && oman.date !== this.lastRenderedAnalog.dateText) {
+      this.elements.analogDateText.textContent = oman.date;
+    }
+    this.lastRenderedAnalog = { timeText, dateText: oman.date };
   }
 
   updateDrift(now) {
@@ -705,6 +753,9 @@ class InputHandler {
   }
 
   add(target, event, handler) {
+    if (!target) {
+      return;
+    }
     target.addEventListener(event, handler);
     this.listeners.push(() => target.removeEventListener(event, handler));
   }
@@ -716,7 +767,50 @@ class InputHandler {
     this.add(this.elements.backToDigitalBtn, "click", () => this.displayManager.setMode("digital"));
     this.add(this.elements.darkModeBtn, "click", () => this.displayManager.toggleDarkMode());
     this.add(this.elements.precisionToggleBtn, "click", () => this.displayManager.togglePrecisionMode());
+    this.add(this.elements.setTimeComputerBtn, "click", () => this.handleSetGpsTime(false));
+    this.add(this.elements.setTimeInternetBtn, "click", () => this.handleSetGpsTime(true));
     this.add(document, "keydown", (e) => this.handleKeys(e));
+  }
+
+  async handleSetGpsTime(useInternet) {
+    const sourceLabel = useInternet ? "INTERNET" : "THIS COMPUTER";
+    const confirmationText = useInternet
+      ? "Set GPS receiver time from INTERNET?\n\nThis is more precise than computer time."
+      : "Set GPS receiver time from THIS COMPUTER?\n\nMake sure your computer time is accurate!";
+
+    if (!window.confirm(confirmationText)) {
+      return;
+    }
+
+    const button = useInternet ? this.elements.setTimeInternetBtn : this.elements.setTimeComputerBtn;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Updating...";
+
+    try {
+      const response = await fetch("http://localhost:3000/api/time/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useInternet }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || `Failed to set GPS time from ${sourceLabel}`);
+      }
+
+      window.showNotification(
+        `GPS time updated from ${sourceLabel}<br><strong>Date:</strong> ${result.date}<br><strong>Time:</strong> ${result.time}${result.source ? `<br><strong>Source:</strong> ${result.source}` : ""}<br><strong>Refreshing page…</strong>`,
+        "success",
+        4500
+      );
+      window.setTimeout(() => window.location.reload(), 1200);
+    } catch (error) {
+      window.showNotification(error.message, "error", 5000);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   }
 
   handleKeys(e) {
@@ -779,7 +873,10 @@ class PrecisionClock {
       lockStatus: document.getElementById("lockStatus"),
       lockPulse: document.getElementById("lockPulse"),
       lastSyncTime: document.getElementById("lastSyncTime"),
-      offsetDisplay: document.getElementById("offsetDisplay")
+      offsetDisplay: document.getElementById("offsetDisplay"),
+      digitalOnlyControls: document.getElementById("digitalOnlyControls"),
+      setTimeComputerBtn: document.getElementById("setTimeComputerBtn"),
+      setTimeInternetBtn: document.getElementById("setTimeInternetBtn"),
     };
     this.analogDial = this.elements.ptbClockSvg;
     
@@ -939,16 +1036,7 @@ class PrecisionClock {
   }
 
   getOmanParts(now) {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: OMAN_TIMEZONE,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour12: false,
-    }).formatToParts(now);
+    const parts = OMAN_ANALOG_PARTS_FORMATTER.formatToParts(now);
 
     const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
     return {
