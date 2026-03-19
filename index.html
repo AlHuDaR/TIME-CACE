@@ -22,19 +22,17 @@
         <img src="images/cal%20logo.png" alt="Calibration Center logo" class="logo-image" data-logo />
       </header>
 
-      <!-- GPS Status Bar -->
       <section class="card gps-status-bar" aria-label="GPS Synchronization Status">
         <div class="gps-indicator">
           <div id="lockPulse" class="lock-pulse"></div>
           <div class="gps-info">
             <span id="sourceIndicator" class="source-badge source-local">LOCAL TIME</span>
-            <span id="lockStatus" class="lock-text">No GPS Lock</span>
+            <span id="lockStatus" class="lock-text">Initializing receiver status…</span>
           </div>
         </div>
         <div class="gps-details">
           <span id="lastSyncTime">Last sync: Never</span>
-          <span id="offsetDisplay">Offset: 0ms</span>
-          <!-- ONLY in Digital view: Set GPS Time buttons -->
+          <span id="offsetDisplay">Offset: 0 ms</span>
           <span id="digitalOnlyControls" class="digital-controls">
             <button id="setTimeComputerBtn" class="mode-btn digital-controls-btn" title="Set GPS time from this computer">Set GPS (PC)</button>
             <button id="setTimeInternetBtn" class="mode-btn digital-controls-btn" title="Set GPS time from Internet (more precise)">Set GPS (Internet)</button>
@@ -94,15 +92,22 @@
         </article>
         <article class="card">
           <h2>Primary time source</h2>
-          <p class="meta-value">GPS-synchronized Rubidium/OCXO-disciplined oscillators (Symmetricom XLi series), maintaining &lt;30 ns RMS deviation from UTC with frequency stability of 1×10⁻¹²</p>
-          <p id="syncStatus" class="status">Status: Initializing...</p>
+          <p id="primarySourceDescription" class="meta-value">
+            Runtime source will update automatically based on receiver lock state and available fallbacks.
+          </p>
+          <p id="primarySourceNote" class="meta-note">
+            Preferred source: Symmetricom XLi receiver disciplined to Oman time when available.
+          </p>
+          <p id="syncStatus" class="status">Status: Initializing…</p>
         </article>
       </section>
-	  
+
       <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
-	  
     </main>
 
+    <script>
+      window.APP_CONFIG = window.APP_CONFIG || {};
+    </script>
     <script src="script.js"></script>
   </body>
 </html>

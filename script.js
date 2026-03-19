@@ -1,15 +1,20 @@
-// script.js - Fully Fixed with Modern Notifications
-const OMAN_TIMEZONE = "Asia/Muscat";
-const MODE_TRANSITION_MS = 260;
-const GPS_RETRY_MS = 30000;
-const STATUS_LABELS = {
-  success: "Success",
-  error: "Error",
-  warning: "Warning",
-  info: "Information",
-};
+const APP_CONFIG = Object.freeze({
+  timezone: "Asia/Muscat",
+  timezoneLabel: "Gulf Standard Time (GST, UTC+04:00)",
+  modeTransitionMs: 260,
+  syncIntervalMs: 30000,
+  localDevPorts: Object.freeze([3000]),
+  localhostNames: Object.freeze(["localhost", "127.0.0.1"]),
+  statusLabels: Object.freeze({
+    success: "Success",
+    error: "Error",
+    warning: "Warning",
+    info: "Information",
+  }),
+});
+
 const OMAN_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: OMAN_TIMEZONE,
+  timeZone: APP_CONFIG.timezone,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -18,15 +23,17 @@ const OMAN_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
   second: "2-digit",
   hour12: false,
 });
+
 const OMAN_DATE_LINE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  timeZone: OMAN_TIMEZONE,
+  timeZone: APP_CONFIG.timezone,
   weekday: "long",
   day: "2-digit",
   month: "long",
   year: "numeric",
 });
+
 const OMAN_ANALOG_PARTS_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  timeZone: OMAN_TIMEZONE,
+  timeZone: APP_CONFIG.timezone,
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
@@ -36,345 +43,354 @@ const OMAN_ANALOG_PARTS_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
-// Modern Notification System - ADDED
+function resolveApiBaseUrl() {
+  const configured = window.APP_CONFIG?.API_BASE_URL;
+  if (typeof configured === "string" && configured.trim()) {
+    return configured.replace(/\/$/, "");
+  }
+
+  const { origin, hostname } = window.location;
+  if (APP_CONFIG.localhostNames.includes(hostname)) {
+    return `${origin}/api`;
+  }
+
+  return "/api";
+}
+
 class NotificationManager {
   constructor() {
     this.container = this.createContainer();
-    this.activeNotifications = [];
+    this.activeNotifications = new Map();
   }
 
   createContainer() {
-    const div = document.createElement('div');
-    div.id = 'notification-container';
-    div.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 10000;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 420px;
-      pointer-events: none;
-    `;
-    document.body.appendChild(div);
-    return div;
-  }
-
-  show(message, type = 'info', duration = 6000) {
-    const id = Date.now() + Math.random();
-    const notification = document.createElement('div');
-    const colors = {
-      success: { bg: '#ecfdf5', border: '#10b981', icon: '#059669', text: '#065f46', iconSvg: '✓' },
-      error: { bg: '#fef2f2', border: '#ef4444', icon: '#dc2626', text: '#991b1b', iconSvg: '✕' },
-      warning: { bg: '#fffbeb', border: '#f59e0b', icon: '#d97706', text: '#92400e', iconSvg: '⚠' },
-      info: { bg: '#eff6ff', border: '#3b82f6', icon: '#2563eb', text: '#1e40af', iconSvg: 'ℹ' }
-    };
-    
-    const theme = colors[type];
-    
-    notification.style.cssText = `
-      background: ${theme.bg};
-      border-left: 4px solid ${theme.border};
-      padding: 16px;
-      border-radius: 12px;
-      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
-      animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-      position: relative;
-      overflow: hidden;
-      pointer-events: auto;
-    `;
-    
-    notification.innerHTML = `
-      <div style="display: flex; align-items: flex-start; gap: 12px;">
-        <div style="color: ${theme.icon}; flex-shrink: 0; margin-top: 2px; font-size: 18px; font-weight: bold;">
-          ${theme.iconSvg}
-        </div>
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-weight: 600; color: ${theme.text}; font-size: 14px; margin-bottom: 4px; line-height: 1.4;">
-            ${STATUS_LABELS[type] || STATUS_LABELS.info}
-          </div>
-          <div style="color: ${theme.text}; opacity: 0.9; font-size: 13px; line-height: 1.5;">
-            ${message}
-          </div>
-        </div>
-        <button class="close-btn" style="background: none; border: none; color: ${theme.text}; opacity: 0.5; cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.2s; pointer-events: auto;">
-          ×
-        </button>
-      </div>
-      ${duration > 0 ? `<div style="position: absolute; bottom: 0; left: 0; height: 3px; background: ${theme.border}; opacity: 0.3; animation: progress ${duration}ms linear forwards;"></div>` : ''}
-    `;
-
-    // Add styles if not present
-    if (!document.getElementById('notification-styles')) {
-      const style = document.createElement('style');
-      style.id = 'notification-styles';
-      style.textContent = `
-        @keyframes slideIn {
-          from { transform: translateX(120%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOut {
-          from { transform: translateX(0); opacity: 1; }
-          to { transform: translateX(120%); opacity: 0; }
-        }
-        @keyframes progress {
-          from { width: 100%; }
-          to { width: 0%; }
-        }
-        .close-btn:hover { opacity: 1 !important; background: rgba(0,0,0,0.05) !important; }
-      `;
-      document.head.appendChild(style);
+    let container = document.getElementById("notification-container");
+    if (container) {
+      return container;
     }
 
-    // Close button handler
-    const closeBtn = notification.querySelector('.close-btn');
-    closeBtn.onclick = () => this.close(notification, id);
+    container = document.createElement("div");
+    container.id = "notification-container";
+    document.body.appendChild(container);
+    return container;
+  }
+
+  show(message, type = "info", duration = 5000) {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const notification = document.createElement("article");
+    notification.className = `notification notification-${type}`;
+
+    const icon = document.createElement("div");
+    icon.className = "notification-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = {
+      success: "✓",
+      error: "✕",
+      warning: "⚠",
+      info: "ℹ",
+    }[type] || "ℹ";
+
+    const content = document.createElement("div");
+    content.className = "notification-content";
+
+    const title = document.createElement("div");
+    title.className = "notification-title";
+    title.textContent = APP_CONFIG.statusLabels[type] || APP_CONFIG.statusLabels.info;
+
+    const body = document.createElement("div");
+    body.className = "notification-message";
+    body.innerHTML = message;
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "notification-close";
+    closeButton.setAttribute("aria-label", "Close notification");
+    closeButton.textContent = "×";
+    closeButton.addEventListener("click", () => this.close(id));
+
+    content.append(title, body);
+    notification.append(icon, content, closeButton);
+
+    if (duration > 0) {
+      const progress = document.createElement("div");
+      progress.className = "notification-progress";
+      progress.style.animationDuration = `${duration}ms`;
+      notification.append(progress);
+    }
 
     this.container.appendChild(notification);
-    this.activeNotifications.push({ id, element: notification });
+    this.activeNotifications.set(id, notification);
 
-    // Auto remove
     if (duration > 0) {
-      setTimeout(() => this.close(notification, id), duration);
+      window.setTimeout(() => this.close(id), duration);
     }
 
     return id;
   }
 
-  close(element, id) {
-    if (!element.parentNode) return;
-    element.style.animation = 'slideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards';
-    setTimeout(() => {
-      element.remove();
-      this.activeNotifications = this.activeNotifications.filter(n => n.id !== id);
-    }, 300);
-  }
+  close(id) {
+    const notification = this.activeNotifications.get(id);
+    if (!notification) {
+      return;
+    }
 
-  clearAll() {
-    this.activeNotifications.forEach(n => this.close(n.element, n.id));
+    notification.classList.add("notification-exit");
+    window.setTimeout(() => {
+      notification.remove();
+      this.activeNotifications.delete(id);
+    }, 220);
   }
 }
 
-// GPS Time Synchronization Manager - FIXED
 class GPSTimeSync {
   constructor() {
-    this.sources = {
-      GPS_ANTENNA: 'gps-antenna',
-      GPS_RECEIVER: 'gps-receiver',
-      INTERNET_NTP: 'internet-ntp',
-      LOCAL: 'local'
-    };
-    
-    this.currentSource = this.sources.LOCAL;
+    this.apiBaseUrl = resolveApiBaseUrl();
+    this.notifications = window.notificationManager || new NotificationManager();
+    this.eventTarget = new EventTarget();
+    this.syncInterval = null;
+    this.syncInFlight = null;
+    this.hasShownInitialSync = false;
     this.timeOffset = 0;
     this.lastSyncTime = null;
-    this.isLocked = false;
-    this.syncInterval = null;
-    this.proxyUrl = 'http://localhost:3000';
-    this.eventTarget = new EventTarget();
-    this.notifications = new NotificationManager();
-    this.hasShownInitialSync = false;
+    this.lastSyncTimestamp = null;
+    this.currentState = this.createState({ currentSource: "local" });
+  }
+
+  createState(overrides = {}) {
+    return {
+      backendOnline: false,
+      receiverReachable: false,
+      loginOk: false,
+      isLocked: false,
+      statusText: "Using local computer time",
+      currentSource: "local",
+      lastError: null,
+      date: null,
+      time: null,
+      timestamp: Date.now(),
+      raw: null,
+      sourceLabel: "Local computer time",
+      ...overrides,
+    };
   }
 
   async init() {
-    console.log('GPSTimeSync: Initializing...');
     await this.syncTime();
     this.startAutoSync();
     return this;
   }
 
   async syncTime() {
+    if (this.syncInFlight) {
+      return this.syncInFlight;
+    }
+
+    this.syncInFlight = this.performSync().finally(() => {
+      this.syncInFlight = null;
+    });
+
+    return this.syncInFlight;
+  }
+
+  async performSync() {
+    let nextState = null;
+
     try {
-      // Priority 2: Try GPS Receiver via proxy
-      const gpsResult = await this.fetchGPSTime();
+      const gpsResult = await this.fetchJson("/time");
       if (gpsResult.success && gpsResult.timestamp) {
-        this.updateTimeSource(gpsResult, this.sources.GPS_RECEIVER);
-        this.dispatchUpdate(gpsResult);
-        if (!this.hasShownInitialSync) {
-          this.showSyncNotification(gpsResult, 'GPS Receiver');
-        }
-        return gpsResult;
+        nextState = this.createState({
+          backendOnline: true,
+          receiverReachable: Boolean(gpsResult.receiverReachable ?? true),
+          loginOk: Boolean(gpsResult.loginOk ?? true),
+          isLocked: Boolean(gpsResult.isLocked),
+          statusText: gpsResult.statusText || (gpsResult.isLocked ? "GPS receiver locked" : "GPS receiver reachable but not locked"),
+          currentSource: gpsResult.currentSource || (gpsResult.isLocked ? "gps-locked" : "gps-unlocked"),
+          lastError: gpsResult.lastError || null,
+          date: gpsResult.date,
+          time: gpsResult.time,
+          timestamp: gpsResult.timestamp,
+          raw: gpsResult.raw || null,
+          sourceLabel: gpsResult.currentSourceLabel || (gpsResult.isLocked ? "GPS receiver locked" : "GPS receiver reachable, unlock state"),
+        });
       }
     } catch (error) {
-      console.warn('GPS Receiver failed:', error.message);
+      nextState = this.createState({
+        backendOnline: false,
+        currentSource: "local",
+        statusText: `Backend unavailable: ${error.message}`,
+        lastError: error.message,
+      });
     }
 
+    if (!nextState || nextState.currentSource === "local") {
+      try {
+        const ntpResult = await this.fetchJson("/time/ntp");
+        if (ntpResult.success && ntpResult.timestamp) {
+          nextState = this.createState({
+            backendOnline: true,
+            receiverReachable: Boolean(nextState?.receiverReachable),
+            loginOk: Boolean(nextState?.loginOk),
+            isLocked: false,
+            statusText: "Using Internet time fallback via backend",
+            currentSource: "internet-fallback",
+            lastError: nextState?.lastError || null,
+            date: ntpResult.date,
+            time: ntpResult.time,
+            timestamp: ntpResult.timestamp,
+            raw: null,
+            sourceLabel: "Internet fallback",
+          });
+        }
+      } catch (error) {
+        if (nextState) {
+          nextState.lastError = nextState.lastError || error.message;
+        }
+      }
+    }
+
+    if (!nextState || nextState.currentSource === "local") {
+      const localResult = this.getLocalTime();
+      nextState = this.createState({
+        ...nextState,
+        backendOnline: Boolean(nextState?.backendOnline),
+        receiverReachable: Boolean(nextState?.receiverReachable),
+        loginOk: Boolean(nextState?.loginOk),
+        isLocked: false,
+        statusText: nextState?.backendOnline
+          ? "Using local computer time because backend fallbacks are unavailable"
+          : "Using local computer time because backend is unavailable",
+        currentSource: "local",
+        lastError: nextState?.lastError || "No remote time source available",
+        ...localResult,
+        sourceLabel: "Local computer time",
+      });
+    }
+
+    this.applyState(nextState);
+    this.dispatchUpdate();
+    this.maybeShowInitialNotification();
+    return this.currentState;
+  }
+
+  async fetchJson(path) {
+    const response = await fetch(`${this.apiBaseUrl}${path}`, {
+      headers: { Accept: "application/json" },
+    });
+
+    let payload = null;
     try {
-      // Priority 3: Try Internet/NTP
-      const ntpResult = await this.fetchNTPTime();
-      if (ntpResult.success && ntpResult.timestamp) {
-        this.updateTimeSource(ntpResult, this.sources.INTERNET_NTP);
-        this.dispatchUpdate(ntpResult);
-        if (!this.hasShownInitialSync) {
-          this.showSyncNotification(ntpResult, 'Internet/NTP');
-        }
-        return ntpResult;
-      }
+      payload = await response.json();
     } catch (error) {
-      console.warn('Internet/NTP failed:', error.message);
+      payload = null;
     }
 
-    // Priority 4: Fallback to local time
-    const localResult = this.getLocalTime();
-    this.updateTimeSource(localResult, this.sources.LOCAL);
-    this.dispatchUpdate(localResult);
-    
-    if (!this.hasShownInitialSync) {
-      this.notifications.show(
-        `Using local computer time<br>
-         <strong>Date:</strong> ${localResult.date}<br>
-         <strong>Time:</strong> ${localResult.time}<br>
-         <strong>Note:</strong> No GPS or Internet time available`,
-        'warning',
-        8000
-      );
-      this.hasShownInitialSync = true;
-    }
-    
-    return localResult;
-  }
-
-  showSyncNotification(result, sourceName) {
-    const isGPS = sourceName === 'GPS Receiver';
-    const lockStatus = this.isLocked ? 'LOCKED' : 'NO LOCK';
-    const lockColor = this.isLocked ? '#10b981' : '#f59e0b';
-    
-    this.notifications.show(
-      `<div style="display: grid; gap: 4px;">
-        <div><strong>Source:</strong> ${sourceName}</div>
-        <div><strong>Date:</strong> ${result.date || 'N/A'}</div>
-        <div><strong>Time:</strong> ${result.time || 'N/A'}</div>
-        ${isGPS ? `<div><strong>Status:</strong> <span style="color: ${lockColor}; font-weight: 600;">${lockStatus}</span></div>` : ''}
-       </div>`,
-      isGPS && this.isLocked ? 'success' : isGPS ? 'warning' : 'info',
-      6000
-    );
-    
-    this.hasShownInitialSync = true;
-  }
-
-  async fetchGPSTime() {
-    const response = await fetch(`${this.proxyUrl}/api/time`);
     if (!response.ok) {
-      throw new Error(`GPS Proxy returned ${response.status}`);
+      const errorMessage = payload?.error || payload?.statusText || `Request failed with ${response.status}`;
+      throw new Error(errorMessage);
     }
-    const data = await response.json();
-    
-    // FIXED: Handle both old nested format and new flat format
-    const date = data.date || (data.time && data.time.date);
-    const time = data.time || (data.time && data.time.time);
-    
-    if (!date || !time) {
-      throw new Error('Invalid GPS response: missing date/time');
-    }
-    
-    return {
-      success: data.success !== false,
-      timestamp: data.timestamp || Date.now(),
-      date: date,
-      time: time,
-      source: data.source || 'gps-receiver',
-      raw: data.raw
-    };
-  }
 
-  async fetchNTPTime() {
-    const response = await fetch(`${this.proxyUrl}/api/time/ntp`);
-    if (!response.ok) {
-      throw new Error(`NTP Proxy returned ${response.status}`);
-    }
-    const data = await response.json();
-    
-    // FIXED: Handle both old nested format and new flat format
-    const date = data.date || (data.time && data.time.date);
-    const time = data.time || (data.time && data.time.time);
-    
-    return {
-      success: data.success !== false,
-      timestamp: data.timestamp || Date.now(),
-      date: date,
-      time: time,
-      source: data.source || 'internet-ntp',
-      rtt: data.rtt || 0
-    };
+    return payload;
   }
 
   getLocalTime() {
     const now = new Date();
     const parts = OMAN_DATE_TIME_FORMATTER.formatToParts(now);
-    const date = `${parts.find(p => p.type === 'month').value}/${parts.find(p => p.type === 'day').value}/${parts.find(p => p.type === 'year').value}`;
-    const time = `${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value}`;
-    
+    const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
     return {
       success: true,
       timestamp: now.getTime(),
-      date: date,
-      time: time,
-      source: 'local'
+      date: `${map.month}/${map.day}/${map.year}`,
+      time: `${map.hour}:${map.minute}:${map.second}`,
     };
   }
 
-  updateTimeSource(result, source) {
+  applyState(state) {
     const localNow = Date.now();
-    this.timeOffset = result.timestamp - localNow;
-    this.currentSource = source;
+    this.currentState = state;
+    this.timeOffset = state.timestamp - localNow;
     this.lastSyncTime = new Date();
-    
-    // FIXED: Better lock status detection
-    if (source === this.sources.GPS_RECEIVER) {
-      const isDefaultDate = result.date === '01/01/2026' || 
-                           result.date === '01/01/2000' ||
-                           result.date === '01/01/1999' ||
-                           (result.raw && (result.raw.includes('01/01/2026') || result.raw.includes('01/01/2000')));
-      this.isLocked = !isDefaultDate;
-    } else if (source === this.sources.GPS_ANTENNA) {
-      this.isLocked = true;
-    } else {
-      this.isLocked = false;
-    }
-    
-    console.log(`Time synced from ${source}: ${result.date} ${result.time} (${this.timeOffset}ms offset), Locked: ${this.isLocked}`);
+    this.lastSyncTimestamp = Date.now();
   }
 
-  dispatchUpdate(result) {
-    const event = new CustomEvent('gpstimeupdate', {
-      detail: {
-        timestamp: result.timestamp,
-        date: result.date,
-        time: result.time,
-        source: this.currentSource,
-        isLocked: this.isLocked,
-        offset: this.timeOffset
-      }
-    });
+  maybeShowInitialNotification() {
+    if (this.hasShownInitialSync) {
+      return;
+    }
+
+    const { currentSource, date, time, statusText } = this.currentState;
+    const type = currentSource === "gps-locked"
+      ? "success"
+      : currentSource === "gps-unlocked"
+        ? "warning"
+        : currentSource === "internet-fallback"
+          ? "info"
+          : "warning";
+
+    this.notifications.show(
+      [
+        `<strong>Source:</strong> ${this.getSourceDisplayName(currentSource)}`,
+        date ? `<strong>Date:</strong> ${date}` : null,
+        time ? `<strong>Time:</strong> ${time}` : null,
+        `<strong>Status:</strong> ${statusText}`,
+      ].filter(Boolean).join("<br>"),
+      type,
+      6000,
+    );
+
+    this.hasShownInitialSync = true;
+  }
+
+  dispatchUpdate() {
+    const detail = {
+      ...this.currentState,
+      offset: this.timeOffset,
+      lastSyncTimestamp: this.lastSyncTimestamp,
+    };
+
+    const event = new CustomEvent("gpstimeupdate", { detail });
     this.eventTarget.dispatchEvent(event);
     window.dispatchEvent(event);
+  }
+
+  getSourceDisplayName(source = this.currentState.currentSource) {
+    return {
+      "gps-locked": "GPS RECEIVER",
+      "gps-unlocked": "GPS RECEIVER",
+      "internet-fallback": "INTERNET/NTP",
+      local: "LOCAL TIME",
+    }[source] || source.toUpperCase();
   }
 
   getNow() {
     return new Date(Date.now() + this.timeOffset);
   }
 
-  isGPSLocked() {
-    return this.isLocked;
+  getCurrentState() {
+    return this.currentState;
   }
 
   getCurrentSource() {
-    return this.currentSource;
+    return this.currentState.currentSource;
+  }
+
+  isGPSLocked() {
+    return this.currentState.currentSource === "gps-locked" && this.currentState.isLocked;
   }
 
   startAutoSync() {
-    this.syncTime();
-    this.syncInterval = setInterval(() => {
+    if (this.syncInterval) {
+      return;
+    }
+
+    this.syncInterval = window.setInterval(() => {
       this.syncTime();
-    }, GPS_RETRY_MS);
+    }, APP_CONFIG.syncIntervalMs);
   }
 
   stopAutoSync() {
     if (this.syncInterval) {
-      clearInterval(this.syncInterval);
+      window.clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
   }
@@ -388,22 +404,11 @@ class GPSTimeSync {
   }
 }
 
-// Legacy SyncManager for backwards compatibility
 class SyncManager {
   constructor(statusElement, gpsTimeSync) {
     this.statusElement = statusElement;
     this.gpsTimeSync = gpsTimeSync;
     this.hasSuccessfulSync = false;
-    this.lastSyncTimestamp = null;
-    this.lastRttMs = null;
-    this.errorType = null;
-    this.retryDelayMs = 30000;
-    this.timeoutId = null;
-  }
-
-  calculateBackoff() {
-    this.retryDelayMs = Math.min(this.retryDelayMs * 2, 300000);
-    return this.retryDelayMs;
   }
 
   getNowFromSyncedClock() {
@@ -415,128 +420,124 @@ class SyncManager {
   }
 
   getRelativeLastSync() {
-    if (!this.lastSyncTimestamp) {
+    const { lastSyncTimestamp } = this.gpsTimeSync;
+    if (!lastSyncTimestamp) {
       return "never";
     }
-    const diff = Math.max(0, Date.now() - this.lastSyncTimestamp);
+
+    const diff = Math.max(0, Date.now() - lastSyncTimestamp);
     const minutes = Math.floor(diff / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
     return `${minutes}m ${seconds}s ago`;
   }
 
   formatStatus() {
-    const source = this.gpsTimeSync.getCurrentSource();
-    const locked = this.gpsTimeSync.isGPSLocked() ? "LOCKED" : "UNLOCKED";
-    return `Source: ${source.toUpperCase()} | ${locked} | Last sync: ${this.getRelativeLastSync()}`;
+    const state = this.gpsTimeSync.getCurrentState();
+    const source = this.gpsTimeSync.getSourceDisplayName(state.currentSource);
+    return `Status: ${state.statusText} | Source: ${source} | Last sync: ${this.getRelativeLastSync()}`;
   }
 
-  async sync() {
-    try {
-      const result = await this.gpsTimeSync.syncTime();
-      this.hasSuccessfulSync = true;
-      this.lastSyncTimestamp = Date.now();
-      this.errorType = null;
-      this.retryDelayMs = 30000;
-      this.statusElement.classList.remove("warn");
-      this.statusElement.textContent = this.formatStatus();
-      this.scheduleNext(this.retryDelayMs);
-    } catch (error) {
-      this.errorType = "network";
-      this.statusElement.classList.add("warn");
-      this.statusElement.textContent = `Sync failed: ${error.message}`;
-      this.scheduleNext(this.calculateBackoff());
-    }
+  markSuccessfulSync() {
+    this.hasSuccessfulSync = true;
+    const currentSource = this.gpsTimeSync.getCurrentSource();
+    this.statusElement.classList.toggle("warn", currentSource !== "gps-locked");
+    this.statusElement.textContent = this.formatStatus();
   }
 
-  scheduleNext(delay) {
-    if (this.timeoutId) {
-      window.clearTimeout(this.timeoutId);
-    }
-    this.timeoutId = window.setTimeout(() => this.sync(), delay);
+  markWarning(message) {
+    this.statusElement.classList.add("warn");
+    this.statusElement.textContent = `Status: ${message}`;
   }
 
-  cleanup() {
-    if (this.timeoutId) {
-      window.clearTimeout(this.timeoutId);
-    }
-  }
+  cleanup() {}
 }
 
-// GPS Display Manager
 class GPSDisplayManager {
   constructor(elements, gpsTimeSync) {
     this.elements = elements;
     this.gpsTimeSync = gpsTimeSync;
-    this.sourceColors = {
-      'gps-antenna': 'source-gps',
-      'gps-receiver': 'source-gps',
-      'internet-ntp': 'source-internet',
-      'local': 'source-local'
+    this.sourceClasses = {
+      "gps-locked": "source-gps",
+      "gps-unlocked": "source-gps-warn",
+      "internet-fallback": "source-internet",
+      local: "source-local",
     };
   }
 
   init() {
-    this.gpsTimeSync.addEventListener('gpstimeupdate', (e) => {
-      this.updateDisplay(e.detail);
+    this.gpsTimeSync.addEventListener("gpstimeupdate", (event) => {
+      this.updateDisplay(event.detail);
+    });
+
+    this.updateDisplay({
+      ...this.gpsTimeSync.getCurrentState(),
+      offset: this.gpsTimeSync.timeOffset,
+      lastSyncTimestamp: this.gpsTimeSync.lastSyncTimestamp,
     });
   }
 
   updateDisplay(data) {
-    if (!this.elements.sourceIndicator) return;
-    
-    const sourceClass = this.sourceColors[data.source] || 'source-local';
+    const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
     this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
-    this.elements.sourceIndicator.textContent = this.formatSourceName(data.source);
-    
-    if (this.elements.lockStatus) {
-      this.elements.lockStatus.textContent = data.isLocked ? 'GPS Locked' : 'No GPS Lock';
+    this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+
+    const lockText = this.getLockText(data);
+    this.elements.lockStatus.textContent = lockText;
+    this.elements.lockPulse.classList.toggle("locked", data.currentSource === "gps-locked");
+    this.elements.lockPulse.classList.toggle("warning", data.currentSource === "gps-unlocked");
+
+    if (data.lastSyncTimestamp) {
+      this.elements.lastSyncTime.textContent = `Last sync: ${new Date(data.lastSyncTimestamp).toLocaleTimeString()}`;
     }
-    if (this.elements.lockPulse) {
-      this.elements.lockPulse.classList.toggle('locked', data.isLocked);
-    }
-    
-    if (this.elements.lastSyncTime) {
-      const now = new Date();
-      this.elements.lastSyncTime.textContent = `Last sync: ${now.toLocaleTimeString()}`;
-    }
-    
-    if (this.elements.offsetDisplay) {
-      this.elements.offsetDisplay.textContent = `Offset: ${data.offset}ms`;
-    }
-    
-    if (this.elements.syncStatus) {
-      let statusText;
-      let statusColor;
-      
-      if (data.source === 'gps-receiver') {
-        if (data.isLocked) {
-          statusText = 'GPS-disciplined oscillator locked';
-          statusColor = '#008800';
-        } else {
-          statusText = 'GPS receiver time (no satellite lock)';
-          statusColor = '#c06c00';
-        }
-      } else if (data.source === 'internet-ntp') {
-        statusText = 'Using Internet/NTP fallback';
-        statusColor = '#c06c00';
-      } else {
-        statusText = 'Using local computer time';
-        statusColor = '#df2d2d';
-      }
-      
-      this.elements.syncStatus.textContent = statusText;
-      this.elements.syncStatus.style.color = statusColor;
-    }
+
+    this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
+
+    const sourceDescription = this.getPrimarySourceDescription(data);
+    const sourceNote = this.getPrimarySourceNote(data);
+    this.elements.primarySourceDescription.textContent = sourceDescription;
+    this.elements.primarySourceNote.textContent = sourceNote;
+    this.elements.syncStatus.textContent = `Status: ${data.statusText}`;
+    this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
   }
 
-  formatSourceName(source) {
-    const names = {
-      'gps-antenna': 'GPS ANTENNA',
-      'gps-receiver': 'GPS RECEIVER',
-      'internet-ntp': 'INTERNET/NTP',
-      'local': 'LOCAL TIME'
-    };
-    return names[source] || source.toUpperCase();
+  getLockText(data) {
+    if (data.currentSource === "gps-locked") {
+      return "GPS receiver locked";
+    }
+    if (data.currentSource === "gps-unlocked") {
+      return "GPS receiver reachable but unlocked";
+    }
+    if (data.currentSource === "internet-fallback") {
+      return "Receiver unavailable — Internet fallback active";
+    }
+    return "Receiver unavailable — local fallback active";
+  }
+
+  getPrimarySourceDescription(data) {
+    if (data.currentSource === "gps-locked") {
+      return "Primary source: Symmetricom XLi receiver is reachable, authenticated, and locked.";
+    }
+    if (data.currentSource === "gps-unlocked") {
+      return "Primary source preferred, but the Symmetricom XLi receiver is reachable without current GPS lock.";
+    }
+    if (data.currentSource === "internet-fallback") {
+      return "Primary GPS receiver is not providing locked time, so Internet time fallback is active via the backend.";
+    }
+    return "Remote time sources are unavailable, so the display is currently using local computer time.";
+  }
+
+  getPrimarySourceNote(data) {
+    const parts = [];
+    parts.push(`Runtime source: ${this.gpsTimeSync.getSourceDisplayName(data.currentSource)}.`);
+    if (data.receiverReachable) {
+      parts.push(data.loginOk ? "Receiver login succeeded." : "Receiver reachable but login failed.");
+    } else {
+      parts.push("Receiver is not currently reachable.");
+    }
+    if (data.lastError) {
+      parts.push(`Last error: ${data.lastError}`);
+    }
+    return parts.join(" ");
   }
 }
 
@@ -583,32 +584,38 @@ class DisplayManager {
     localStorage.setItem("darkMode", enabled ? "1" : "0");
   }
 
-  updateUrl(mode) {
-    const url = new URL(window.location);
-    
-    if (mode === 'analog-only') {
-      url.searchParams.set('mode', 'analog-only');
-    } else if (mode === 'analog') {
-      url.searchParams.set('mode', 'analog');
-    } else if (mode === 'digital') {
-      url.searchParams.set('mode', 'digital');
-    } else {
-      url.searchParams.delete('mode');
-    }
-    
-    window.history.replaceState({}, '', url);
+  toggleDarkMode() {
+    this.applyDarkMode(!this.darkMode);
   }
 
-  toggleDarkMode() { this.applyDarkMode(!this.darkMode); }
-  togglePrecisionMode() { this.applyPrecisionMode(!this.showMilliseconds); }
-  togglePause() { this.paused = !this.paused; }
+  togglePrecisionMode() {
+    this.applyPrecisionMode(!this.showMilliseconds);
+  }
+
+  togglePause() {
+    this.paused = !this.paused;
+  }
+
+  updateUrl(mode) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("mode", mode);
+    window.history.replaceState({}, "", url);
+  }
+
+  applyPrecisionMode(enabled) {
+    this.showMilliseconds = enabled;
+    this.elements.millisecondsTile.classList.toggle("hidden", !enabled);
+    this.elements.precisionToggleBtn.textContent = `Precision: ${enabled ? "ON" : "OFF"}`;
+    this.elements.precisionToggleBtn.setAttribute("aria-pressed", String(enabled));
+    localStorage.setItem("precisionMode", enabled ? "1" : "0");
+  }
 
   setPrecisionVisibility(isVisible) {
     this.elements.precisionToggleBtn.classList.toggle("hidden", !isVisible);
   }
 
   setDigitalControlsVisibility(isVisible) {
-    this.elements.digitalOnlyControls?.classList.toggle("hidden", !isVisible);
+    this.elements.digitalOnlyControls.classList.toggle("hidden", !isVisible);
   }
 
   showSection(section) {
@@ -622,13 +629,14 @@ class DisplayManager {
     window.setTimeout(() => {
       section.classList.add("hidden");
       section.classList.remove("is-fading");
-    }, MODE_TRANSITION_MS);
+    }, APP_CONFIG.modeTransitionMs);
   }
 
   setMode(mode) {
     this.mode = mode;
-    this.updateUrl(mode);
     document.body.classList.remove("analog-only", "old-style");
+    this.updateUrl(mode);
+
     const isDigital = mode === "digital";
     if (isDigital) {
       this.showSection(this.elements.digitalClock);
@@ -636,24 +644,24 @@ class DisplayManager {
       this.setPrecisionVisibility(true);
       this.setDigitalControlsVisibility(true);
     } else {
-      this.setPrecisionVisibility(true);
-      this.setDigitalControlsVisibility(false);
       document.body.classList.add("old-style");
       this.showSection(this.elements.analogClock);
       this.hideSection(this.elements.digitalClock);
+      this.setPrecisionVisibility(true);
+      this.setDigitalControlsVisibility(false);
     }
 
     this.elements.digitalModeBtn.classList.toggle("active", isDigital);
-    this.elements.analogModeBtn.classList.toggle("active", !isDigital);
-    this.elements.analogOnlyBtn.classList.remove("active");
+    this.elements.analogModeBtn.classList.toggle("active", mode === "analog");
+    this.elements.analogOnlyBtn.classList.toggle("active", false);
     this.elements.digitalModeBtn.setAttribute("aria-pressed", String(isDigital));
-    this.elements.analogModeBtn.setAttribute("aria-pressed", String(!isDigital));
+    this.elements.analogModeBtn.setAttribute("aria-pressed", String(mode === "analog"));
     this.elements.analogOnlyBtn.setAttribute("aria-pressed", "false");
   }
 
   setAnalogOnlyMode() {
     this.mode = "analog-only";
-    this.updateUrl('analog-only');
+    this.updateUrl("analog-only");
     document.body.classList.remove("old-style");
     document.body.classList.add("analog-only");
     this.elements.digitalClock.classList.add("hidden");
@@ -661,16 +669,11 @@ class DisplayManager {
     this.elements.digitalModeBtn.classList.remove("active");
     this.elements.analogModeBtn.classList.remove("active");
     this.elements.analogOnlyBtn.classList.add("active");
+    this.elements.digitalModeBtn.setAttribute("aria-pressed", "false");
+    this.elements.analogModeBtn.setAttribute("aria-pressed", "false");
+    this.elements.analogOnlyBtn.setAttribute("aria-pressed", "true");
     this.setPrecisionVisibility(true);
     this.setDigitalControlsVisibility(false);
-  }
-
-  applyPrecisionMode(enabled) {
-    this.showMilliseconds = enabled;
-    this.elements.millisecondsTile.classList.toggle("hidden", !enabled);
-    this.elements.precisionToggleBtn.textContent = `Precision: ${enabled ? "ON" : "OFF"}`;
-    this.elements.precisionToggleBtn.setAttribute("aria-pressed", String(enabled));
-    localStorage.setItem("precisionMode", enabled ? "1" : "0");
   }
 
   updateDigital(oman, now) {
@@ -682,21 +685,14 @@ class DisplayManager {
       dateLine: OMAN_DATE_LINE_FORMATTER.format(now),
     };
 
-    if (digitalState.hours !== this.lastRenderedDigital.hours) {
-      this.elements.hours.textContent = digitalState.hours;
-    }
-    if (digitalState.minutes !== this.lastRenderedDigital.minutes) {
-      this.elements.minutes.textContent = digitalState.minutes;
-    }
-    if (digitalState.seconds !== this.lastRenderedDigital.seconds) {
-      this.elements.seconds.textContent = digitalState.seconds;
-    }
-    if (digitalState.milliseconds !== this.lastRenderedDigital.milliseconds) {
-      this.elements.milliseconds.textContent = digitalState.milliseconds;
-    }
-    if (digitalState.dateLine !== this.lastRenderedDigital.dateLine) {
-      this.elements.dateLine.textContent = digitalState.dateLine;
-    }
+    Object.entries(digitalState).forEach(([key, value]) => {
+      if (value === this.lastRenderedDigital[key]) {
+        return;
+      }
+      if (this.elements[key]) {
+        this.elements[key].textContent = value;
+      }
+    });
 
     this.lastRenderedDigital = digitalState;
   }
@@ -714,12 +710,14 @@ class DisplayManager {
     const timeText = this.showMilliseconds
       ? `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}.${String(ms).padStart(3, "0")}`
       : `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}`;
-    if (this.elements.analogTimeText && timeText !== this.lastRenderedAnalog.timeText) {
+
+    if (timeText !== this.lastRenderedAnalog.timeText && this.elements.analogTimeText) {
       this.elements.analogTimeText.textContent = timeText;
     }
-    if (this.elements.analogDateText && oman.date !== this.lastRenderedAnalog.dateText) {
+    if (oman.date !== this.lastRenderedAnalog.dateText && this.elements.analogDateText) {
       this.elements.analogDateText.textContent = oman.date;
     }
+
     this.lastRenderedAnalog = { timeText, dateText: oman.date };
   }
 
@@ -728,6 +726,7 @@ class DisplayManager {
       this.elements.driftMonitor.classList.add("hidden");
       return;
     }
+
     const currentSecond = Math.floor(now.getTime() / 1000);
     if (currentSecond === this.lastDriftSecond) {
       return;
@@ -746,9 +745,10 @@ class DisplayManager {
 }
 
 class InputHandler {
-  constructor(elements, displayManager) {
+  constructor(elements, displayManager, gpsTimeSync) {
     this.elements = elements;
     this.displayManager = displayManager;
+    this.gpsTimeSync = gpsTimeSync;
     this.listeners = [];
   }
 
@@ -769,14 +769,14 @@ class InputHandler {
     this.add(this.elements.precisionToggleBtn, "click", () => this.displayManager.togglePrecisionMode());
     this.add(this.elements.setTimeComputerBtn, "click", () => this.handleSetGpsTime(false));
     this.add(this.elements.setTimeInternetBtn, "click", () => this.handleSetGpsTime(true));
-    this.add(document, "keydown", (e) => this.handleKeys(e));
+    this.add(document, "keydown", (event) => this.handleKeys(event));
   }
 
   async handleSetGpsTime(useInternet) {
-    const sourceLabel = useInternet ? "INTERNET" : "THIS COMPUTER";
+    const sourceLabel = useInternet ? "Internet" : "this computer";
     const confirmationText = useInternet
-      ? "Set GPS receiver time from INTERNET?\n\nThis is more precise than computer time."
-      : "Set GPS receiver time from THIS COMPUTER?\n\nMake sure your computer time is accurate!";
+      ? "Set GPS receiver time from Internet?\n\nThis uses the backend Internet fallback source."
+      : "Set GPS receiver time from this computer?\n\nThis uses the current Oman time derived from this computer clock.";
 
     if (!window.confirm(confirmationText)) {
       return;
@@ -785,26 +785,32 @@ class InputHandler {
     const button = useInternet ? this.elements.setTimeInternetBtn : this.elements.setTimeComputerBtn;
     const originalText = button.textContent;
     button.disabled = true;
-    button.textContent = "Updating...";
+    button.textContent = "Updating…";
 
     try {
-      const response = await fetch("http://localhost:3000/api/time/set", {
+      const response = await fetch(`${this.gpsTimeSync.apiBaseUrl}/time/set`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ useInternet }),
       });
       const result = await response.json();
-
       if (!response.ok || !result.success) {
         throw new Error(result.error || `Failed to set GPS time from ${sourceLabel}`);
       }
 
       window.showNotification(
-        `GPS time updated from ${sourceLabel}<br><strong>Date:</strong> ${result.date}<br><strong>Time:</strong> ${result.time}${result.source ? `<br><strong>Source:</strong> ${result.source}` : ""}<br><strong>Refreshing page…</strong>`,
+        [
+          `<strong>GPS time updated</strong>`,
+          `<strong>Source:</strong> ${result.source}`,
+          `<strong>Date:</strong> ${result.date}`,
+          `<strong>Time:</strong> ${result.time}`,
+          `<strong>Status:</strong> Refreshing display…`,
+        ].join("<br>"),
         "success",
-        4500
+        4200,
       );
-      window.setTimeout(() => window.location.reload(), 1200);
+
+      await this.gpsTimeSync.syncTime();
     } catch (error) {
       window.showNotification(error.message, "error", 5000);
     } finally {
@@ -813,14 +819,14 @@ class InputHandler {
     }
   }
 
-  handleKeys(e) {
-    if (e.code === "Space") {
-      e.preventDefault();
+  handleKeys(event) {
+    if (event.code === "Space") {
+      event.preventDefault();
       this.displayManager.togglePause();
       return;
     }
 
-    const key = e.key.toLowerCase();
+    const key = event.key.toLowerCase();
     if (key === "1") this.displayManager.setMode("digital");
     if (key === "2") this.displayManager.setMode("analog");
     if (key === "3") this.displayManager.setAnalogOnlyMode();
@@ -832,7 +838,7 @@ class InputHandler {
         document.exitFullscreen?.();
       }
     }
-    if (e.key === "Escape" && document.body.classList.contains("analog-only")) {
+    if (event.key === "Escape" && document.body.classList.contains("analog-only")) {
       this.displayManager.setMode("digital");
     }
   }
@@ -853,6 +859,8 @@ class PrecisionClock {
       millisecondsTile: document.getElementById("millisecondsTile"),
       dateLine: document.getElementById("dateLine"),
       syncStatus: document.getElementById("syncStatus"),
+      primarySourceDescription: document.getElementById("primarySourceDescription"),
+      primarySourceNote: document.getElementById("primarySourceNote"),
       ptbClockSvg: document.getElementById("ptbClockSvg"),
       hourHand: null,
       minuteHand: null,
@@ -878,13 +886,13 @@ class PrecisionClock {
       setTimeComputerBtn: document.getElementById("setTimeComputerBtn"),
       setTimeInternetBtn: document.getElementById("setTimeInternetBtn"),
     };
+
     this.analogDial = this.elements.ptbClockSvg;
-    
     this.gpsTimeSync = new GPSTimeSync();
     this.syncManager = new SyncManager(this.elements.syncStatus, this.gpsTimeSync);
     this.gpsDisplay = new GPSDisplayManager(this.elements, this.gpsTimeSync);
     this.displayManager = new DisplayManager(this.elements, this.syncManager, this.gpsTimeSync);
-    this.inputHandler = new InputHandler(this.elements, this.displayManager);
+    this.inputHandler = new InputHandler(this.elements, this.displayManager, this.gpsTimeSync);
     this.rafId = null;
     this.boundVisibility = () => this.handleVisibilityChange();
     this.boundUnload = () => this.cleanup();
@@ -896,25 +904,27 @@ class PrecisionClock {
     this.buildAnalogDial();
     this.displayManager.initVisualPreferences();
     this.displayManager.setPrecisionVisibility(false);
-    
+
     await this.gpsTimeSync.init();
     this.gpsDisplay.init();
-    
+    this.syncManager.markSuccessfulSync();
+
     const urlMode = new URLSearchParams(window.location.search).get("mode");
-    if (urlMode === 'analog-only') {
+    if (urlMode === "analog-only") {
       this.displayManager.setAnalogOnlyMode();
-    } else if (urlMode === 'analog') {
-      this.displayManager.setMode('analog');
-    } else if (urlMode === 'digital') {
-      this.displayManager.setMode('digital');
+    } else if (urlMode === "analog") {
+      this.displayManager.setMode("analog");
     } else {
       this.displayManager.setMode("digital");
     }
-    
+
+    this.gpsTimeSync.addEventListener("gpstimeupdate", () => {
+      this.syncManager.markSuccessfulSync();
+    });
+
     this.inputHandler.init();
     document.addEventListener("visibilitychange", this.boundVisibility);
     window.addEventListener("beforeunload", this.boundUnload);
-    this.syncManager.sync();
     this.startRenderLoop();
   }
 
@@ -947,7 +957,7 @@ class PrecisionClock {
     const ns = "http://www.w3.org/2000/svg";
     const make = (tag, attrs = {}) => {
       const el = document.createElementNS(ns, tag);
-      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, String(v)));
+      Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
       return el;
     };
 
@@ -990,19 +1000,13 @@ class PrecisionClock {
       const angle = ((i * 30 - 90) * Math.PI) / 180;
       const x = 400 + 300 * Math.cos(angle);
       const y = 400 + 300 * Math.sin(angle);
-      const t = make("text", { x: x.toFixed(3), y: y.toFixed(3) });
-      t.textContent = String(i);
-      numbers.append(t);
+      const text = make("text", { x: x.toFixed(3), y: y.toFixed(3) });
+      text.textContent = String(i);
+      numbers.append(text);
     }
     svg.append(numbers);
 
-    const logo = make("g", { transform: "translate(250 400)", opacity: 0.88, filter: "url(#logoShadow)" });
-    logo.append(make("circle", { cx: -24, cy: -4, r: 30, fill: "#1a6b8c" }));
-    logo.append(make("circle", { cx: -24, cy: -4, r: 20, fill: "none", stroke: "#e8e8e8", "stroke-width": 3 }));
-    logo.append(make("line", { x1: -24, y1: -24, x2: -24, y2: 16, stroke: "#e8e8e8", "stroke-width": 3 }));
-    logo.append(make("line", { x1: -44, y1: -4, x2: -4, y2: -4, stroke: "#e8e8e8", "stroke-width": 3 }));
-
-    const dateText = make("text", { x: 400, y: 160, fill: "#1a6b8c", "font-size": 26, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" , "font-weight": "bold" });
+    const dateText = make("text", { x: 400, y: 160, fill: "#1a6b8c", "font-size": 26, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle", "font-weight": "bold" });
     dateText.textContent = "06.03.2026";
     svg.append(dateText);
 
@@ -1037,8 +1041,7 @@ class PrecisionClock {
 
   getOmanParts(now) {
     const parts = OMAN_ANALOG_PARTS_FORMATTER.formatToParts(now);
-
-    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     return {
       hour: Number(map.hour),
       minute: Number(map.minute),
@@ -1051,6 +1054,7 @@ class PrecisionClock {
     if (this.rafId) {
       return;
     }
+
     const renderFrame = () => {
       if (!this.displayManager.paused) {
         const now = this.gpsTimeSync.getNow();
@@ -1059,18 +1063,18 @@ class PrecisionClock {
         this.displayManager.updateAnalog(oman, now);
         this.displayManager.updateDrift(now);
       }
-      if (this.syncManager.hasSuccessfulSync) {
-        this.elements.syncStatus.textContent = this.syncManager.formatStatus();
-      }
-      this.rafId = requestAnimationFrame(renderFrame);
+
+      this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+      this.rafId = window.requestAnimationFrame(renderFrame);
     };
-    this.rafId = requestAnimationFrame(renderFrame);
+
+    this.rafId = window.requestAnimationFrame(renderFrame);
   }
 
   handleVisibilityChange() {
     if (document.hidden) {
       if (this.rafId) {
-        cancelAnimationFrame(this.rafId);
+        window.cancelAnimationFrame(this.rafId);
         this.rafId = null;
       }
       return;
@@ -1080,7 +1084,7 @@ class PrecisionClock {
 
   cleanup() {
     if (this.rafId) {
-      cancelAnimationFrame(this.rafId);
+      window.cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
     document.removeEventListener("visibilitychange", this.boundVisibility);
@@ -1091,15 +1095,20 @@ class PrecisionClock {
   }
 }
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => new PrecisionClock().init());
-} else {
-  new PrecisionClock().init();
-}
-
-// Global notification helper for inline scripts
+window.notificationManager = new NotificationManager();
 window.showNotification = (message, type, duration) => {
-  const nm = new NotificationManager();
-  nm.show(message, type, duration);
+  window.notificationManager.show(message, type, duration);
 };
+
+const bootClock = () => {
+  new PrecisionClock().init().catch((error) => {
+    console.error("Clock initialization failed:", error);
+    window.showNotification(`Initialization failed: ${error.message}`, "error", 6000);
+  });
+};
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootClock, { once: true });
+} else {
+  bootClock();
+}
