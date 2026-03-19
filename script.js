@@ -905,7 +905,7 @@ class PrecisionClock {
     logo.append(make("line", { x1: -24, y1: -24, x2: -24, y2: 16, stroke: "#e8e8e8", "stroke-width": 3 }));
     logo.append(make("line", { x1: -44, y1: -4, x2: -4, y2: -4, stroke: "#e8e8e8", "stroke-width": 3 }));
 
-    const dateText = make("text", { x: 400, y: 160, fill: "#1a6b8c", "font-size": 26, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const dateText = make("text", { x: 400, y: 160, fill: "#1a6b8c", "font-size": 26, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" , "font-weight": "bold" });
     dateText.textContent = "06.03.2026";
     svg.append(dateText);
 
@@ -913,7 +913,7 @@ class PrecisionClock {
     timeText.textContent = "01:36:21";
     svg.append(timeText);
 
-    const tzText = make("text", { x: 400, y: 510, fill: "#1a6b8c", "font-size": 17, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle" });
+    const tzText = make("text", { x: 400, y: 560, fill: "#1a6b8c", "font-size": 17, "font-family": "Arial, Helvetica, sans-serif", "text-anchor": "middle", "font-weight": "bold" });
     tzText.textContent = "MCT (UTC+04:00)";
     svg.append(tzText);
 
