@@ -1,15 +1,23 @@
 {
   "name": "rafo-gps-time-display",
-  "version": "1.0.0",
-  "description": "RAFO Calibration Center GPS Time Display with 1510-602 Receiver Integration",
+  "version": "1.1.0",
+  "description": "RAFO Calibration Center Oman time display with a Netlify frontend and Express GPS proxy backend",
   "main": "gps-proxy.js",
   "scripts": {
     "start": "node gps-proxy.js",
-    "dev": "nodemon gps-proxy.js"
+    "dev": "nodemon gps-proxy.js",
+    "check": "node --check gps-proxy.js && node --check script.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }
