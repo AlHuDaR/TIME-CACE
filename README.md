@@ -11,6 +11,7 @@ RAFO Calibration Center Time Display is a browser-based Oman time dashboard for 
 - Can consume:
   - same-origin `/api` routes if a reverse proxy exists, or
   - a separately hosted backend via `window.APP_CONFIG.API_BASE_URL`.
+- Keeps the existing time-sync flow on `GET /api/time`, and now also supports a separate lightweight `GET /api/status` polling loop for backend/receiver health updates.
 
 ### Backend
 
@@ -19,7 +20,8 @@ RAFO Calibration Center Time Display is a browser-based Oman time dashboard for 
 - logs into the Symmetricom XLi receiver,
 - reads and sets receiver time,
 - provides Internet fallback time derived from HTTP `Date` headers,
-- returns structured runtime source and lock state for the frontend.
+- returns structured runtime source and lock state for the frontend,
+- optionally enforces token auth and route-aware rate limits for deployments outside a trusted internal network.
 
 The backend should be deployed separately from Netlify, for example on a private VM, Docker host, or internal Node.js service.
 
@@ -29,10 +31,12 @@ The backend should be deployed separately from Netlify, for example on a private
 - Old-style analog watch mode.
 - Analog-only fullscreen mode.
 - GPS status bar with receiver/runtime source messaging.
+- Separate system-status polling for backend and receiver health.
 - Dark mode toggle.
 - Precision toggle for milliseconds.
 - Set GPS time from computer or Internet fallback source.
 - Structured backend status endpoint for lock and reachability reporting.
+- Optional API auth and rate limiting for hardened deployments.
 
 ## API Endpoints
 
@@ -55,6 +59,9 @@ Returns receiver state such as:
 - `statusText`
 - `currentSource`
 - `lastError`
+- `checkedAt`
+
+This endpoint is intended for optional frontend health polling separate from the main time-sync cycle. The clock still uses `GET /api/time` for authoritative time updates; status polling only refreshes operational state.
 
 ## Environment Variables
 
@@ -70,8 +77,43 @@ Create a `.env` file for local backend development.
 | `ALLOWED_ORIGIN` | Recommended | Exact frontend origin allowed by CORS. You can provide multiple comma-separated origins if needed. |
 | `SERVE_STATIC` | No | When `true`, the backend also serves `index.html`, `script.js`, and other static assets for local convenience. Default: `true` outside production, `false` in production. |
 | `NODE_ENV` | No | Set to `production` to make default CORS behavior stricter and disable static serving unless `SERVE_STATIC=true`. |
+| `MIN_CONNECTION_INTERVAL_MS` | No | Minimum spacing between receiver TCP sessions. Default: `5000`. |
+| `REQUEST_TIMEOUT_MS` | No | Receiver socket timeout in milliseconds. Default: `15000`. |
+| `RECEIVER_STATUS_CACHE_MS` | No | Short cache window used to avoid duplicate receiver reads when `/api/time` and `/api/status` are called near each other. Default: `4000`. |
+| `API_AUTH_ENABLED` | No | Set to `true` to require an API token on `/api/time`, `/api/time/internet`, `/api/time/set`, and `/api/status`. Default: `false`. |
+| `API_AUTH_TOKEN` | Required if `API_AUTH_ENABLED=true` | Shared bearer/API-key token accepted via `Authorization: Bearer ...` or `X-API-Key`. |
+| `RATE_LIMIT_WINDOW_MS` | No | Shared rate-limit window for API routes. Default: `60000`. |
+| `RATE_LIMIT_TIME_MAX` | No | Max `GET /api/time` requests per client per window. Default: `90`. |
+| `RATE_LIMIT_STATUS_MAX` | No | Max `GET /api/status` requests per client per window. Default: `30`. |
+| `RATE_LIMIT_INTERNET_MAX` | No | Max `GET /api/time/internet` requests per client per window. Default: `60`. |
+| `RATE_LIMIT_SET_MAX` | No | Max `POST /api/time/set` requests per client per window. Default: `8`. |
 
 See `.env.example` for a template.
+
+## Frontend Runtime Configuration
+
+The frontend still resolves its API base in this order:
+
+1. `window.APP_CONFIG.API_BASE_URL`
+2. same-origin `/api`
+3. localhost fallback for non-HTTP local usage
+
+Additional optional frontend runtime settings are now supported:
+
+```html
+<script>
+  window.APP_CONFIG = {
+    API_BASE_URL: "https://your-backend.example.com/api",
+    STATUS_POLLING_ENABLED: true,
+    STATUS_POLLING_INTERVAL_MS: 15000,
+    API_AUTH_TOKEN: "same-token-configured-on-backend-if-auth-is-enabled"
+  };
+</script>
+```
+
+- `STATUS_POLLING_ENABLED` defaults to `true`. Set it to `false` if you want the UI to rely only on `/api/time` updates.
+- `STATUS_POLLING_INTERVAL_MS` defaults to `15000`.
+- `API_AUTH_TOKEN` is only needed when backend auth is enabled.
 
 ## Local Development
 
@@ -129,6 +171,17 @@ If you serve the frontend from another local origin, also allow that origin in t
 ALLOWED_ORIGIN=http://localhost:5500
 ```
 
+If you enable backend auth locally, also inject the same token on the frontend:
+
+```html
+<script>
+  window.APP_CONFIG = {
+    API_BASE_URL: "http://localhost:3000/api",
+    API_AUTH_TOKEN: "replace-with-a-long-random-token"
+  };
+</script>
+```
+
 ## Netlify Frontend Deployment
 
 This project is **not purely static anymore** because the frontend depends on a separate backend for GPS/Internet time and receiver control.
@@ -149,6 +202,8 @@ If the backend is not mounted behind the same origin under `/api`, inject the ba
   };
 </script>
 ```
+
+If the backend requires auth, inject `API_AUTH_TOKEN` the same way.
 
 ### CORS
 
@@ -175,10 +230,13 @@ ALLOWED_ORIGIN=https://your-site.netlify.app,https://deploy-preview-12--your-sit
   - GPS receiver reachable but unlocked,
   - Internet fallback,
   - local fallback.
+- The frontend now polls `/api/status` independently, so operator-facing health indicators can update between full time synchronizations without changing the clock source or displayed time.
 
 ## Security Notes
 
 - Store receiver credentials only in environment variables.
 - Restrict backend CORS with `ALLOWED_ORIGIN` in production.
+- Enable `API_AUTH_ENABLED=true` and set a strong `API_AUTH_TOKEN` if the backend is exposed outside a fully trusted internal network.
+- Rate limits are per-client and route-specific; tune them carefully if you expect wall displays, monitoring, or control traffic from many clients.
 - Keep the backend on a trusted network if it can reach the receiver over Telnet/TCP.
 - The Internet fallback endpoint uses HTTP response headers as a pragmatic fallback source; it is not a true NTP implementation.

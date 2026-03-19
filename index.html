@@ -33,6 +33,7 @@
         <div class="gps-details">
           <span id="lastSyncTime">Last sync: Never</span>
           <span id="offsetDisplay">Offset: 0 ms</span>
+          <span id="statusFreshness">System status: Waiting for first poll</span>
           <span id="digitalOnlyControls" class="digital-controls">
             <button id="setTimeComputerBtn" class="mode-btn digital-controls-btn" title="Set GPS time from this computer">Set GPS (PC)</button>
             <button id="setTimeInternetBtn" class="mode-btn digital-controls-btn" title="Set GPS time from Internet fallback">Set GPS (Internet)</button>
@@ -99,6 +100,35 @@
             Preferred source: Symmetricom XLi receiver disciplined to Oman time when available.
           </p>
           <p id="syncStatus" class="status">Status: Initializing…</p>
+          <div class="system-status-panel" aria-live="polite">
+            <p class="system-status-title">System status</p>
+            <div class="system-status-grid">
+              <div class="system-status-item">
+                <span class="system-status-label">Backend</span>
+                <span id="systemBackend" class="system-status-value">Unknown</span>
+              </div>
+              <div class="system-status-item">
+                <span class="system-status-label">Receiver</span>
+                <span id="systemReceiver" class="system-status-value">Unknown</span>
+              </div>
+              <div class="system-status-item">
+                <span class="system-status-label">Login</span>
+                <span id="systemLogin" class="system-status-value">Unknown</span>
+              </div>
+              <div class="system-status-item">
+                <span class="system-status-label">GPS Lock</span>
+                <span id="systemLock" class="system-status-value">Unknown</span>
+              </div>
+              <div class="system-status-item system-status-item-wide">
+                <span class="system-status-label">Receiver source</span>
+                <span id="systemSource" class="system-status-value">Unknown</span>
+              </div>
+              <div class="system-status-item system-status-item-wide">
+                <span class="system-status-label">Last error</span>
+                <span id="systemError" class="system-status-value system-status-error">None</span>
+              </div>
+            </div>
+          </div>
         </article>
       </section>
 
