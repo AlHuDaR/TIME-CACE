@@ -4,9 +4,13 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const path = require('path');
 const net = require('net');
+const { exec } = require('child_process'); // Added for optional auto-open
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Oman timezone offset (GST = UTC+4)
+const OMAN_OFFSET_MS = 4 * 60 * 60 * 1000;
 
 // Track last connection time
 let lastConnectionAttempt = 0;
@@ -26,7 +30,7 @@ app.use(express.json());
 const publicPath = path.resolve(__dirname);
 app.use(express.static(publicPath));
 
-// Helper: Format date consistently
+// Helper: Format date consistently (uses server locale for fallback only)
 function formatDate(date) {
   return new Intl.DateTimeFormat('en-US', {
     month: '2-digit',
@@ -167,7 +171,7 @@ function connectToGPS(command, expectOk = false) {
   });
 }
 
-// GET /api/time - Read GPS (receiver already returns Oman time in F69 UTC mode)
+// GET /api/time - Read GPS (receiver returns Oman time)
 app.get('/api/time', async (req, res) => {
   const now = Date.now();
   const timeSinceLastAttempt = now - lastConnectionAttempt;
@@ -181,39 +185,39 @@ app.get('/api/time', async (req, res) => {
   try {
     const response = await connectToGPS('F3\r\n');
     
-    // Parse: "F3 UTC 03/08/2026 00:46:00" (already Oman time!)
+    // Parse: "F3 UTC 03/08/2026 00:46:00" (this is Oman time from receiver)
     const match = response.match(/F3\s+\w+\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
+    let dateStr, timeStr;
+    
     if (!match) {
       // Fallback for older format
       const simpleMatch = response.match(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
       if (!simpleMatch) throw new Error('Could not parse time');
-      var [_, dateStr, timeStr] = simpleMatch;
+      [_, dateStr, timeStr] = simpleMatch;
     } else {
-      var [_, dateStr, timeStr] = match;
+      [_, dateStr, timeStr] = match;
     }
     
-    // Receiver in F69 UTC mode with +4 offset already returns Oman time!
-    // NO CONVERSION NEEDED
+    // Parse Oman time components
     const [month, day, year] = dateStr.split('/').map(Number);
     const [hours, minutes, seconds] = timeStr.split(':').map(Number);
     
-    // Create timestamp from parsed time (treat as local Oman time)
-    const omanDate = new Date(year, month - 1, day, hours, minutes, seconds);
+    // Create UTC timestamp from Oman time: Oman is UTC+4, so UTC = Oman - 4 hours
+    // We use Date.UTC to treat the parsed numbers as UTC, then subtract the offset
+    const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds) - OMAN_OFFSET_MS;
     
-    // FIXED: Return flat structure for frontend compatibility
     res.json({
       success: true,
       source: 'gps-receiver',
       date: dateStr,
       time: timeStr,
       timezone: 'GST (UTC+04:00)',
-      timestamp: omanDate.getTime(),
+      timestamp: utcTimestamp,  // Now sends UTC timestamp for correct offset calculation
       raw: response.trim()
     });
     
   } catch (error) {
     console.error('GPS Connection Error:', error.message);
-    // FIXED: Return fallback data even on error
     const fallbackDate = new Date();
     res.status(503).json({
       success: false,
@@ -227,35 +231,37 @@ app.get('/api/time', async (req, res) => {
   }
 });
 
-// POST /api/time/set - Set GPS time (send Oman time directly!)
+// POST /api/time/set - Set GPS time
 app.post('/api/time/set', async (req, res) => {
   try {
-    let omanTime, source;
+    let omanTimeMs, source;
     
     if (req.body.useInternet) {
       // Internet time is UTC, add 4 hours to get Oman time
       const internetTime = await getPreciseInternetTime();
-      omanTime = new Date(internetTime.timestamp + (4 * 60 * 60 * 1000));
+      omanTimeMs = internetTime.timestamp + OMAN_OFFSET_MS;
       source = 'internet';
     } else {
-      // PC time is Oman time
-      omanTime = new Date();
+      // PC time - assume PC is set to Oman time
+      omanTimeMs = Date.now();
       source = 'computer';
     }
     
-    // Format Oman time for receiver (receiver in F69 UTC mode expects Oman time!)
-    const mm = String(omanTime.getMonth() + 1).padStart(2, '0');
-    const dd = String(omanTime.getDate()).padStart(2, '0');
-    const yyyy = omanTime.getFullYear();
-    const hh = String(omanTime.getHours()).padStart(2, '0');
-    const min = String(omanTime.getMinutes()).padStart(2, '0');
-    const ss = String(omanTime.getSeconds()).padStart(2, '0');
+    // Create date object from Oman timestamp
+    const omanDate = new Date(omanTimeMs);
+    
+    // Use UTC methods to format Oman time correctly regardless of server timezone
+    const mm = String(omanDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(omanDate.getUTCDate()).padStart(2, '0');
+    const yyyy = omanDate.getUTCFullYear();
+    const hh = String(omanDate.getUTCHours()).padStart(2, '0');
+    const min = String(omanDate.getUTCMinutes()).padStart(2, '0');
+    const ss = String(omanDate.getUTCSeconds()).padStart(2, '0');
     
     // Send Oman time directly (receiver handles it as local time)
     const command = `F3 UTC ${mm}/${dd}/${yyyy} ${hh}:${min}:${ss}\r\n`;
     await connectToGPS(command, true);
     
-    // FIXED: Return flat structure
     res.json({
       success: true,
       message: 'GPS time set successfully',
@@ -274,23 +280,32 @@ app.post('/api/time/set', async (req, res) => {
   }
 });
 
-// GET /api/time/ntp - Internet time (returns Oman time)
+// GET /api/time/ntp - Internet time (returns Oman time display, UTC timestamp)
 app.get('/api/time/ntp', async (req, res) => {
   try {
     const internetTime = await getPreciseInternetTime();
-    const omanTime = new Date(internetTime.timestamp + (4 * 60 * 60 * 1000));
     
-    // FIXED: Return flat structure
+    // Calculate Oman time for display purposes
+    const omanTimeMs = internetTime.timestamp + OMAN_OFFSET_MS;
+    const omanDate = new Date(omanTimeMs);
+    
+    // Use UTC methods to format Oman time string correctly regardless of server timezone
+    const mm = String(omanDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(omanDate.getUTCDate()).padStart(2, '0');
+    const yyyy = omanDate.getUTCFullYear();
+    const hh = String(omanDate.getUTCHours()).padStart(2, '0');
+    const min = String(omanDate.getUTCMinutes()).padStart(2, '0');
+    const ss = String(omanDate.getUTCSeconds()).padStart(2, '0');
+    
     res.json({
       success: true,
       source: 'internet-ntp',
-      date: `${String(omanTime.getMonth()+1).padStart(2,'0')}/${String(omanTime.getDate()).padStart(2,'0')}/${omanTime.getFullYear()}`,
-      time: `${String(omanTime.getHours()).padStart(2,'0')}:${String(omanTime.getMinutes()).padStart(2,'0')}:${String(omanTime.getSeconds()).padStart(2,'0')}`,
+      date: `${mm}/${dd}/${yyyy}`,
+      time: `${hh}:${min}:${ss}`,
       timezone: 'GST (UTC+04:00)',
-      timestamp: omanTime.getTime()
+      timestamp: internetTime.timestamp  // Send UTC timestamp, not Oman time!
     });
   } catch (error) {
-    // FIXED: Return fallback data even on error
     const fallbackDate = new Date();
     res.status(503).json({
       success: false,
@@ -309,7 +324,19 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
+  const localUrl = `http://localhost:${PORT}`;
+  
   console.log(`GPS Server running on port ${PORT}`);
+  console.log(`\x1b[36m%s\x1b[0m`, `Local Server: ${localUrl}`);  // Cyan color for visibility
   console.log(`GPS Receiver: ${GPS_HOST}:${GPS_PORT}`);
   console.log(`Mode: F69 UTC (receiver shows Oman time)`);
+  console.log(`Timezone: Server timezone independent (uses UTC math)`);
+  console.log(`Press Ctrl+Click the link above to open browser`);
+  
+  // Optional: Auto-open browser on Windows (uncomment below to enable)
+  /*
+  exec(`start ${localUrl}`, (err) => {
+    if (err) console.log('Could not auto-open browser');
+  });
+  */
 });
