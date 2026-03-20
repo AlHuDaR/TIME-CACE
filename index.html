@@ -41,6 +41,117 @@
         </div>
       </section>
 
+      <section class="card dashboard-card" aria-labelledby="gpsSystemStatusHeading">
+        <div class="dashboard-header">
+          <div>
+            <p class="dashboard-kicker">Monitoring dashboard</p>
+            <h2 id="gpsSystemStatusHeading" class="dashboard-title">GPS SYSTEM STATUS</h2>
+            <p id="dashboardSummaryText" class="dashboard-summary-text">Waiting for the first receiver status snapshot.</p>
+          </div>
+          <div class="dashboard-header-badges">
+            <span id="dashboardSeverityBadge" class="dashboard-severity status-normal">Normal</span>
+            <span id="dashboardDataStateBadge" class="dashboard-data-state data-waiting">Waiting for data</span>
+          </div>
+        </div>
+
+        <div class="dashboard-summary-strip" aria-live="polite">
+          <article class="summary-pill">
+            <span class="summary-pill-label">Backend</span>
+            <span id="dashboardBackendSummary" class="summary-pill-value">Unknown</span>
+          </article>
+          <article class="summary-pill">
+            <span class="summary-pill-label">Receiver</span>
+            <span id="dashboardReceiverSummary" class="summary-pill-value">Unknown</span>
+          </article>
+          <article class="summary-pill">
+            <span class="summary-pill-label">GPS Lock</span>
+            <span id="dashboardLockSummary" class="summary-pill-value">Unknown</span>
+          </article>
+          <article class="summary-pill">
+            <span class="summary-pill-label">Time Source</span>
+            <span id="dashboardSourceSummary" class="summary-pill-value">Unknown</span>
+          </article>
+        </div>
+
+        <div class="dashboard-grid" aria-live="polite">
+          <article class="dashboard-panel">
+            <h3>System health</h3>
+            <div class="dashboard-metric-list">
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Backend status</span>
+                <span id="dashboardBackendStatus" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Receiver reachability</span>
+                <span id="dashboardReceiverStatus" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Receiver login</span>
+                <span id="dashboardLoginStatus" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Overall health</span>
+                <span id="dashboardHealthStatus" class="dashboard-metric-value">Unknown</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="dashboard-panel">
+            <h3>Receiver communication</h3>
+            <div class="dashboard-metric-list">
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Communication state</span>
+                <span id="dashboardCommunicationState" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Status data</span>
+                <span id="dashboardStatusDataState" class="dashboard-metric-value">Unavailable</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Last status poll</span>
+                <span id="dashboardLastStatusPoll" class="dashboard-metric-value">Never</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Status freshness</span>
+                <span id="dashboardStatusFreshness" class="dashboard-metric-value">Unknown</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="dashboard-panel">
+            <h3>Time source</h3>
+            <div class="dashboard-metric-list">
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Active source</span>
+                <span id="dashboardActiveSource" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Receiver-reported source</span>
+                <span id="dashboardReceiverSource" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Last time sync</span>
+                <span id="dashboardLastTimeSync" class="dashboard-metric-value">Never</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Time/status alignment</span>
+                <span id="dashboardAlignmentStatus" class="dashboard-metric-value">Waiting for data</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="dashboard-panel dashboard-panel-diagnostics">
+            <h3>Diagnostics</h3>
+            <p id="dashboardStatusText" class="dashboard-diagnostic-text">System status not checked yet.</p>
+            <p id="dashboardErrorText" class="dashboard-diagnostic-text dashboard-diagnostic-error">No errors reported.</p>
+            <div class="dashboard-metric-row dashboard-metric-row-compact">
+              <span class="dashboard-metric-label">Recent state line</span>
+              <div id="dashboardTimeline" class="dashboard-timeline" aria-label="Recent dashboard state history"></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="card mode-card" aria-label="Clock style controls">
         <p class="label">Clock style</p>
         <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
@@ -100,35 +211,7 @@
             Preferred source: Symmetricom XLi receiver disciplined to Oman time when available.
           </p>
           <p id="syncStatus" class="status">Status: Initializing…</p>
-          <div class="system-status-panel" aria-live="polite">
-            <p class="system-status-title">System status</p>
-            <div class="system-status-grid">
-              <div class="system-status-item">
-                <span class="system-status-label">Backend</span>
-                <span id="systemBackend" class="system-status-value">Unknown</span>
-              </div>
-              <div class="system-status-item">
-                <span class="system-status-label">Receiver</span>
-                <span id="systemReceiver" class="system-status-value">Unknown</span>
-              </div>
-              <div class="system-status-item">
-                <span class="system-status-label">Login</span>
-                <span id="systemLogin" class="system-status-value">Unknown</span>
-              </div>
-              <div class="system-status-item">
-                <span class="system-status-label">GPS Lock</span>
-                <span id="systemLock" class="system-status-value">Unknown</span>
-              </div>
-              <div class="system-status-item system-status-item-wide">
-                <span class="system-status-label">Receiver source</span>
-                <span id="systemSource" class="system-status-value">Unknown</span>
-              </div>
-              <div class="system-status-item system-status-item-wide">
-                <span class="system-status-label">Last error</span>
-                <span id="systemError" class="system-status-value system-status-error">None</span>
-              </div>
-            </div>
-          </div>
+          <p id="statusConsistencyHint" class="meta-note">Status and runtime source information will be cross-checked here.</p>
         </article>
       </section>
 

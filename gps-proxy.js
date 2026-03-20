@@ -57,8 +57,11 @@ let lastReceiverSnapshot = {
   receiverReachable: false,
   loginOk: false,
   isLocked: false,
+  gpsLockState: "unknown",
   statusText: "Receiver status not checked yet",
   currentSource: "local",
+  currentSourceLabel: "Local fallback",
+  receiverCommunicationState: "not-started",
   lastError: null,
   checkedAt: null,
 };
@@ -295,13 +298,27 @@ function parseGpsTimeResponse(raw) {
   const [hours, minutes, seconds] = timeStr.split(":").map(Number);
   const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds) - CONFIG.omanOffsetMs;
 
-  const explicitUnlocked = /(UNLOCK|HOLDOVER|NO\s+GPS|ANTENNA\s+FAULT|SEARCHING)/i.test(normalized);
+  const hasHoldover = /HOLDOVER/i.test(normalized);
+  const explicitUnlocked = /(UNLOCK|NO\s+GPS|ANTENNA\s+FAULT|SEARCHING)/i.test(normalized);
   const explicitLocked = /(LOCKED|TRACKING|GPS\s+LOCK)/i.test(normalized);
   const defaultDatePattern = /01\/01\/(1999|2000|2026)/.test(dateStr);
-  const isLocked = explicitLocked ? true : explicitUnlocked ? false : !defaultDatePattern;
-  const statusText = isLocked
+  const gpsLockState = explicitLocked
+    ? "locked"
+    : hasHoldover
+      ? "holdover"
+      : explicitUnlocked
+        ? "unlocked"
+        : defaultDatePattern
+          ? "unknown"
+          : "locked";
+  const isLocked = gpsLockState === "locked";
+  const statusText = gpsLockState === "locked"
     ? "GPS receiver reachable and locked"
-    : "GPS receiver reachable but not locked";
+    : gpsLockState === "holdover"
+      ? "Receiver reachable and operating in holdover"
+      : gpsLockState === "unlocked"
+        ? "GPS receiver reachable but not locked"
+        : "GPS receiver reachable but lock state is unknown";
 
   return {
     raw: normalized,
@@ -309,9 +326,70 @@ function parseGpsTimeResponse(raw) {
     time: timeStr,
     timestamp: utcTimestamp,
     isLocked,
+    gpsLockState,
     statusText,
-    currentSource: isLocked ? "gps-locked" : "gps-unlocked",
-    currentSourceLabel: isLocked ? "GPS receiver locked" : "GPS receiver reachable but unlocked",
+    currentSource: gpsLockState === "locked" ? "gps-locked" : gpsLockState === "holdover" ? "holdover" : "gps-unlocked",
+    currentSourceLabel: gpsLockState === "locked"
+      ? "GPS receiver locked"
+      : gpsLockState === "holdover"
+        ? "Receiver holdover"
+        : gpsLockState === "unlocked"
+          ? "GPS receiver unlocked"
+          : "Receiver source unknown",
+  };
+}
+
+function classifyReceiverError(error) {
+  const message = error?.message || "Receiver error";
+  if (/login failed|authentication failed|access denied|invalid password/i.test(message)) {
+    return {
+      receiverReachable: true,
+      loginOk: false,
+      receiverCommunicationState: "login-failed",
+      statusText: "Receiver reachable but login failed",
+      lastError: message,
+    };
+  }
+
+  if (/timeout|ECONNREFUSED|EHOSTUNREACH|ENOTFOUND|socket closed unexpectedly/i.test(message)) {
+    return {
+      receiverReachable: false,
+      loginOk: false,
+      receiverCommunicationState: "unreachable",
+      statusText: "Receiver unreachable",
+      lastError: message,
+    };
+  }
+
+  return {
+    receiverReachable: false,
+    loginOk: false,
+    receiverCommunicationState: "unreachable",
+    statusText: "Receiver communication failed",
+    lastError: message,
+  };
+}
+
+function buildStatusPayload(snapshot, overrides = {}) {
+  const checkedAtMs = snapshot.checkedAt ? new Date(snapshot.checkedAt).getTime() : null;
+  return {
+    success: true,
+    backendOnline: true,
+    receiverReachable: Boolean(snapshot.receiverReachable),
+    loginOk: Boolean(snapshot.loginOk),
+    isLocked: Boolean(snapshot.isLocked),
+    gpsLockState: snapshot.gpsLockState || (snapshot.isLocked ? "locked" : "unknown"),
+    statusText: snapshot.statusText || "Receiver status unavailable",
+    currentSource: snapshot.currentSource || "local",
+    currentSourceLabel: snapshot.currentSourceLabel || "Local fallback",
+    receiverCommunicationState: snapshot.receiverCommunicationState || "not-started",
+    lastError: snapshot.lastError || null,
+    checkedAt: snapshot.checkedAt || null,
+    statusAgeMs: checkedAtMs === null ? null : Math.max(0, Date.now() - checkedAtMs),
+    dataState: "live",
+    fetchedFromCache: false,
+    cacheAgeMs: null,
+    ...overrides,
   };
 }
 
@@ -369,6 +447,11 @@ function connectToGPS(command, { expectOk = false } = {}) {
         return;
       }
 
+      if (state === "password" && /(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(buffer)) {
+        finish(reject, new Error("Receiver login failed"));
+        return;
+      }
+
       if (state === "command") {
         const complete = expectOk ? /\bOK\b/i.test(buffer) : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer);
         if (complete) {
@@ -411,17 +494,8 @@ function updateReceiverSnapshot(snapshot) {
   return lastReceiverSnapshot;
 }
 
-function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot) {
-  return {
-    backendOnline: true,
-    receiverReachable: Boolean(snapshot.receiverReachable),
-    loginOk: Boolean(snapshot.loginOk),
-    isLocked: Boolean(snapshot.isLocked),
-    statusText: snapshot.statusText || "Receiver status unavailable",
-    currentSource: snapshot.currentSource || "local",
-    lastError: snapshot.lastError || null,
-    checkedAt: snapshot.checkedAt || null,
-  };
+function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {}) {
+  return buildStatusPayload(snapshot, overrides);
 }
 
 async function readReceiverTime() {
@@ -434,8 +508,11 @@ async function readReceiverTime() {
     receiverReachable: connection.receiverReachable,
     loginOk: connection.loginOk,
     isLocked: parsed.isLocked,
+    gpsLockState: parsed.gpsLockState,
     statusText: parsed.statusText,
     currentSource: parsed.currentSource,
+    currentSourceLabel: parsed.currentSourceLabel,
+    receiverCommunicationState: connection.loginOk ? "authenticated" : "reachable",
     lastError: null,
   });
 
@@ -449,7 +526,9 @@ async function readReceiverTime() {
     isLocked: snapshot.isLocked,
     statusText: snapshot.statusText,
     currentSource: snapshot.currentSource,
-    currentSourceLabel: parsed.currentSourceLabel,
+    currentSourceLabel: snapshot.currentSourceLabel,
+    gpsLockState: snapshot.gpsLockState,
+    receiverCommunicationState: snapshot.receiverCommunicationState,
     lastError: null,
     date: parsed.date,
     time: parsed.time,
@@ -461,7 +540,13 @@ async function readReceiverTime() {
 async function readReceiverStatusCached({ force = false } = {}) {
   const now = Date.now();
   if (!force && receiverStatusCache.data && receiverStatusCache.expiresAt > now) {
-    return receiverStatusCache.data;
+    return {
+      ...receiverStatusCache.data,
+      dataState: "cached",
+      fetchedFromCache: true,
+      cacheAgeMs: Math.max(0, now - new Date(receiverStatusCache.data.checkedAt).getTime()),
+      statusAgeMs: Math.max(0, now - new Date(receiverStatusCache.data.checkedAt).getTime()),
+    };
   }
 
   if (!force && receiverStatusCache.promise) {
@@ -475,16 +560,24 @@ async function readReceiverStatusCached({ force = false } = {}) {
         receiverReachable: receiverTime.receiverReachable,
         loginOk: receiverTime.loginOk,
         isLocked: receiverTime.isLocked,
+        gpsLockState: receiverTime.gpsLockState,
         statusText: receiverTime.statusText,
         currentSource: receiverTime.currentSource,
+        currentSourceLabel: receiverTime.currentSourceLabel,
+        receiverCommunicationState: receiverTime.loginOk ? "authenticated" : "reachable",
         lastError: null,
-      });
+      }, { dataState: "live" });
       receiverStatusCache = {
         promise: null,
         data: status,
         expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
       };
-      return status;
+      return {
+        ...status,
+        dataState: "live",
+        fetchedFromCache: false,
+        cacheAgeMs: 0,
+      };
     })
     .catch((error) => {
       receiverStatusCache = {
@@ -535,16 +628,23 @@ app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
     const status = await readReceiverStatusCached({ force: forceRefresh });
     res.json(status);
   } catch (error) {
+    const classified = classifyReceiverError(error);
     const snapshot = updateReceiverSnapshot({
-      receiverReachable: false,
-      loginOk: false,
+      receiverReachable: classified.receiverReachable,
+      loginOk: classified.loginOk,
       isLocked: false,
-      statusText: "Receiver unreachable",
+      gpsLockState: "unknown",
+      statusText: classified.statusText,
       currentSource: "local",
-      lastError: error.message,
+      currentSourceLabel: "Local fallback",
+      receiverCommunicationState: classified.receiverCommunicationState,
+      lastError: classified.lastError,
     });
 
-    res.status(503).json(sanitizeReceiverStatus(snapshot));
+    res.json(sanitizeReceiverStatus(snapshot, {
+      success: false,
+      dataState: "unavailable",
+    }));
   }
 });
 
@@ -558,18 +658,26 @@ app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
     };
     res.json(receiverTime);
   } catch (error) {
+    const classified = classifyReceiverError(error);
     const fallback = createLocalFallback({
       error: error.message,
-      statusText: "GPS receiver unavailable",
+      statusText: classified.statusText,
       lastError: error.message,
+      receiverReachable: classified.receiverReachable,
+      loginOk: classified.loginOk,
+      gpsLockState: "unknown",
+      receiverCommunicationState: classified.receiverCommunicationState,
     });
 
     updateReceiverSnapshot({
-      receiverReachable: false,
-      loginOk: false,
+      receiverReachable: classified.receiverReachable,
+      loginOk: classified.loginOk,
       isLocked: false,
+      gpsLockState: "unknown",
       statusText: fallback.statusText,
       currentSource: "local",
+      currentSourceLabel: "Local fallback",
+      receiverCommunicationState: classified.receiverCommunicationState,
       lastError: error.message,
     });
 
@@ -614,8 +722,11 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
       receiverReachable: result.receiverReachable,
       loginOk: result.loginOk,
       isLocked: lastReceiverSnapshot.isLocked,
+      gpsLockState: lastReceiverSnapshot.gpsLockState,
       statusText: "Receiver time updated successfully",
       currentSource: lastReceiverSnapshot.currentSource,
+      currentSourceLabel: lastReceiverSnapshot.currentSourceLabel,
+      receiverCommunicationState: result.loginOk ? "authenticated" : "reachable",
       lastError: null,
     });
 
@@ -635,12 +746,16 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
       backendOnline: true,
     });
   } catch (error) {
+    const classified = classifyReceiverError(error);
     updateReceiverSnapshot({
-      receiverReachable: false,
-      loginOk: false,
+      receiverReachable: classified.receiverReachable,
+      loginOk: classified.loginOk,
       isLocked: false,
+      gpsLockState: "unknown",
       statusText: "Failed to set receiver time",
       currentSource: "local",
+      currentSourceLabel: "Local fallback",
+      receiverCommunicationState: classified.receiverCommunicationState,
       lastError: error.message,
     });
 
@@ -676,6 +791,9 @@ app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, r
       receiverReachable: lastReceiverSnapshot.receiverReachable,
       loginOk: lastReceiverSnapshot.loginOk,
       isLocked: false,
+      gpsLockState: lastReceiverSnapshot.gpsLockState || "unknown",
+      currentSourceLabel: "Internet fallback",
+      receiverCommunicationState: lastReceiverSnapshot.receiverCommunicationState,
       statusText: "Using Internet time fallback via backend",
       lastError: null,
       rtt: internetTime.rtt,
