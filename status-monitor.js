@@ -25,11 +25,11 @@
 
   function humanizeSource(source) {
     return {
-      "gps-locked": "GPS locked",
-      "gps-unlocked": "GPS unlocked",
-      holdover: "Holdover",
-      "internet-fallback": "Internet fallback",
-      local: "Browser emergency fallback",
+      "gps-locked": "Receiver locked",
+      "gps-unlocked": "Receiver unlocked",
+      holdover: "Receiver holdover",
+      "internet-fallback": "Backend Internet fallback",
+      local: "Local emergency fallback",
     }[source] || source.replace(/-/g, " ");
   }
 
@@ -40,6 +40,21 @@
       holdover: "Holdover",
       unknown: "Unknown",
     }[lockState] || "Unknown";
+  }
+
+  function humanizeCommunicationState(state) {
+    return {
+      authenticated: "Authenticated",
+      reachable: "Reachable",
+      "receiver-responding": "Reachable",
+      disabled: "Receiver disabled",
+      "login-failed": "Authentication failed",
+      "auth-failed": "Authentication failed",
+      unreachable: "Receiver unreachable",
+      "receiver-unreachable": "Receiver unreachable",
+      "backend-offline": "Backend offline",
+      "not-started": "Waiting for poll",
+    }[state] || String(state || "unknown").replace(/-/g, " ");
   }
 
   function valueToneClass(tone) {
@@ -212,6 +227,7 @@
     dataStateLabel,
     humanizeSource,
     humanizeLockState,
+    humanizeCommunicationState,
     valueToneClass,
     MONITORING,
     maxSeverity,

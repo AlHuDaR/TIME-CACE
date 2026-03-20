@@ -603,21 +603,21 @@ class GPSTimeSync {
 
   getSourceDisplayName(source = this.currentState.currentSource) {
     return {
-      "gps-locked": "GPS RECEIVER",
-      "gps-unlocked": "GPS RECEIVER",
-      holdover: "HOLDOVER",
-      "internet-fallback": "INTERNET/HTTP DATE",
-      local: "BROWSER FALLBACK",
+      "gps-locked": "GPS LOCKED",
+      "gps-unlocked": "RECEIVER UNLOCKED",
+      holdover: "RECEIVER HOLDOVER",
+      "internet-fallback": "BACKEND INTERNET FALLBACK",
+      local: "LOCAL EMERGENCY FALLBACK",
     }[source] || source.toUpperCase();
   }
 
   getReceiverSourceDisplayName(source = this.receiverStatus.currentSource) {
     return {
-      "gps-locked": "GPS receiver locked",
-      "gps-unlocked": "GPS receiver unlocked",
+      "gps-locked": "Receiver locked",
+      "gps-unlocked": "Receiver unlocked",
       holdover: "Receiver holdover",
-      "internet-fallback": "Internet fallback",
-      local: this.receiverStatus.backendOnline ? "Browser emergency fallback" : "Backend offline",
+      "internet-fallback": "Backend Internet fallback",
+      local: this.receiverStatus.backendOnline ? "Local emergency fallback" : "Backend offline / local fallback",
     }[source] || source.replace(/-/g, " ");
   }
 
@@ -625,8 +625,12 @@ class GPSTimeSync {
     return {
       authenticated: "Authenticated",
       reachable: "Reachable",
+      "receiver-responding": "Reachable",
+      disabled: "Receiver disabled",
       "login-failed": "Login failed",
+      "auth-failed": "Authentication failed",
       unreachable: "Receiver unreachable",
+      "receiver-unreachable": "Receiver unreachable",
       "backend-offline": "Backend offline",
       "not-started": "Not started",
     }[state] || state.replace(/-/g, " ");

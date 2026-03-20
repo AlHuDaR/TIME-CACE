@@ -37,8 +37,8 @@
 
     getSourceLabel(source) {
       return {
-        "internet-fallback": "INTERNET/HTTP DATE",
-        local: "LOCAL COMPUTER TIME",
+        "internet-fallback": "BACKEND INTERNET FALLBACK",
+        local: "LOCAL EMERGENCY FALLBACK",
       }[source] || String(source || "UNKNOWN").toUpperCase();
     }
 
@@ -59,12 +59,14 @@
           ? "browser-emergency-fallback"
           : "backend-offline-browser-fallback";
       const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
-      const heading = currentSource === "internet-fallback" ? "Backend fallback active" : "Emergency fallback active";
+      const heading = currentSource === "internet-fallback" ? "Backend fallback active" : "Local emergency fallback active";
       const subheading = currentSource === "internet-fallback"
-        ? "The backend is keeping the display live while the primary receiver source is unavailable."
+        ? receiverConfigured
+          ? "The backend is keeping the display live while the receiver path is degraded or unavailable."
+          : "This deployment is intentionally running on backend Internet time because no direct receiver is configured."
         : backendOnline
-          ? "Backend fallback sources are unavailable, so the browser clock is maintaining continuity."
-          : "The backend is offline, so the browser clock is maintaining continuity locally.";
+          ? "Backend fallback sources are unavailable, so the browser is maintaining continuity locally."
+          : "The backend is offline, so the browser is maintaining continuity on the local workstation clock.";
       const severity = currentSource === "internet-fallback" ? "info" : "warning";
 
       return {
