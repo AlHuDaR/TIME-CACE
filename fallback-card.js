@@ -1,13 +1,15 @@
 (function (global) {
   const { APP_CONFIG } = global.RAFOTimeApp;
+  const DEFAULT_TRANSIENT_DURATION_MS = 5000;
+  const DEFAULT_FALLBACK_DURATION_MS = 8000;
 
   class MessageCenter {
     constructor(elements = null) {
       this.elements = elements || this.resolveElements();
-      this.lastFallbackSignature = "";
-      this.dismissedFallbackSignature = "";
-      this.transientTimer = null;
-      this.activeTransient = null;
+      this.notificationTimer = null;
+      this.currentNotification = null;
+      this.lastFallbackStateKey = "";
+      this.dismissedFallbackStateKey = "";
       this.bindEvents();
     }
 
@@ -27,7 +29,7 @@
     }
 
     isFallbackSource(source) {
-      return !["gps-locked", "gps-unlocked", "holdover"].includes(source);
+      return ["internet-fallback", "local"].includes(source);
     }
 
     getSourceLabel(source) {
@@ -39,13 +41,45 @@
 
     buildFallbackSnapshot(data, receiverStatus) {
       const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
+      const severity = data.currentSource === "internet-fallback" ? "info" : "warning";
+
       return {
+        kind: "fallback",
         source: data.currentSource,
         sourceLabel: this.getSourceLabel(data.currentSource),
         date: data.date || "Unknown",
         time: data.time || "Unknown",
         statusText,
-        severity: data.currentSource === "internet-fallback" ? "info" : "warning",
+        severity,
+        key: this.buildFallbackStateKey(data, receiverStatus, statusText),
+      };
+    }
+
+    buildFallbackStateKey(data, receiverStatus, statusText) {
+      return [
+        data.currentSource || "unknown-source",
+        receiverStatus.backendOnline ? "backend-online" : "backend-offline",
+        receiverStatus.receiverReachable ? "receiver-reachable" : "receiver-unreachable",
+        receiverStatus.loginOk ? "login-ok" : "login-failed",
+        receiverStatus.gpsLockState || "lock-unknown",
+        receiverStatus.receiverCommunicationState || "comm-unknown",
+        statusText || "",
+      ].join("|");
+    }
+
+    buildTransientPayload(message, type = "info", key = "") {
+      const lines = Array.isArray(message)
+        ? message.map((line) => String(line ?? "").trim()).filter(Boolean)
+        : [String(message ?? "").trim()].filter(Boolean);
+
+      return {
+        kind: "transient",
+        sourceLabel: lines.find((line) => line.startsWith("Source:"))?.replace(/^Source:\s*/, "") || APP_CONFIG.statusLabels[type] || "Information",
+        date: lines.find((line) => line.startsWith("Date:"))?.replace(/^Date:\s*/, "") || "--/--/----",
+        time: lines.find((line) => line.startsWith("Time:"))?.replace(/^Time:\s*/, "") || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        statusText: lines.find((line) => line.startsWith("Status:"))?.replace(/^Status:\s*/, "") || lines.join(" • "),
+        severity: type,
+        key: key || `transient:${type}:${lines.join("|")}`,
       };
     }
 
@@ -65,6 +99,27 @@
       fallbackInfoCard.setAttribute("aria-hidden", "false");
     }
 
+    startAutoDismiss(duration) {
+      this.stopAutoDismiss();
+      if (!(duration > 0)) {
+        return;
+      }
+
+      this.notificationTimer = global.setTimeout(() => {
+        this.notificationTimer = null;
+        this.clearNotification({ preserveFallbackTracking: true });
+      }, duration);
+    }
+
+    stopAutoDismiss() {
+      if (!this.notificationTimer) {
+        return;
+      }
+
+      global.clearTimeout(this.notificationTimer);
+      this.notificationTimer = null;
+    }
+
     hide() {
       const { fallbackInfoCard } = this.elements;
       if (!fallbackInfoCard) {
@@ -76,95 +131,73 @@
       fallbackInfoCard.setAttribute("aria-hidden", "true");
     }
 
-    dismiss() {
-      if (this.activeTransient) {
-        this.clearTransient();
-        this.restoreFallback();
-        return;
-      }
+    clearNotification(options = {}) {
+      const { preserveFallbackTracking = false } = options;
+      const current = this.currentNotification;
 
-      if (this.lastFallbackSignature) {
-        this.dismissedFallbackSignature = this.lastFallbackSignature;
-      }
+      this.stopAutoDismiss();
+      this.currentNotification = null;
       this.hide();
-    }
 
-    clearTransient() {
-      if (this.transientTimer) {
-        clearTimeout(this.transientTimer);
-        this.transientTimer = null;
+      if (!preserveFallbackTracking && current?.kind === "fallback") {
+        this.lastFallbackStateKey = "";
       }
-      this.activeTransient = null;
     }
 
-    restoreFallback() {
-      if (!this.activeTransient && this.lastFallbackPayload && this.dismissedFallbackSignature !== this.lastFallbackSignature) {
-        this.render(this.lastFallbackPayload);
+    dismiss() {
+      if (this.currentNotification?.kind === "fallback") {
+        this.dismissedFallbackStateKey = this.currentNotification.key;
+      }
+      this.clearNotification({ preserveFallbackTracking: true });
+    }
+
+    show(message, type = "info", duration = DEFAULT_TRANSIENT_DURATION_MS, key = "") {
+      const payload = this.buildTransientPayload(message, type, key);
+      if (this.currentNotification?.kind === payload.kind && this.currentNotification.key === payload.key) {
         return;
       }
-      if (!this.activeTransient) {
-        this.hide();
-      }
-    }
 
-    show(message, type = "info", duration = 5000) {
-      const lines = Array.isArray(message) ? message.filter(Boolean) : [String(message ?? "")];
-      const payload = {
-        sourceLabel: lines.find((line) => line.startsWith("Source:"))?.replace(/^Source:\s*/, "") || APP_CONFIG.statusLabels[type] || "Information",
-        date: lines.find((line) => line.startsWith("Date:"))?.replace(/^Date:\s*/, "") || "--/--/----",
-        time: lines.find((line) => line.startsWith("Time:"))?.replace(/^Time:\s*/, "") || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        statusText: lines.find((line) => line.startsWith("Status:"))?.replace(/^Status:\s*/, "") || lines.join(" • "),
-        severity: type,
-      };
-
-      this.clearTransient();
-      this.activeTransient = payload;
+      this.currentNotification = payload;
       this.render(payload);
-
-      if (duration > 0) {
-        this.transientTimer = global.setTimeout(() => {
-          this.clearTransient();
-          this.restoreFallback();
-        }, duration);
-      }
+      this.startAutoDismiss(duration);
     }
 
-    updateFallbackInfo(data, receiverStatus) {
-      if (!this.elements.fallbackInfoCard || this.activeTransient) {
-        this.lastFallbackPayload = this.buildFallbackSnapshot(data, receiverStatus);
-        this.lastFallbackSignature = JSON.stringify(this.lastFallbackPayload);
+    updateFallbackInfo(data, receiverStatus = {}) {
+      if (!this.elements.fallbackInfoCard) {
         return;
       }
 
       if (!this.isFallbackSource(data.currentSource)) {
-        this.lastFallbackSignature = "";
-        this.dismissedFallbackSignature = "";
-        this.lastFallbackPayload = null;
-        this.hide();
+        this.dismissedFallbackStateKey = "";
+        this.lastFallbackStateKey = "";
+        if (this.currentNotification?.kind === "fallback") {
+          this.clearNotification();
+        }
         return;
       }
 
       const payload = this.buildFallbackSnapshot(data, receiverStatus);
-      const signature = JSON.stringify(payload);
-      const hasChanged = signature !== this.lastFallbackSignature;
-      this.lastFallbackPayload = payload;
-      this.lastFallbackSignature = signature;
+      const sameVisibleFallback = this.currentNotification?.kind === "fallback" && this.currentNotification.key === payload.key;
+      const sameKnownState = payload.key === this.lastFallbackStateKey;
 
-      if (hasChanged) {
-        this.dismissedFallbackSignature = "";
-      }
-
-      if (this.dismissedFallbackSignature === signature) {
-        this.hide();
+      if (sameVisibleFallback) {
         return;
       }
 
+      if (payload.key === this.dismissedFallbackStateKey || sameKnownState) {
+        return;
+      }
+
+      this.dismissedFallbackStateKey = "";
+      this.lastFallbackStateKey = payload.key;
+      this.currentNotification = payload;
       this.render(payload);
+      this.startAutoDismiss(DEFAULT_FALLBACK_DURATION_MS);
     }
   }
 
   global.RAFOTimeApp = global.RAFOTimeApp || {};
   global.RAFOTimeApp.MessageCenter = MessageCenter;
   global.appMessageCenter = global.appMessageCenter || new MessageCenter();
-  global.showNotification = (message, type, duration) => global.appMessageCenter.show(message, type, duration);
+  global.showNotification = (message, type, duration, key) => global.appMessageCenter.show(message, type, duration, key);
 })(window);
