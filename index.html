@@ -50,6 +50,7 @@
           </div>
           <div class="dashboard-header-badges">
             <span id="dashboardSeverityBadge" class="dashboard-severity status-normal">Normal</span>
+            <span id="dashboardIntegrityBadge" class="dashboard-severity status-neutral">Confidence unknown</span>
             <span id="dashboardDataStateBadge" class="dashboard-data-state data-waiting">Waiting for data</span>
           </div>
         </div>
@@ -70,6 +71,10 @@
           <article class="summary-pill">
             <span class="summary-pill-label">Time Source</span>
             <span id="dashboardSourceSummary" class="summary-pill-value">Unknown</span>
+          </article>
+          <article class="summary-pill">
+            <span class="summary-pill-label">Timing Integrity</span>
+            <span id="dashboardIntegritySummary" class="summary-pill-value">Unknown</span>
           </article>
         </div>
 
@@ -93,6 +98,14 @@
                 <span class="dashboard-metric-label">Overall health</span>
                 <span id="dashboardHealthStatus" class="dashboard-metric-value">Unknown</span>
               </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Timing integrity</span>
+                <span id="dashboardIntegrityStatus" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Formal alarm state</span>
+                <span id="dashboardAlarmStatus" class="dashboard-metric-value">Unknown</span>
+              </div>
             </div>
           </article>
 
@@ -114,6 +127,14 @@
               <div class="dashboard-metric-row">
                 <span class="dashboard-metric-label">Status freshness</span>
                 <span id="dashboardStatusFreshness" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Last good communication</span>
+                <span id="dashboardLastGoodComm" class="dashboard-metric-value">Never</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Status stale since</span>
+                <span id="dashboardStaleSince" class="dashboard-metric-value">N/A</span>
               </div>
             </div>
           </article>
@@ -137,6 +158,36 @@
                 <span class="dashboard-metric-label">Time/status alignment</span>
                 <span id="dashboardAlignmentStatus" class="dashboard-metric-value">Waiting for data</span>
               </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Last good GPS lock</span>
+                <span id="dashboardLastGoodLock" class="dashboard-metric-value">Never</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Authoritative sync health</span>
+                <span id="dashboardAuthoritativeSync" class="dashboard-metric-value">Unknown</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="dashboard-panel">
+            <h3>Session monitoring</h3>
+            <div class="dashboard-metric-list">
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Runtime source state</span>
+                <span id="dashboardRuntimeSourceState" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Receiver health state</span>
+                <span id="dashboardReceiverHealthState" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">GPS lock quality</span>
+                <span id="dashboardLockQualityState" class="dashboard-metric-value">Unknown</span>
+              </div>
+              <div class="dashboard-metric-row">
+                <span class="dashboard-metric-label">Authoritative sync</span>
+                <span id="dashboardLastAuthoritativeSync" class="dashboard-metric-value">Never</span>
+              </div>
             </div>
           </article>
 
@@ -147,6 +198,10 @@
             <div class="dashboard-metric-row dashboard-metric-row-compact">
               <span class="dashboard-metric-label">Recent state line</span>
               <div id="dashboardTimeline" class="dashboard-timeline" aria-label="Recent dashboard state history"></div>
+            </div>
+            <div class="dashboard-metric-row dashboard-metric-row-compact">
+              <span class="dashboard-metric-label">Recent events</span>
+              <div id="dashboardEventList" class="dashboard-event-list" aria-label="Recent timing monitor events"></div>
             </div>
           </article>
         </div>

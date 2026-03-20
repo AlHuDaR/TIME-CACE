@@ -29,6 +29,7 @@ const CONFIG = Object.freeze({
   minConnectionIntervalMs: Number(process.env.MIN_CONNECTION_INTERVAL_MS || 5000),
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 15000),
   receiverStatusCacheMs: Number(process.env.RECEIVER_STATUS_CACHE_MS || 4000),
+  statusStaleMs: Number(process.env.STATUS_STALE_MS || 45000),
   authEnabled: process.env.API_AUTH_ENABLED === "true",
   authToken: process.env.API_AUTH_TOKEN || "",
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
@@ -69,6 +70,13 @@ let receiverStatusCache = {
   expiresAt: 0,
   promise: null,
   data: null,
+};
+let monitoringMemory = {
+  lastKnownGoodGpsLockAt: null,
+  lastSuccessfulReceiverCommunicationAt: null,
+  lastSuccessfulAuthoritativeTimeSyncAt: null,
+  statusBecameStaleAt: null,
+  communicationIssueCount: 0,
 };
 
 const rateLimitStore = new Map();
@@ -226,7 +234,7 @@ async function throttleReceiverAccess() {
 
 function createLocalFallback(extra = {}) {
   const now = new Date();
-  return {
+  const payload = {
     success: false,
     source: "local",
     currentSource: "local",
@@ -239,10 +247,18 @@ function createLocalFallback(extra = {}) {
     receiverReachable: false,
     loginOk: false,
     isLocked: false,
+    gpsLockState: "unknown",
     statusText: "Using local fallback",
     lastError: null,
     ...extra,
   };
+  payload.monitoringState = deriveMonitoringState(payload, { dataState: "unavailable", stale: true });
+  payload.lastKnownGoodGpsLockAt = monitoringMemory.lastKnownGoodGpsLockAt;
+  payload.lastSuccessfulReceiverCommunicationAt = monitoringMemory.lastSuccessfulReceiverCommunicationAt;
+  payload.lastSuccessfulAuthoritativeTimeSyncAt = monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt;
+  payload.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt;
+  payload.consecutiveCommunicationFailures = monitoringMemory.communicationIssueCount;
+  return payload;
 }
 
 async function getPreciseInternetTime() {
@@ -372,6 +388,10 @@ function classifyReceiverError(error) {
 
 function buildStatusPayload(snapshot, overrides = {}) {
   const checkedAtMs = snapshot.checkedAt ? new Date(snapshot.checkedAt).getTime() : null;
+  const statusAgeMs = checkedAtMs === null ? null : Math.max(0, Date.now() - checkedAtMs);
+  const dataState = overrides.dataState || "live";
+  const stale = dataState !== "unavailable" && statusAgeMs !== null && statusAgeMs > CONFIG.statusStaleMs;
+  const monitoringState = deriveMonitoringState(snapshot, { dataState, stale });
   return {
     success: true,
     backendOnline: true,
@@ -385,11 +405,80 @@ function buildStatusPayload(snapshot, overrides = {}) {
     receiverCommunicationState: snapshot.receiverCommunicationState || "not-started",
     lastError: snapshot.lastError || null,
     checkedAt: snapshot.checkedAt || null,
-    statusAgeMs: checkedAtMs === null ? null : Math.max(0, Date.now() - checkedAtMs),
-    dataState: "live",
+    statusAgeMs,
+    receiverSnapshotAgeMs: statusAgeMs,
+    dataState,
+    stale,
     fetchedFromCache: false,
     cacheAgeMs: null,
+    monitoringState,
+    lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
+    lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
+    lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
+    statusBecameStaleAt: stale ? (monitoringMemory.statusBecameStaleAt || snapshot.checkedAt) : null,
+    consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
     ...overrides,
+  };
+}
+
+function deriveMonitoringState(snapshot, { dataState = "live", stale = false } = {}) {
+  const runtimeTimeSourceState = snapshot.currentSource === "gps-locked"
+    ? "healthy"
+    : snapshot.currentSource === "internet-fallback"
+      ? "degraded"
+      : snapshot.currentSource === "local"
+        ? "unavailable"
+        : ["gps-unlocked", "holdover"].includes(snapshot.currentSource)
+          ? "warning"
+          : "unknown";
+  const receiverHealthState = !snapshot.receiverReachable
+    ? "unavailable"
+    : snapshot.loginOk
+      ? "healthy"
+      : "critical";
+  const gpsLockQualityState = snapshot.gpsLockState === "locked"
+    ? "healthy"
+    : snapshot.gpsLockState === "holdover"
+      ? "warning"
+      : snapshot.gpsLockState === "unlocked"
+        ? "degraded"
+        : "unknown";
+  const statusDataFreshnessState = dataState === "live"
+    ? "fresh"
+    : dataState === "cached"
+      ? "cached"
+      : stale
+        ? "stale"
+        : dataState === "unavailable"
+          ? "unavailable"
+          : "unknown";
+
+  let timingIntegrityState = "high";
+  if (snapshot.currentSource === "local" || dataState === "unavailable") {
+    timingIntegrityState = "low";
+  } else if (!snapshot.receiverReachable || !snapshot.loginOk || snapshot.gpsLockState === "holdover" || stale) {
+    timingIntegrityState = "degraded";
+  } else if (dataState === "cached" || snapshot.currentSource === "internet-fallback" || snapshot.gpsLockState === "unlocked") {
+    timingIntegrityState = "reduced";
+  }
+
+  let alarmSeverityState = "normal";
+  if (!snapshot.receiverReachable || !snapshot.loginOk || snapshot.currentSource === "local") {
+    alarmSeverityState = "critical";
+  } else if (stale || ["holdover", "unlocked"].includes(snapshot.gpsLockState) || monitoringMemory.communicationIssueCount >= 2) {
+    alarmSeverityState = "warning";
+  } else if (dataState === "cached" || snapshot.currentSource === "internet-fallback") {
+    alarmSeverityState = "advisory";
+  }
+
+  return {
+    runtimeTimeSourceState,
+    receiverHealthState,
+    gpsLockQualityState,
+    statusDataFreshnessState,
+    timingIntegrityState,
+    alarmSeverityState,
+    communicationAuthState: snapshot.loginOk ? "authenticated" : snapshot.receiverReachable ? "auth-failed" : "receiver-unreachable",
   };
 }
 
@@ -491,11 +580,30 @@ function updateReceiverSnapshot(snapshot) {
     checkedAt: new Date().toISOString(),
     ...snapshot,
   };
+
+  if (lastReceiverSnapshot.receiverReachable) {
+    monitoringMemory.lastSuccessfulReceiverCommunicationAt = lastReceiverSnapshot.checkedAt;
+    monitoringMemory.communicationIssueCount = 0;
+  } else {
+    monitoringMemory.communicationIssueCount += 1;
+  }
+
+  if (lastReceiverSnapshot.gpsLockState === "locked") {
+    monitoringMemory.lastKnownGoodGpsLockAt = lastReceiverSnapshot.checkedAt;
+  }
+
   return lastReceiverSnapshot;
 }
 
 function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {}) {
-  return buildStatusPayload(snapshot, overrides);
+  const status = buildStatusPayload(snapshot, overrides);
+  if (status.stale) {
+    monitoringMemory.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt || status.checkedAt || new Date().toISOString();
+    status.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt;
+  } else {
+    monitoringMemory.statusBecameStaleAt = null;
+  }
+  return status;
 }
 
 async function readReceiverTime() {
@@ -515,6 +623,7 @@ async function readReceiverTime() {
     receiverCommunicationState: connection.loginOk ? "authenticated" : "reachable",
     lastError: null,
   });
+  monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt = snapshot.checkedAt;
 
   return {
     success: true,
@@ -530,6 +639,11 @@ async function readReceiverTime() {
     gpsLockState: snapshot.gpsLockState,
     receiverCommunicationState: snapshot.receiverCommunicationState,
     lastError: null,
+    monitoringState: deriveMonitoringState(snapshot, { dataState: "live", stale: false }),
+    lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
+    lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
+    lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
+    consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
     date: parsed.date,
     time: parsed.time,
     timestamp: parsed.timestamp,
@@ -796,6 +910,14 @@ app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, r
       receiverCommunicationState: lastReceiverSnapshot.receiverCommunicationState,
       statusText: "Using Internet time fallback via backend",
       lastError: null,
+      monitoringState: deriveMonitoringState({
+        ...lastReceiverSnapshot,
+        currentSource: "internet-fallback",
+      }, { dataState: "cached", stale: false }),
+      lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
+      lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
+      lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
+      consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
       rtt: internetTime.rtt,
       sourcesReached: internetTime.sourcesReached,
     });
