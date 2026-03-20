@@ -134,6 +134,7 @@ async function runTests() {
     gpsPort: 23,
     gpsUsername: 'admin',
     gpsPassword: 'password',
+    receiverEnabled: true,
     allowedOrigins: Object.freeze([]),
     serveStatic: true,
     nodeEnv: 'development',
@@ -154,6 +155,7 @@ async function runTests() {
   assert.throws(() => validateConfig({ ...validConfig, requestTimeoutMs: Number.NaN }), /REQUEST_TIMEOUT_MS/);
   assert.throws(() => validateConfig({ ...validConfig, gpsUsername: '' }), /GPS_USERNAME/);
   assert.throws(() => validateConfig({ ...validConfig, authEnabled: true, authToken: '' }), /API_AUTH_TOKEN/);
+  assert.equal(validateConfig({ ...validConfig, receiverEnabled: false, gpsUsername: '', gpsPassword: '', gpsHost: '' }).receiverEnabled, false);
 
   console.log('Protocol harness passed.');
 }

@@ -30,18 +30,25 @@ function validateConfig(config) {
     rateLimitStatusMax: validateFiniteNumber('RATE_LIMIT_STATUS_MAX', config.rateLimitStatusMax, { min: 1, max: 100000, integer: true }),
     rateLimitInternetMax: validateFiniteNumber('RATE_LIMIT_INTERNET_MAX', config.rateLimitInternetMax, { min: 1, max: 100000, integer: true }),
     rateLimitSetMax: validateFiniteNumber('RATE_LIMIT_SET_MAX', config.rateLimitSetMax, { min: 1, max: 100000, integer: true }),
+    receiverEnabled: Boolean(config.receiverEnabled),
   };
 
-  if (!validated.gpsHost || !String(validated.gpsHost).trim()) {
-    throw new Error('Invalid GPS_HOST: a receiver host value is required');
-  }
+  validated.gpsHost = String(validated.gpsHost || '').trim();
+  validated.gpsUsername = String(validated.gpsUsername || '').trim();
+  validated.gpsPassword = String(validated.gpsPassword || '').trim();
 
-  if (!String(validated.gpsUsername || '').trim()) {
-    throw new Error('Invalid GPS_USERNAME: receiver login requires a username');
-  }
+  if (validated.receiverEnabled) {
+    if (!validated.gpsHost) {
+      throw new Error('Invalid GPS_HOST: receiver mode requires a host value');
+    }
 
-  if (!String(validated.gpsPassword || '').trim()) {
-    throw new Error('Invalid GPS_PASSWORD: receiver login requires a password');
+    if (!validated.gpsUsername) {
+      throw new Error('Invalid GPS_USERNAME: receiver mode requires a username');
+    }
+
+    if (!validated.gpsPassword) {
+      throw new Error('Invalid GPS_PASSWORD: receiver mode requires a password');
+    }
   }
 
   if (validated.authEnabled && !String(validated.authToken || '').trim()) {
@@ -129,8 +136,21 @@ function parseGpsTimeResponse(raw) {
 
 function classifyReceiverError(error) {
   const message = error?.message || 'Receiver error';
+
+  if (/receiver (is )?not configured|receiver disabled/i.test(message)) {
+    return {
+      receiverConfigured: false,
+      receiverReachable: false,
+      loginOk: false,
+      receiverCommunicationState: 'disabled',
+      statusText: 'Receiver not configured',
+      lastError: message,
+    };
+  }
+
   if (/login failed|authentication failed|access denied|invalid password/i.test(message)) {
     return {
+      receiverConfigured: true,
       receiverReachable: true,
       loginOk: false,
       receiverCommunicationState: 'login-failed',
@@ -141,6 +161,7 @@ function classifyReceiverError(error) {
 
   if (/timeout|ECONNREFUSED|EHOSTUNREACH|ENOTFOUND|socket closed unexpectedly/i.test(message)) {
     return {
+      receiverConfigured: true,
       receiverReachable: false,
       loginOk: false,
       receiverCommunicationState: 'unreachable',
@@ -150,6 +171,7 @@ function classifyReceiverError(error) {
   }
 
   return {
+    receiverConfigured: true,
     receiverReachable: false,
     loginOk: false,
     receiverCommunicationState: 'unreachable',

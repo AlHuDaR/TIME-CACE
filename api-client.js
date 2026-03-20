@@ -1,4 +1,8 @@
 (function (global) {
+  function readMetaConfig(name) {
+    return global.document?.querySelector(`meta[name="${name}"]`)?.content?.trim() || "";
+  }
+
   const APP_CONFIG = Object.freeze({
     timezone: "Asia/Muscat",
     timezoneLabel: "Gulf Standard Time (GST, UTC+04:00)",
@@ -9,9 +13,21 @@
       ? Number(global.APP_CONFIG.STATUS_POLLING_INTERVAL_MS)
       : 15000,
     statusFreshnessWindowMs: 45000,
+    liveStatusRefreshIntervalMs: Number(global.APP_CONFIG?.LIVE_STATUS_REFRESH_INTERVAL_MS) > 0
+      ? Number(global.APP_CONFIG.LIVE_STATUS_REFRESH_INTERVAL_MS)
+      : 5000,
+    requestTimeoutMs: Number(global.APP_CONFIG?.API_REQUEST_TIMEOUT_MS) > 0
+      ? Number(global.APP_CONFIG.API_REQUEST_TIMEOUT_MS)
+      : 5000,
     localApiPort: 3000,
     localDevPorts: Object.freeze([3000]),
     localhostNames: Object.freeze(["localhost", "127.0.0.1"]),
+    apiBaseUrl: typeof global.APP_CONFIG?.API_BASE_URL === "string" && global.APP_CONFIG.API_BASE_URL.trim()
+      ? global.APP_CONFIG.API_BASE_URL.trim()
+      : readMetaConfig("rafo-api-base-url"),
+    apiBackupUrl: typeof global.APP_CONFIG?.API_BACKUP_URL === "string" && global.APP_CONFIG.API_BACKUP_URL.trim()
+      ? global.APP_CONFIG.API_BACKUP_URL.trim()
+      : readMetaConfig("rafo-api-backup-url"),
     apiAuthToken: typeof global.APP_CONFIG?.API_AUTH_TOKEN === "string"
       ? global.APP_CONFIG.API_AUTH_TOKEN.trim()
       : "",
@@ -53,10 +69,16 @@
     hour12: false,
   });
 
+  function normalizeBaseUrl(value) {
+    return typeof value === "string" && value.trim()
+      ? value.trim().replace(/\/$/, "")
+      : "";
+  }
+
   function resolveApiBaseUrl() {
-    const configured = global.APP_CONFIG?.API_BASE_URL;
-    if (typeof configured === "string" && configured.trim()) {
-      return configured.trim().replace(/\/$/, "");
+    const configured = normalizeBaseUrl(APP_CONFIG.apiBaseUrl);
+    if (configured) {
+      return configured;
     }
 
     const { protocol, hostname, origin, port } = global.location;
@@ -129,6 +151,7 @@
     OMAN_DATE_TIME_FORMATTER,
     OMAN_DATE_LINE_FORMATTER,
     OMAN_ANALOG_PARTS_FORMATTER,
+    normalizeBaseUrl,
     resolveApiBaseUrl,
     formatClockTime,
     formatRelativeAge,

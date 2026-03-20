@@ -10,6 +10,7 @@
       this.currentNotification = null;
       this.lastFallbackStateKey = "";
       this.dismissedFallbackStateKey = "";
+      this.lastTransientKey = "";
       this.bindEvents();
     }
 
@@ -17,6 +18,8 @@
       return {
         fallbackInfoCard: document.getElementById("fallbackInfoCard"),
         fallbackInfoCloseBtn: document.getElementById("fallbackInfoCloseBtn"),
+        fallbackInfoHeading: document.getElementById("fallbackInfoHeading"),
+        fallbackInfoSubheading: document.getElementById("fallbackInfoSubheading"),
         fallbackInfoSource: document.getElementById("fallbackInfoSource"),
         fallbackInfoDate: document.getElementById("fallbackInfoDate"),
         fallbackInfoTime: document.getElementById("fallbackInfoTime"),
@@ -40,16 +43,26 @@
     }
 
     buildFallbackSnapshot(data, receiverStatus) {
+      const currentSource = data.currentSource || "local";
+      const backendOnline = Boolean(receiverStatus.backendOnline ?? data.backendOnline);
       const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
-      const severity = data.currentSource === "internet-fallback" ? "info" : "warning";
+      const heading = currentSource === "internet-fallback" ? "Backend fallback active" : "Emergency fallback active";
+      const subheading = currentSource === "internet-fallback"
+        ? "The backend is keeping the display live while the primary receiver source is unavailable."
+        : backendOnline
+          ? "Backend fallback sources are unavailable, so the browser clock is maintaining continuity."
+          : "The backend is offline, so the browser clock is maintaining continuity locally.";
+      const severity = currentSource === "internet-fallback" ? "info" : "warning";
 
       return {
         kind: "fallback",
-        source: data.currentSource,
-        sourceLabel: this.getSourceLabel(data.currentSource),
+        source: currentSource,
+        sourceLabel: this.getSourceLabel(currentSource),
         date: data.date || "Unknown",
         time: data.time || "Unknown",
         statusText,
+        heading,
+        subheading,
         severity,
         key: this.buildFallbackStateKey(data, receiverStatus, statusText),
       };
@@ -59,6 +72,7 @@
       return [
         data.currentSource || "unknown-source",
         receiverStatus.backendOnline ? "backend-online" : "backend-offline",
+        receiverStatus.receiverConfigured === false ? "receiver-disabled" : "receiver-enabled",
         receiverStatus.receiverReachable ? "receiver-reachable" : "receiver-unreachable",
         receiverStatus.loginOk ? "login-ok" : "login-failed",
         receiverStatus.gpsLockState || "lock-unknown",
@@ -71,9 +85,12 @@
       const lines = Array.isArray(message)
         ? message.map((line) => String(line ?? "").trim()).filter(Boolean)
         : [String(message ?? "").trim()].filter(Boolean);
+      const summary = lines.find((line) => !/^(Source|Date|Time|Status):/i.test(line)) || APP_CONFIG.statusLabels[type] || "Information";
 
       return {
         kind: "transient",
+        heading: APP_CONFIG.statusLabels[type] || "Information",
+        subheading: summary,
         sourceLabel: lines.find((line) => line.startsWith("Source:"))?.replace(/^Source:\s*/, "") || APP_CONFIG.statusLabels[type] || "Information",
         date: lines.find((line) => line.startsWith("Date:"))?.replace(/^Date:\s*/, "") || "--/--/----",
         time: lines.find((line) => line.startsWith("Time:"))?.replace(/^Time:\s*/, "") || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
@@ -84,11 +101,25 @@
     }
 
     render(payload) {
-      const { fallbackInfoCard, fallbackInfoSource, fallbackInfoDate, fallbackInfoTime, fallbackInfoStatus } = this.elements;
+      const {
+        fallbackInfoCard,
+        fallbackInfoHeading,
+        fallbackInfoSubheading,
+        fallbackInfoSource,
+        fallbackInfoDate,
+        fallbackInfoTime,
+        fallbackInfoStatus,
+      } = this.elements;
       if (!fallbackInfoCard) {
         return;
       }
 
+      if (fallbackInfoHeading) {
+        fallbackInfoHeading.textContent = payload.heading || "Source update";
+      }
+      if (fallbackInfoSubheading) {
+        fallbackInfoSubheading.textContent = payload.subheading || "Timing source information is available below.";
+      }
       fallbackInfoSource.textContent = payload.sourceLabel;
       fallbackInfoDate.textContent = payload.date;
       fallbackInfoTime.textContent = payload.time;
@@ -153,10 +184,11 @@
 
     show(message, type = "info", duration = DEFAULT_TRANSIENT_DURATION_MS, key = "") {
       const payload = this.buildTransientPayload(message, type, key);
-      if (this.currentNotification?.kind === payload.kind && this.currentNotification.key === payload.key) {
+      if (payload.key === this.lastTransientKey || (this.currentNotification?.kind === payload.kind && this.currentNotification.key === payload.key)) {
         return;
       }
 
+      this.lastTransientKey = payload.key;
       this.currentNotification = payload;
       this.render(payload);
       this.startAutoDismiss(duration);
@@ -180,11 +212,7 @@
       const sameVisibleFallback = this.currentNotification?.kind === "fallback" && this.currentNotification.key === payload.key;
       const sameKnownState = payload.key === this.lastFallbackStateKey;
 
-      if (sameVisibleFallback) {
-        return;
-      }
-
-      if (payload.key === this.dismissedFallbackStateKey || sameKnownState) {
+      if (sameVisibleFallback || payload.key === this.dismissedFallbackStateKey || sameKnownState) {
         return;
       }
 

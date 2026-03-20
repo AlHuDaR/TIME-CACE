@@ -23,9 +23,9 @@ RAFO Calibration Center Time Display is a browser-based Oman time dashboard for 
 Authoritative runtime endpoint for the operator display.
 
 Source priority remains:
-1. GPS receiver locked time
-2. Internet fallback time
-3. Local computer fallback time
+1. GPS receiver / backend authoritative source when available
+2. Backend Internet fallback time
+3. Frontend local computer fallback time
 
 ### `GET /api/status`
 Diagnostic and monitoring endpoint.
@@ -89,10 +89,11 @@ Use `.env` for local development only. `.env` is gitignored and must not be expo
 | Variable | Required | Description |
 | --- | --- | --- |
 | `PORT` | No | Backend HTTP port. Default: `3000` |
-| `GPS_HOST` | Yes | Receiver host or IP |
+| `RECEIVER_ENABLED` | No | Set to `false` to run backend fallback mode without a direct receiver connection |
+| `GPS_HOST` | Conditional | Receiver host or IP when receiver mode is enabled |
 | `GPS_PORT` | No | Receiver port. Default: `23` |
-| `GPS_USERNAME` | Yes | Receiver username |
-| `GPS_PASSWORD` | Yes | Receiver password |
+| `GPS_USERNAME` | Conditional | Receiver username when receiver mode is enabled |
+| `GPS_PASSWORD` | Conditional | Receiver password when receiver mode is enabled |
 | `ALLOWED_ORIGIN` | Recommended | Exact frontend origin, or comma-separated origins |
 | `SERVE_STATIC` | No | Serve frontend assets from Express when `true` |
 | `NODE_ENV` | No | Use `production` for stricter serving/CORS defaults |
@@ -113,3 +114,18 @@ Use `.env` for local development only. `.env` is gitignored and must not be expo
 - `.env` is ignored by Git and is not part of the static asset allowlist.
 - Static serving remains restricted to the known frontend files and `/images`.
 - Optional token auth and route-aware rate limiting remain enabled by configuration and were not weakened.
+
+
+## Hosted frontend configuration
+
+For Netlify or any other static frontend deployment, point the browser to a hosted backend by setting one of the following before the frontend scripts load:
+
+- `window.APP_CONFIG.API_BASE_URL = "https://your-backend.example.com/api"`
+- `<meta name="rafo-api-base-url" content="https://your-backend.example.com/api">`
+
+Optional backup backend:
+
+- `window.APP_CONFIG.API_BACKUP_URL = "https://backup-backend.example.com/api"`
+- `<meta name="rafo-api-backup-url" content="https://backup-backend.example.com/api">`
+
+If no backend is configured or reachable, the frontend will continue running with its browser emergency fallback.

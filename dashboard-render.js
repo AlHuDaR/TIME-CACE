@@ -58,6 +58,7 @@
 
       this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
       this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
+      this.updateReceiverActionButtons(receiverStatus);
 
       this.elements.primarySourceDescription.textContent = this.getPrimarySourceDescription(data, receiverStatus);
       this.elements.primarySourceNote.textContent = this.getPrimarySourceNote(data, receiverStatus, sessionState);
@@ -70,12 +71,12 @@
     }
 
     refreshLiveStatus(force = false) {
-      const currentSecond = Math.floor(Date.now() / 1000);
-      if (!force && currentSecond === this.lastLiveRefreshSecond) {
+      const refreshBucket = Math.floor(Date.now() / APP_CONFIG.liveStatusRefreshIntervalMs);
+      if (!force && refreshBucket === this.lastLiveRefreshSecond) {
         return;
       }
 
-      this.lastLiveRefreshSecond = currentSecond;
+      this.lastLiveRefreshSecond = refreshBucket;
       const data = this.gpsTimeSync.getCurrentState();
       const receiverStatus = this.gpsTimeSync.getReceiverStatus();
       const sessionState = this.gpsTimeSync.getSessionState();
@@ -84,6 +85,20 @@
       this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
       this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
       this.updateMonitoringDashboard({ data, receiverStatus, sessionState });
+    }
+
+
+    updateReceiverActionButtons(receiverStatus) {
+      const receiverEditable = receiverStatus.backendOnline && receiverStatus.receiverConfigured !== false;
+      [this.elements.setTimeComputerBtn, this.elements.setTimeInternetBtn].forEach((button) => {
+        if (!button) {
+          return;
+        }
+        button.disabled = !receiverEditable;
+        button.title = receiverEditable
+          ? button.title.replace(/\s*\(Unavailable\)$/u, "")
+          : "Receiver control unavailable because the receiver/backend path is not writable.";
+      });
     }
 
     isFallbackSource(source) {
@@ -165,8 +180,12 @@
         dataStateLabel,
         summaryText: [
           `${systemStatus.value}: ${activeSourceLabel}.`,
-          `Receiver ${receiverStatus.receiverReachable ? "reachable" : "unreachable"}.`,
-          `GPS ${humanizeLockState(receiverStatus.gpsLockState).toLowerCase()}.`,
+          receiverStatus.receiverConfigured === false
+            ? "Receiver connection is not configured for this deployment."
+            : `Receiver ${receiverStatus.receiverReachable ? "reachable" : "unreachable"}.`,
+          receiverStatus.receiverConfigured === false
+            ? "Backend Internet fallback remains available for continuity."
+            : `GPS ${humanizeLockState(receiverStatus.gpsLockState).toLowerCase()}.`,
           receiverStatus.stale ? "Status telemetry is stale; monitor holdover/fallback behavior closely." : "Status telemetry is within the active freshness window.",
         ].join(" "),
         diagnosticsText: [
@@ -177,26 +196,30 @@
         ].join(" "),
         errorLine: receiverStatus.lastError ? `Active error: ${receiverStatus.lastError}` : "No active errors reported by the backend or receiver.",
         receiverReachability: {
-          value: receiverStatus.receiverReachable ? "Reachable" : "Unreachable",
-          note: receiverStatus.receiverReachable
-            ? receiverStatus.loginOk ? "Receiver responded and authentication succeeded." : "Receiver responded, but authentication failed."
-            : receiverStatus.backendOnline ? "No active receiver response during the latest poll." : "Backend is unavailable, so the receiver cannot be checked.",
-          badge: receiverStatus.receiverReachable ? "OK" : "ERROR",
-          badgeTone: receiverStatus.receiverReachable ? "ok" : "error",
-          chipClass: receiverStatus.receiverReachable ? "status-normal" : "status-critical",
+          value: receiverStatus.receiverConfigured === false ? "Not configured" : receiverStatus.receiverReachable ? "Reachable" : "Unreachable",
+          note: receiverStatus.receiverConfigured === false
+            ? "This deployment is running without a direct receiver connection and will rely on backend fallbacks when needed."
+            : receiverStatus.receiverReachable
+              ? receiverStatus.loginOk ? "Receiver responded and authentication succeeded." : "Receiver responded, but authentication failed."
+              : receiverStatus.backendOnline ? "No active receiver response during the latest poll." : "Backend is unavailable, so the receiver cannot be checked.",
+          badge: receiverStatus.receiverConfigured === false ? "INFO" : receiverStatus.receiverReachable ? "OK" : "ERROR",
+          badgeTone: receiverStatus.receiverConfigured === false ? "info" : receiverStatus.receiverReachable ? "ok" : "error",
+          chipClass: receiverStatus.receiverConfigured === false ? "status-advisory" : receiverStatus.receiverReachable ? "status-normal" : "status-critical",
         },
         gpsLock: {
-          value: humanizeLockState(receiverStatus.gpsLockState).toUpperCase(),
-          note: receiverStatus.gpsLockState === "locked"
-            ? "Receiver timing is disciplined to GPS."
-            : receiverStatus.gpsLockState === "holdover"
-              ? "Receiver is in holdover; timing quality is reduced."
-              : receiverStatus.gpsLockState === "unlocked"
-                ? "Receiver is reachable without confirmed GPS lock."
-                : "GPS lock state has not been confirmed yet.",
-          badge: receiverStatus.gpsLockState === "locked" ? "OK" : receiverStatus.gpsLockState === "unknown" ? "INFO" : "WARNING",
-          badgeTone: receiverStatus.gpsLockState === "locked" ? "ok" : receiverStatus.gpsLockState === "unknown" ? "info" : "warning",
-          chipClass: receiverStatus.gpsLockState === "locked" ? "status-normal" : receiverStatus.gpsLockState === "unknown" ? "status-advisory" : "status-warning",
+          value: receiverStatus.receiverConfigured === false ? "NOT CONFIGURED" : humanizeLockState(receiverStatus.gpsLockState).toUpperCase(),
+          note: receiverStatus.receiverConfigured === false
+            ? "GPS lock telemetry is unavailable because the receiver connection is disabled for this deployment."
+            : receiverStatus.gpsLockState === "locked"
+              ? "Receiver timing is disciplined to GPS."
+              : receiverStatus.gpsLockState === "holdover"
+                ? "Receiver is in holdover; timing quality is reduced."
+                : receiverStatus.gpsLockState === "unlocked"
+                  ? "Receiver is reachable without confirmed GPS lock."
+                  : "GPS lock state has not been confirmed yet.",
+          badge: receiverStatus.receiverConfigured === false ? "INFO" : receiverStatus.gpsLockState === "locked" ? "OK" : receiverStatus.gpsLockState === "unknown" ? "INFO" : "WARNING",
+          badgeTone: receiverStatus.receiverConfigured === false ? "info" : receiverStatus.gpsLockState === "locked" ? "ok" : receiverStatus.gpsLockState === "unknown" ? "info" : "warning",
+          chipClass: receiverStatus.receiverConfigured === false ? "status-advisory" : receiverStatus.gpsLockState === "locked" ? "status-normal" : receiverStatus.gpsLockState === "unknown" ? "status-advisory" : "status-warning",
         },
         activeSource: {
           value: activeSourceLabel,
@@ -259,12 +282,12 @@
     }
 
     getSystemStatusCard(data, receiverStatus) {
-      if (!receiverStatus.backendOnline || !receiverStatus.receiverReachable || data.currentSource === "local" || !data.lastSyncTimestamp) {
+      if (!receiverStatus.backendOnline || data.currentSource === "local" || !data.lastSyncTimestamp || (receiverStatus.receiverConfigured !== false && !receiverStatus.receiverReachable)) {
         return {
           value: "ERROR",
           note: !receiverStatus.backendOnline
             ? "Backend is unavailable, so mission-time trust is lost."
-            : !receiverStatus.receiverReachable
+            : (receiverStatus.receiverConfigured !== false && !receiverStatus.receiverReachable)
               ? "Receiver is unreachable, so the dashboard is in failure mode."
               : "No valid remote time is currently available.",
           badge: "ERROR",
@@ -322,6 +345,7 @@
       const communicationMap = {
         authenticated: ["Authenticated", "Receiver communication and authentication are healthy.", "OK", "ok", "status-normal"],
         reachable: ["Reachable", "Receiver is responding, but authentication state should be confirmed.", "INFO", "info", "status-advisory"],
+        disabled: ["Receiver disabled", "This deployment is using backend-hosted fallback time without a direct receiver connection.", "INFO", "info", "status-advisory"],
         "login-failed": ["Authentication failed", "Receiver responded but login/authentication failed.", "ERROR", "error", "status-critical"],
         unreachable: ["Unreachable", "Receiver communication failed during the latest poll.", "ERROR", "error", "status-critical"],
         "backend-offline": ["Backend offline", "The backend cannot reach the receiver because the API service is unavailable.", "ERROR", "error", "status-critical"],
@@ -345,8 +369,10 @@
 
       if (data.currentSource === "internet-fallback") {
         return {
-          value: "Internet fallback active",
-          note: "Backend fallback is supplying time until authoritative receiver lock returns.",
+          value: receiverStatus.receiverConfigured === false ? "Backend internet source active" : "Internet fallback active",
+          note: receiverStatus.receiverConfigured === false
+            ? "This deployment is intentionally using backend Internet time as its primary hosted source."
+            : "Backend fallback is supplying time until authoritative receiver lock returns.",
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -355,8 +381,8 @@
 
       if (data.currentSource === "local") {
         return {
-          value: "Local fallback active",
-          note: "Display is relying on local computer time because remote timing is unavailable.",
+          value: "Browser fallback active",
+          note: "Display is relying on browser/local computer time because remote timing is unavailable.",
           badge: "ERROR",
           badgeTone: "error",
           chipClass: "status-critical",
@@ -511,7 +537,7 @@
 
     getLockText(data, receiverStatus) {
       if (!receiverStatus.backendOnline) {
-        return "Backend offline — local fallback active";
+        return "Backend offline — browser fallback active";
       }
       if (receiverStatus.gpsLockState === "locked") {
         return "GPS receiver locked";
@@ -525,11 +551,15 @@
       if (data.currentSource === "internet-fallback") {
         return receiverStatus.receiverReachable
           ? "Receiver degraded — Internet fallback active"
-          : "Receiver unavailable — Internet fallback active";
+          : receiverStatus.receiverConfigured === false
+            ? "Receiver disabled — backend Internet source active"
+            : "Receiver unavailable — Internet fallback active";
       }
       return receiverStatus.receiverReachable
-        ? "Receiver reachable — local fallback active"
-        : "Receiver unavailable — local fallback active";
+        ? "Receiver reachable — browser fallback active"
+        : receiverStatus.receiverConfigured === false
+          ? "Backend unavailable — browser fallback active"
+          : "Receiver unavailable — browser fallback active";
     }
 
     getPrimarySourceDescription(data, receiverStatus) {
@@ -543,7 +573,9 @@
         return "Primary source preferred, but the Symmetricom XLi receiver is reachable without current GPS lock.";
       }
       if (data.currentSource === "internet-fallback") {
-        return "Primary GPS receiver is not providing locked time, so Internet time fallback is active via the backend.";
+        return receiverStatus.receiverConfigured === false
+          ? "This deployment is running from a hosted backend Internet time source without a direct receiver connection."
+          : "Primary GPS receiver is not providing locked time, so Internet time fallback is active via the backend.";
       }
       if (!receiverStatus.backendOnline) {
         return "The backend is currently unavailable, so the display is using local computer time until remote sync resumes.";

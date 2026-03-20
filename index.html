@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RAFO Calibration Center Time Display</title>
+    <meta name="rafo-api-base-url" content="" />
+    <meta name="rafo-api-backup-url" content="" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -57,9 +59,12 @@
         aria-hidden="true"
       >
         <div class="fallback-info-card-header">
-          <div class="fallback-info-card-title">
-            <span class="fallback-info-card-icon" aria-hidden="true">ℹ</span>
-            <span>Information</span>
+          <div class="fallback-info-card-title-wrap">
+            <div class="fallback-info-card-title">
+              <span class="fallback-info-card-icon" aria-hidden="true">ℹ</span>
+              <span id="fallbackInfoHeading">Source update</span>
+            </div>
+            <p id="fallbackInfoSubheading" class="fallback-info-card-subtitle">Timing source information will appear here when the source changes.</p>
           </div>
           <button
             id="fallbackInfoCloseBtn"
@@ -71,10 +76,24 @@
           </button>
         </div>
         <div class="fallback-info-card-body">
-          <p class="fallback-info-line"><span>Source:</span> <strong id="fallbackInfoSource">INTERNET/HTTP DATE</strong></p>
-          <p class="fallback-info-line"><span>Date:</span> <strong id="fallbackInfoDate">--/--/----</strong></p>
-          <p class="fallback-info-line"><span>Time:</span> <strong id="fallbackInfoTime">--:--:--</strong></p>
-          <p class="fallback-info-line fallback-info-status"><span>Status:</span> <strong id="fallbackInfoStatus">Waiting for fallback state.</strong></p>
+          <div class="fallback-info-metric">
+            <span class="fallback-info-label">Source</span>
+            <strong id="fallbackInfoSource">INTERNET/HTTP DATE</strong>
+          </div>
+          <div class="fallback-info-details">
+            <div class="fallback-info-metric">
+              <span class="fallback-info-label">Date</span>
+              <strong id="fallbackInfoDate">--/--/----</strong>
+            </div>
+            <div class="fallback-info-metric">
+              <span class="fallback-info-label">Time</span>
+              <strong id="fallbackInfoTime">--:--:--</strong>
+            </div>
+          </div>
+          <div class="fallback-info-metric fallback-info-status-block">
+            <span class="fallback-info-label">Status</span>
+            <strong id="fallbackInfoStatus">Waiting for fallback state.</strong>
+          </div>
         </div>
       </aside>
 
