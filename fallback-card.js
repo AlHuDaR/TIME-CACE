@@ -64,20 +64,39 @@
         heading,
         subheading,
         severity,
-        key: this.buildFallbackStateKey(data, receiverStatus, statusText),
+        key: this.buildFallbackStateKey(data, receiverStatus),
       };
     }
 
-    buildFallbackStateKey(data, receiverStatus, statusText) {
+    buildFallbackStateKey(data, receiverStatus) {
+      const currentSource = data.currentSource || "unknown-source";
+      const backendOnline = Boolean(receiverStatus.backendOnline ?? data.backendOnline);
+      const receiverConfigured = receiverStatus.receiverConfigured !== false;
+      const receiverReachable = Boolean(receiverStatus.receiverReachable);
+      const loginOk = Boolean(receiverStatus.loginOk);
+      const gpsLockState = receiverStatus.gpsLockState || data.gpsLockState || "unknown";
+      const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
+      const fallbackReason = data.fallbackReason || receiverStatus.fallbackReason || "reason-unknown";
+      const receiverWriteState = backendOnline && receiverConfigured ? "receiver-writable" : "receiver-readonly";
+      const fallbackMode = currentSource === "internet-fallback"
+        ? receiverConfigured
+          ? "backend-internet-fallback"
+          : "hosted-internet-source"
+        : backendOnline
+          ? "browser-emergency-fallback"
+          : "backend-offline-browser-fallback";
+
       return [
-        data.currentSource || "unknown-source",
-        receiverStatus.backendOnline ? "backend-online" : "backend-offline",
-        receiverStatus.receiverConfigured === false ? "receiver-disabled" : "receiver-enabled",
-        receiverStatus.receiverReachable ? "receiver-reachable" : "receiver-unreachable",
-        receiverStatus.loginOk ? "login-ok" : "login-failed",
-        receiverStatus.gpsLockState || "lock-unknown",
-        receiverStatus.receiverCommunicationState || "comm-unknown",
-        statusText || "",
+        currentSource,
+        fallbackMode,
+        backendOnline ? "backend-online" : "backend-offline",
+        receiverConfigured ? "receiver-enabled" : "receiver-disabled",
+        receiverReachable ? "receiver-reachable" : "receiver-unreachable",
+        loginOk ? "login-ok" : "login-failed",
+        `lock-${gpsLockState}`,
+        receiverCommunicationState,
+        fallbackReason,
+        receiverWriteState,
       ].join("|");
     }
 
@@ -212,7 +231,13 @@
       const sameVisibleFallback = this.currentNotification?.kind === "fallback" && this.currentNotification.key === payload.key;
       const sameKnownState = payload.key === this.lastFallbackStateKey;
 
-      if (sameVisibleFallback || payload.key === this.dismissedFallbackStateKey || sameKnownState) {
+      if (sameVisibleFallback) {
+        this.currentNotification = payload;
+        this.render(payload);
+        return;
+      }
+
+      if (payload.key === this.dismissedFallbackStateKey || sameKnownState) {
         return;
       }
 
