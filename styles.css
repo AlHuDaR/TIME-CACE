@@ -533,14 +533,15 @@ h1 {
 
 .fallback-info-card {
   position: fixed;
-  top: clamp(1rem, 2.4vw, 1.5rem);
-  right: clamp(0.75rem, 2.4vw, 1.5rem);
-  width: min(320px, calc(100vw - 1.5rem));
+  top: 50%;
+  left: 50%;
+  width: min(360px, calc(100vw - 2rem));
   padding: 0.8rem 0.9rem 0.9rem;
   border-radius: 14px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel) 94%, #ffffff 6%);
   box-shadow: 0 12px 26px rgba(15, 45, 64, 0.12);
+  transform: translate(-50%, -50%);
   z-index: 20;
 }
 
@@ -1341,11 +1342,7 @@ body.old-style .analog-nav {
 
 @media (max-width: 720px) {
   .fallback-info-card {
-    top: auto;
-    right: 0.75rem;
-    left: 0.75rem;
-    bottom: 0.75rem;
-    width: auto;
-    max-width: none;
+    width: min(360px, calc(100vw - 1.5rem));
+    max-width: calc(100vw - 1.5rem);
   }
 }
