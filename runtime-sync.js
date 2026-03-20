@@ -552,6 +552,17 @@ class GPSTimeSync {
         : currentSource === "internet-fallback"
           ? "info"
           : "warning";
+    const backendOnline = Boolean(this.currentState.backendOnline ?? this.receiverStatus.backendOnline);
+    const receiverConfigured = this.receiverStatus.receiverConfigured !== false && this.currentState.receiverConfigured !== false;
+    const notificationMode = currentSource === "internet-fallback"
+      ? receiverConfigured
+        ? "backend-internet-fallback"
+        : "hosted-internet-source"
+      : currentSource === "local"
+        ? backendOnline
+          ? "browser-emergency-fallback"
+          : "backend-offline-browser-fallback"
+        : "standard-runtime-source";
 
     this.notifications.show(
       [
@@ -562,6 +573,15 @@ class GPSTimeSync {
       ],
       type,
       6000,
+      "",
+      {
+        category: "runtime-source",
+        currentSource,
+        backendOnline,
+        receiverConfigured,
+        notificationMode,
+        silentMode: currentSource === "internet-fallback",
+      },
     );
 
     this.hasShownInitialSync = true;

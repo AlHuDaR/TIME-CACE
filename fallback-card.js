@@ -45,6 +45,19 @@
     buildFallbackSnapshot(data, receiverStatus) {
       const currentSource = data.currentSource || "local";
       const backendOnline = Boolean(receiverStatus.backendOnline ?? data.backendOnline);
+      const receiverConfigured = receiverStatus.receiverConfigured !== false;
+      const receiverReachable = Boolean(receiverStatus.receiverReachable);
+      const loginOk = Boolean(receiverStatus.loginOk);
+      const gpsLockState = receiverStatus.gpsLockState || data.gpsLockState || "unknown";
+      const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
+      const fallbackReason = data.fallbackReason || receiverStatus.fallbackReason || "reason-unknown";
+      const fallbackMode = currentSource === "internet-fallback"
+        ? receiverConfigured
+          ? "backend-internet-fallback"
+          : "hosted-internet-source"
+        : backendOnline
+          ? "browser-emergency-fallback"
+          : "backend-offline-browser-fallback";
       const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
       const heading = currentSource === "internet-fallback" ? "Backend fallback active" : "Emergency fallback active";
       const subheading = currentSource === "internet-fallback"
@@ -64,27 +77,45 @@
         heading,
         subheading,
         severity,
-        key: this.buildFallbackStateKey(data, receiverStatus),
+        key: this.buildFallbackStateKey({
+          currentSource,
+          backendOnline,
+          receiverConfigured,
+          receiverReachable,
+          loginOk,
+          gpsLockState,
+          receiverCommunicationState,
+          fallbackReason,
+          fallbackMode,
+        }),
+        metadata: {
+          category: "fallback-state",
+          currentSource,
+          backendOnline,
+          receiverConfigured,
+          receiverReachable,
+          loginOk,
+          gpsLockState,
+          receiverCommunicationState,
+          fallbackReason,
+          fallbackMode,
+          silentMode: currentSource === "internet-fallback",
+        },
       };
     }
 
-    buildFallbackStateKey(data, receiverStatus) {
-      const currentSource = data.currentSource || "unknown-source";
-      const backendOnline = Boolean(receiverStatus.backendOnline ?? data.backendOnline);
-      const receiverConfigured = receiverStatus.receiverConfigured !== false;
-      const receiverReachable = Boolean(receiverStatus.receiverReachable);
-      const loginOk = Boolean(receiverStatus.loginOk);
-      const gpsLockState = receiverStatus.gpsLockState || data.gpsLockState || "unknown";
-      const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
-      const fallbackReason = data.fallbackReason || receiverStatus.fallbackReason || "reason-unknown";
+    buildFallbackStateKey({
+      currentSource = "unknown-source",
+      backendOnline = false,
+      receiverConfigured = true,
+      receiverReachable = false,
+      loginOk = false,
+      gpsLockState = "unknown",
+      receiverCommunicationState = "comm-unknown",
+      fallbackReason = "reason-unknown",
+      fallbackMode = currentSource === "internet-fallback" ? "backend-internet-fallback" : "browser-emergency-fallback",
+    } = {}) {
       const receiverWriteState = backendOnline && receiverConfigured ? "receiver-writable" : "receiver-readonly";
-      const fallbackMode = currentSource === "internet-fallback"
-        ? receiverConfigured
-          ? "backend-internet-fallback"
-          : "hosted-internet-source"
-        : backendOnline
-          ? "browser-emergency-fallback"
-          : "backend-offline-browser-fallback";
 
       return [
         currentSource,
@@ -100,7 +131,7 @@
       ].join("|");
     }
 
-    buildTransientPayload(message, type = "info", key = "") {
+    buildTransientPayload(message, type = "info", key = "", metadata = {}) {
       const lines = Array.isArray(message)
         ? message.map((line) => String(line ?? "").trim()).filter(Boolean)
         : [String(message ?? "").trim()].filter(Boolean);
@@ -116,7 +147,14 @@
         statusText: lines.find((line) => line.startsWith("Status:"))?.replace(/^Status:\s*/, "") || lines.join(" • "),
         severity: type,
         key: key || `transient:${type}:${lines.join("|")}`,
+        metadata,
       };
+    }
+
+    shouldSuppressPayload(payload) {
+      const metadata = payload?.metadata || {};
+      const currentSource = metadata.currentSource || payload?.source;
+      return metadata.silentMode === true && currentSource === "internet-fallback";
     }
 
     render(payload) {
@@ -201,8 +239,12 @@
       this.clearNotification({ preserveFallbackTracking: true });
     }
 
-    show(message, type = "info", duration = DEFAULT_TRANSIENT_DURATION_MS, key = "") {
-      const payload = this.buildTransientPayload(message, type, key);
+    show(message, type = "info", duration = DEFAULT_TRANSIENT_DURATION_MS, key = "", metadata = {}) {
+      const payload = this.buildTransientPayload(message, type, key, metadata);
+      if (this.shouldSuppressPayload(payload)) {
+        return;
+      }
+
       if (payload.key === this.lastTransientKey || (this.currentNotification?.kind === payload.kind && this.currentNotification.key === payload.key)) {
         return;
       }
@@ -231,6 +273,14 @@
       const sameVisibleFallback = this.currentNotification?.kind === "fallback" && this.currentNotification.key === payload.key;
       const sameKnownState = payload.key === this.lastFallbackStateKey;
 
+      if (this.shouldSuppressPayload(payload)) {
+        this.lastFallbackStateKey = payload.key;
+        if (sameVisibleFallback) {
+          this.clearNotification({ preserveFallbackTracking: true });
+        }
+        return;
+      }
+
       if (sameVisibleFallback) {
         this.currentNotification = payload;
         this.render(payload);
@@ -252,5 +302,5 @@
   global.RAFOTimeApp = global.RAFOTimeApp || {};
   global.RAFOTimeApp.MessageCenter = MessageCenter;
   global.appMessageCenter = global.appMessageCenter || new MessageCenter();
-  global.showNotification = (message, type, duration, key) => global.appMessageCenter.show(message, type, duration, key);
+  global.showNotification = (message, type, duration, key, metadata) => global.appMessageCenter.show(message, type, duration, key, metadata);
 })(window);
