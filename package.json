@@ -8,7 +8,9 @@
     "dev": "nodemon gps-proxy.js",
     "start:api": "SERVE_STATIC=false NODE_ENV=production node gps-proxy.js",
     "start:full": "SERVE_STATIC=true node gps-proxy.js",
-    "check": "node --check gps-proxy.js && node --check script.js"
+    "check": "node --check gps-proxy.js && node --check script.js",
+    "test:protocol": "node tests/protocol-harness.js",
+    "test": "npm run test:protocol"
   },
   "engines": {
     "node": ">=18"

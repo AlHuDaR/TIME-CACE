@@ -239,6 +239,7 @@ function describeTimingIntegrity(level) {
 
 function buildMonitoringModel(runtimeState, receiverStatus, sessionState) {
   const dataState = normalizeDataState(receiverStatus.dataState, receiverStatus.stale);
+  const backendMonitoringState = receiverStatus.monitoringState || runtimeState.monitoringState || {};
   const runtimeTimeSourceState = runtimeState.currentSource === "gps-locked"
     ? "healthy"
     : runtimeState.currentSource === "internet-fallback"
@@ -287,40 +288,40 @@ function buildMonitoringModel(runtimeState, receiverStatus, sessionState) {
       && receiverStatus.currentSource !== runtimeState.currentSource,
   );
 
-  let timingIntegrityState = "high";
-  if (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable") {
-    timingIntegrityState = "low";
-  } else if (
-    !receiverStatus.receiverReachable
-    || !receiverStatus.loginOk
-    || receiverStatus.gpsLockState === "holdover"
-    || dataState === "stale"
-  ) {
-    timingIntegrityState = "degraded";
-  } else if (
-    dataState === "cached"
-    || runtimeState.currentSource === "internet-fallback"
-    || receiverStatus.gpsLockState === "unlocked"
-    || mismatchWhileFresh
-  ) {
-    timingIntegrityState = "reduced";
-  }
+  const timingIntegrityState = backendMonitoringState.timingIntegrityState
+    || (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable"
+      ? "low"
+      : (
+        !receiverStatus.receiverReachable
+        || !receiverStatus.loginOk
+        || receiverStatus.gpsLockState === "holdover"
+        || dataState === "stale"
+      )
+        ? "degraded"
+        : (
+          dataState === "cached"
+          || runtimeState.currentSource === "internet-fallback"
+          || receiverStatus.gpsLockState === "unlocked"
+          || mismatchWhileFresh
+        )
+          ? "reduced"
+          : "high");
 
-  let alarmSeverityState = "normal";
-  if (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || !receiverStatus.receiverReachable || !receiverStatus.loginOk) {
-    alarmSeverityState = "critical";
-  } else if (dataState === "stale" || receiverStatus.gpsLockState === "holdover" || receiverStatus.gpsLockState === "unlocked" || sessionState.communicationIssueCount >= 2) {
-    alarmSeverityState = "warning";
-  } else if (dataState === "cached" || runtimeState.currentSource === "internet-fallback" || mismatchWhileFresh) {
-    alarmSeverityState = "advisory";
-  }
+  const alarmSeverityState = backendMonitoringState.alarmSeverityState
+    || (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || !receiverStatus.receiverReachable || !receiverStatus.loginOk
+      ? "critical"
+      : (dataState === "stale" || receiverStatus.gpsLockState === "holdover" || receiverStatus.gpsLockState === "unlocked" || sessionState.communicationIssueCount >= 2)
+        ? "warning"
+        : (dataState === "cached" || runtimeState.currentSource === "internet-fallback" || mismatchWhileFresh)
+          ? "advisory"
+          : "normal");
 
   return {
     runtimeTimeSourceState,
-    receiverHealthState,
-    gpsLockQualityState,
-    statusDataFreshnessState,
-    communicationAuthState,
+    receiverHealthState: backendMonitoringState.receiverHealthState || receiverHealthState,
+    gpsLockQualityState: backendMonitoringState.gpsLockQualityState || gpsLockQualityState,
+    statusDataFreshnessState: backendMonitoringState.statusDataFreshnessState || statusDataFreshnessState,
+    communicationAuthState: backendMonitoringState.communicationAuthState || communicationAuthState,
     timingIntegrityState,
     alarmSeverityState,
     mismatchWhileFresh,
@@ -557,6 +558,7 @@ class GPSTimeSync {
       currentSourceLabel: error?.payload?.currentSourceLabel || fallback.currentSourceLabel || "Local fallback",
       statusText: error?.payload?.statusText || fallback.statusText || `Backend unavailable: ${error.message}`,
       lastError: error?.payload?.lastError || error.message,
+      monitoringState: error?.payload?.monitoringState || fallback.monitoringState || null,
       ...fallback,
     });
   }
@@ -582,6 +584,7 @@ class GPSTimeSync {
           timestamp: gpsResult.timestamp,
           raw: gpsResult.raw || null,
           sourceLabel: gpsResult.currentSourceLabel || (gpsResult.isLocked ? "GPS receiver locked" : "GPS receiver reachable, unlock state"),
+          monitoringState: gpsResult.monitoringState || null,
         });
       }
     } catch (error) {
@@ -610,6 +613,7 @@ class GPSTimeSync {
             timestamp: internetResult.timestamp,
             raw: null,
             sourceLabel: internetResult.currentSourceLabel || "Internet fallback",
+            monitoringState: internetResult.monitoringState || null,
           });
         }
       } catch (error) {
@@ -639,6 +643,7 @@ class GPSTimeSync {
         lastError: nextState?.lastError || "No remote time source available",
         ...localResult,
         sourceLabel: "Local computer time",
+        monitoringState: nextState?.monitoringState || null,
       });
     }
 
@@ -1110,6 +1115,7 @@ class GPSDisplayManager {
     };
     this.lastDashboardSignature = "";
     this.lastLiveRefreshSecond = -1;
+    this.lastFallbackOverlaySignature = "";
     this.timeline = [];
   }
 
@@ -1150,6 +1156,7 @@ class GPSDisplayManager {
     this.elements.syncStatus.textContent = this.syncManager.formatStatus();
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
     this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
+    this.updateFallbackInfoOverlay(data, receiverStatus);
 
     this.updateDashboard(data, receiverStatus, sessionState);
   }
@@ -1168,7 +1175,46 @@ class GPSDisplayManager {
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
     this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
     this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
+    this.updateFallbackInfoOverlay(data, receiverStatus);
     this.updateDashboard(data, receiverStatus, sessionState);
+  }
+
+  updateFallbackInfoOverlay(data, receiverStatus) {
+    if (!this.elements.fallbackInfoOverlay) {
+      return;
+    }
+
+    const shouldShow = ["internet-fallback", "local"].includes(data.currentSource);
+    const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
+    const snapshot = shouldShow
+      ? JSON.stringify({
+        source: data.currentSource,
+        date: data.date || "Unknown",
+        time: data.time || "Unknown",
+        statusText,
+      })
+      : "";
+
+    if (snapshot === this.lastFallbackOverlaySignature) {
+      return;
+    }
+
+    this.lastFallbackOverlaySignature = snapshot;
+    this.elements.fallbackInfoOverlay.classList.toggle("is-active", shouldShow);
+    this.elements.fallbackInfoOverlay.setAttribute("aria-hidden", String(!shouldShow));
+
+    if (!shouldShow) {
+      return;
+    }
+
+    this.elements.fallbackInfoSource.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+    this.elements.fallbackInfoDate.textContent = data.date || "Unknown";
+    this.elements.fallbackInfoTime.textContent = data.time || "Unknown";
+    this.elements.fallbackInfoStatus.textContent = statusText;
+    this.elements.fallbackInfoPanel.className = [
+      "fallback-info-panel",
+      data.currentSource === "internet-fallback" ? "fallback-info-advisory" : "fallback-info-critical",
+    ].join(" ");
   }
 
   updateDashboard(data, receiverStatus, sessionState) {
@@ -1871,6 +1917,12 @@ class PrecisionClock {
       digitalOnlyControls: document.getElementById("digitalOnlyControls"),
       setTimeComputerBtn: document.getElementById("setTimeComputerBtn"),
       setTimeInternetBtn: document.getElementById("setTimeInternetBtn"),
+      fallbackInfoOverlay: document.getElementById("fallbackInfoOverlay"),
+      fallbackInfoPanel: document.getElementById("fallbackInfoPanel"),
+      fallbackInfoSource: document.getElementById("fallbackInfoSource"),
+      fallbackInfoDate: document.getElementById("fallbackInfoDate"),
+      fallbackInfoTime: document.getElementById("fallbackInfoTime"),
+      fallbackInfoStatus: document.getElementById("fallbackInfoStatus"),
       dashboardSummaryText: document.getElementById("dashboardSummaryText"),
       dashboardSeverityBadge: document.getElementById("dashboardSeverityBadge"),
       dashboardIntegrityBadge: document.getElementById("dashboardIntegrityBadge"),

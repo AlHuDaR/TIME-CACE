@@ -216,6 +216,23 @@
         </div>
       </section>
 
+      <section
+        id="fallbackInfoOverlay"
+        class="fallback-info-overlay"
+        aria-live="polite"
+        aria-hidden="true"
+      >
+        <article id="fallbackInfoPanel" class="fallback-info-panel fallback-info-advisory">
+          <p class="fallback-info-kicker">Information</p>
+          <div class="fallback-info-grid">
+            <p class="fallback-info-line"><span>Source:</span> <strong id="fallbackInfoSource">INTERNET/HTTP DATE</strong></p>
+            <p class="fallback-info-line"><span>Date:</span> <strong id="fallbackInfoDate">--/--/----</strong></p>
+            <p class="fallback-info-line"><span>Time:</span> <strong id="fallbackInfoTime">--:--:--</strong></p>
+            <p class="fallback-info-line fallback-info-status"><span>Status:</span> <strong id="fallbackInfoStatus">Waiting for fallback state.</strong></p>
+          </div>
+        </article>
+      </section>
+
       <section id="digitalClock" class="clock-grid" aria-label="Current time in Oman (GST, UTC+4)">
         <img src="images/cal%20logo.png" alt="" class="clock-center-logo" aria-hidden="true" />
         <article class="tile">

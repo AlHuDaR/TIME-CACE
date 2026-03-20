@@ -531,6 +531,81 @@ h1 {
   padding: 0.38rem 0.72rem;
 }
 
+.fallback-info-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 220ms ease, visibility 220ms ease;
+  z-index: 30;
+}
+
+.fallback-info-overlay.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.fallback-info-panel {
+  width: min(92vw, 520px);
+  padding: 1rem 1.15rem;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(8, 20, 28, 0.72);
+  color: #f5fbff;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px rgba(4, 17, 26, 0.24);
+}
+
+.fallback-info-advisory {
+  border-color: rgba(79, 195, 247, 0.35);
+  box-shadow: 0 18px 40px rgba(20, 73, 95, 0.22);
+}
+
+.fallback-info-critical {
+  border-color: rgba(223, 45, 45, 0.38);
+  box-shadow: 0 18px 40px rgba(92, 24, 24, 0.24);
+}
+
+.fallback-info-kicker {
+  margin: 0 0 0.75rem;
+  color: rgba(255, 255, 255, 0.82);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.fallback-info-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.fallback-info-line {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.55rem;
+  align-items: baseline;
+  font-size: clamp(0.92rem, 1.6vw, 1.02rem);
+}
+
+.fallback-info-line span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.fallback-info-line strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.fallback-info-status {
+  margin-top: 0.2rem;
+}
+
 .clock-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1095,6 +1170,11 @@ body.old-style .analog-nav {
   .dashboard-header,
   .dashboard-metric-row {
     flex-direction: column;
+  }
+
+  .fallback-info-overlay {
+    place-items: center;
+    padding-top: 12vh;
   }
 
   .dashboard-header-badges {

@@ -9,16 +9,80 @@ const net = require("net");
 const app = express();
 app.set("trust proxy", 1);
 
+function readEnvNumber(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return fallback;
+  }
+
+  return Number(raw);
+}
+
+function validateFiniteNumber(name, value, { min = -Infinity, max = Infinity, integer = false } = {}) {
+  if (!Number.isFinite(value)) {
+    throw new Error(`Invalid ${name}: expected a finite number`);
+  }
+
+  if (integer && !Number.isInteger(value)) {
+    throw new Error(`Invalid ${name}: expected an integer`);
+  }
+
+  if (value < min || value > max) {
+    throw new Error(`Invalid ${name}: expected a value between ${min} and ${max}`);
+  }
+
+  return value;
+}
+
+function validateConfig(config) {
+  const validated = {
+    ...config,
+    port: validateFiniteNumber("PORT", config.port, { min: 1, max: 65535, integer: true }),
+    gpsPort: validateFiniteNumber("GPS_PORT", config.gpsPort, { min: 1, max: 65535, integer: true }),
+    minConnectionIntervalMs: validateFiniteNumber("MIN_CONNECTION_INTERVAL_MS", config.minConnectionIntervalMs, { min: 0, max: 300000, integer: true }),
+    requestTimeoutMs: validateFiniteNumber("REQUEST_TIMEOUT_MS", config.requestTimeoutMs, { min: 100, max: 300000, integer: true }),
+    receiverStatusCacheMs: validateFiniteNumber("RECEIVER_STATUS_CACHE_MS", config.receiverStatusCacheMs, { min: 0, max: 300000, integer: true }),
+    statusStaleMs: validateFiniteNumber("STATUS_STALE_MS", config.statusStaleMs, { min: 1000, max: 86400000, integer: true }),
+    rateLimitWindowMs: validateFiniteNumber("RATE_LIMIT_WINDOW_MS", config.rateLimitWindowMs, { min: 1000, max: 86400000, integer: true }),
+    rateLimitTimeMax: validateFiniteNumber("RATE_LIMIT_TIME_MAX", config.rateLimitTimeMax, { min: 1, max: 100000, integer: true }),
+    rateLimitStatusMax: validateFiniteNumber("RATE_LIMIT_STATUS_MAX", config.rateLimitStatusMax, { min: 1, max: 100000, integer: true }),
+    rateLimitInternetMax: validateFiniteNumber("RATE_LIMIT_INTERNET_MAX", config.rateLimitInternetMax, { min: 1, max: 100000, integer: true }),
+    rateLimitSetMax: validateFiniteNumber("RATE_LIMIT_SET_MAX", config.rateLimitSetMax, { min: 1, max: 100000, integer: true }),
+  };
+
+  if (!validated.gpsHost || !String(validated.gpsHost).trim()) {
+    throw new Error("Invalid GPS_HOST: a receiver host value is required");
+  }
+
+  if (!validated.gpsUsername.trim()) {
+    throw new Error("Invalid GPS_USERNAME: receiver login requires a username");
+  }
+
+  if (!validated.gpsPassword.trim()) {
+    throw new Error("Invalid GPS_PASSWORD: receiver login requires a password");
+  }
+
+  if (validated.authEnabled && !validated.authToken.trim()) {
+    throw new Error("Invalid API_AUTH_TOKEN: API auth is enabled but no token is configured");
+  }
+
+  if (validated.receiverStatusCacheMs > validated.statusStaleMs) {
+    throw new Error("Invalid config: RECEIVER_STATUS_CACHE_MS must be less than or equal to STATUS_STALE_MS");
+  }
+
+  return Object.freeze(validated);
+}
+
 const FRONTEND_ASSET_FILES = Object.freeze([
   "index.html",
   "script.js",
   "styles.css",
 ]);
 
-const CONFIG = Object.freeze({
-  port: Number(process.env.PORT || 3000),
+const CONFIG = validateConfig({
+  port: readEnvNumber("PORT", 3000),
   gpsHost: process.env.GPS_HOST || "127.0.0.1",
-  gpsPort: Number(process.env.GPS_PORT || 23),
+  gpsPort: readEnvNumber("GPS_PORT", 23),
   gpsUsername: process.env.GPS_USERNAME || "",
   gpsPassword: process.env.GPS_PASSWORD || "",
   allowedOrigins: Object.freeze(
@@ -31,17 +95,17 @@ const CONFIG = Object.freeze({
     ? process.env.SERVE_STATIC === "true"
     : process.env.NODE_ENV !== "production",
   nodeEnv: process.env.NODE_ENV || "development",
-  minConnectionIntervalMs: Number(process.env.MIN_CONNECTION_INTERVAL_MS || 5000),
-  requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 15000),
-  receiverStatusCacheMs: Number(process.env.RECEIVER_STATUS_CACHE_MS || 4000),
-  statusStaleMs: Number(process.env.STATUS_STALE_MS || 45000),
+  minConnectionIntervalMs: readEnvNumber("MIN_CONNECTION_INTERVAL_MS", 5000),
+  requestTimeoutMs: readEnvNumber("REQUEST_TIMEOUT_MS", 15000),
+  receiverStatusCacheMs: readEnvNumber("RECEIVER_STATUS_CACHE_MS", 4000),
+  statusStaleMs: readEnvNumber("STATUS_STALE_MS", 45000),
   authEnabled: process.env.API_AUTH_ENABLED === "true",
   authToken: process.env.API_AUTH_TOKEN || "",
-  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
-  rateLimitTimeMax: Number(process.env.RATE_LIMIT_TIME_MAX || 90),
-  rateLimitStatusMax: Number(process.env.RATE_LIMIT_STATUS_MAX || 30),
-  rateLimitInternetMax: Number(process.env.RATE_LIMIT_INTERNET_MAX || 60),
-  rateLimitSetMax: Number(process.env.RATE_LIMIT_SET_MAX || 8),
+  rateLimitWindowMs: readEnvNumber("RATE_LIMIT_WINDOW_MS", 60000),
+  rateLimitTimeMax: readEnvNumber("RATE_LIMIT_TIME_MAX", 90),
+  rateLimitStatusMax: readEnvNumber("RATE_LIMIT_STATUS_MAX", 30),
+  rateLimitInternetMax: readEnvNumber("RATE_LIMIT_INTERNET_MAX", 60),
+  rateLimitSetMax: readEnvNumber("RATE_LIMIT_SET_MAX", 8),
 });
 
 const publicPath = path.resolve(__dirname);
@@ -58,6 +122,7 @@ const allowedOrigins = new Set([
 ]);
 
 let lastConnectionAttempt = 0;
+let lastRateLimitPruneAt = 0;
 let lastReceiverSnapshot = {
   backendOnline: true,
   receiverReachable: false,
@@ -85,6 +150,19 @@ let monitoringMemory = {
 };
 
 const rateLimitStore = new Map();
+
+function pruneExpiredRateLimitEntries(now = Date.now()) {
+  if (now - lastRateLimitPruneAt < Math.min(CONFIG.rateLimitWindowMs, 10000)) {
+    return;
+  }
+
+  lastRateLimitPruneAt = now;
+  for (const [clientKey, entry] of rateLimitStore.entries()) {
+    if (!entry || entry.resetAt <= now) {
+      rateLimitStore.delete(clientKey);
+    }
+  }
+}
 
 function isOriginAllowed(origin) {
   if (!origin) {
@@ -197,6 +275,7 @@ function getClientIdentifier(req) {
 function createRateLimiter({ key, windowMs, maxRequests }) {
   return (req, res, next) => {
     const now = Date.now();
+    pruneExpiredRateLimitEntries(now);
     const clientKey = `${key}:${getClientIdentifier(req)}`;
     const entry = rateLimitStore.get(clientKey);
 
@@ -310,8 +389,20 @@ async function getPreciseInternetTime() {
   };
 }
 
+function normalizeReceiverRaw(raw) {
+  return String(raw || "").replace(/\0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseReceiverAcknowledgement(raw) {
+  const normalized = normalizeReceiverRaw(raw);
+  return {
+    raw: normalized,
+    acknowledged: /\bOK\b/i.test(normalized),
+  };
+}
+
 function parseGpsTimeResponse(raw) {
-  const normalized = raw.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
+  const normalized = normalizeReceiverRaw(raw);
   const explicitMatch = normalized.match(/F3\s+(\w+)\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/i);
   const fallbackMatch = explicitMatch
     ? null
@@ -497,7 +588,15 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
   };
 }
 
-function connectToGPS(command, { expectOk = false } = {}) {
+function connectToGPS(
+  command,
+  {
+    expectOk = false,
+    timeoutMs = CONFIG.requestTimeoutMs,
+    host = CONFIG.gpsHost,
+    port = CONFIG.gpsPort,
+  } = {},
+) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let buffer = "";
@@ -518,9 +617,9 @@ function connectToGPS(command, { expectOk = false } = {}) {
 
     const timeout = setTimeout(() => {
       finish(reject, new Error("Connection timeout"));
-    }, CONFIG.requestTimeoutMs);
+    }, timeoutMs);
 
-    socket.connect(CONFIG.gpsPort, CONFIG.gpsHost, () => {
+    socket.connect(port, host, () => {
       receiverReachable = true;
     });
 
@@ -557,7 +656,9 @@ function connectToGPS(command, { expectOk = false } = {}) {
       }
 
       if (state === "command") {
-        const complete = expectOk ? /\bOK\b/i.test(buffer) : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer);
+        const complete = expectOk
+          ? parseReceiverAcknowledgement(buffer).acknowledged
+          : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer);
         if (complete) {
           finish(resolve, {
             receiverReachable,
@@ -576,7 +677,7 @@ function connectToGPS(command, { expectOk = false } = {}) {
       if (settled) {
         return;
       }
-      if (buffer && (expectOk ? /\bOK\b/i.test(buffer) : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer))) {
+      if (buffer && (expectOk ? parseReceiverAcknowledgement(buffer).acknowledged : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer))) {
         finish(resolve, {
           receiverReachable,
           loginOk,
@@ -851,6 +952,7 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
     await throttleReceiverAccess();
     const command = `F3 UTC ${mm}/${dd}/${yyyy} ${hh}:${min}:${ss}\r\n`;
     const result = await connectToGPS(command, { expectOk: true });
+    const acknowledgement = parseReceiverAcknowledgement(result.raw);
 
     updateReceiverSnapshot({
       receiverReachable: result.receiverReachable,
@@ -881,6 +983,7 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
       receiverUtcDate: `${mm}/${dd}/${yyyy}`,
       receiverUtcTime: `${hh}:${min}:${ss}`,
       receiverTimeMode: "UTC",
+      receiverAcknowledgement: acknowledgement.raw,
     });
   } catch (error) {
     const classified = classifyReceiverError(error);
@@ -971,12 +1074,31 @@ if (CONFIG.serveStatic) {
   });
 }
 
-app.listen(CONFIG.port, () => {
-  console.log(`GPS backend listening on http://localhost:${CONFIG.port}`);
-  console.log(`Receiver target: ${CONFIG.gpsHost}:${CONFIG.gpsPort}`);
-  console.log(`Static frontend serving: ${CONFIG.serveStatic ? "enabled" : "disabled"}`);
-  console.log(`API auth: ${CONFIG.authEnabled ? "enabled" : "disabled"}`);
-  console.log(
-    `CORS policy: ${allowedOrigins.size > 0 ? Array.from(allowedOrigins).join(", ") : isProduction ? "same-origin / non-browser only until ALLOWED_ORIGIN is set" : "development-open"}`,
-  );
-});
+function startServer() {
+  return app.listen(CONFIG.port, () => {
+    console.log(`GPS backend listening on http://localhost:${CONFIG.port}`);
+    console.log(`Receiver target: ${CONFIG.gpsHost}:${CONFIG.gpsPort}`);
+    console.log(`Static frontend serving: ${CONFIG.serveStatic ? "enabled" : "disabled"}`);
+    console.log(`API auth: ${CONFIG.authEnabled ? "enabled" : "disabled"}`);
+    console.log(
+      `CORS policy: ${allowedOrigins.size > 0 ? Array.from(allowedOrigins).join(", ") : isProduction ? "same-origin / non-browser only until ALLOWED_ORIGIN is set" : "development-open"}`,
+    );
+  });
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  CONFIG,
+  app,
+  startServer,
+  validateConfig,
+  normalizeReceiverRaw,
+  parseReceiverAcknowledgement,
+  parseGpsTimeResponse,
+  classifyReceiverError,
+  deriveMonitoringState,
+  connectToGPS,
+};
