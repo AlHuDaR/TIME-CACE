@@ -41,172 +41,6 @@
         </div>
       </section>
 
-      <section class="card dashboard-card" aria-labelledby="gpsSystemStatusHeading">
-        <div class="dashboard-header">
-          <div>
-            <p class="dashboard-kicker">Monitoring dashboard</p>
-            <h2 id="gpsSystemStatusHeading" class="dashboard-title">GPS SYSTEM STATUS</h2>
-            <p id="dashboardSummaryText" class="dashboard-summary-text">Waiting for the first receiver status snapshot.</p>
-          </div>
-          <div class="dashboard-header-badges">
-            <span id="dashboardSeverityBadge" class="dashboard-severity status-normal">Normal</span>
-            <span id="dashboardIntegrityBadge" class="dashboard-severity status-neutral">Confidence unknown</span>
-            <span id="dashboardDataStateBadge" class="dashboard-data-state data-waiting">Waiting for data</span>
-          </div>
-        </div>
-
-        <div class="dashboard-summary-strip" aria-live="polite">
-          <article class="summary-pill">
-            <span class="summary-pill-label">Backend</span>
-            <span id="dashboardBackendSummary" class="summary-pill-value">Unknown</span>
-          </article>
-          <article class="summary-pill">
-            <span class="summary-pill-label">Receiver</span>
-            <span id="dashboardReceiverSummary" class="summary-pill-value">Unknown</span>
-          </article>
-          <article class="summary-pill">
-            <span class="summary-pill-label">GPS Lock</span>
-            <span id="dashboardLockSummary" class="summary-pill-value">Unknown</span>
-          </article>
-          <article class="summary-pill">
-            <span class="summary-pill-label">Time Source</span>
-            <span id="dashboardSourceSummary" class="summary-pill-value">Unknown</span>
-          </article>
-          <article class="summary-pill">
-            <span class="summary-pill-label">Timing Integrity</span>
-            <span id="dashboardIntegritySummary" class="summary-pill-value">Unknown</span>
-          </article>
-        </div>
-
-        <div class="dashboard-grid" aria-live="polite">
-          <article class="dashboard-panel">
-            <h3>System health</h3>
-            <div class="dashboard-metric-list">
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Backend status</span>
-                <span id="dashboardBackendStatus" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Receiver reachability</span>
-                <span id="dashboardReceiverStatus" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Receiver login</span>
-                <span id="dashboardLoginStatus" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Overall health</span>
-                <span id="dashboardHealthStatus" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Timing integrity</span>
-                <span id="dashboardIntegrityStatus" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Formal alarm state</span>
-                <span id="dashboardAlarmStatus" class="dashboard-metric-value">Unknown</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="dashboard-panel">
-            <h3>Receiver communication</h3>
-            <div class="dashboard-metric-list">
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Communication state</span>
-                <span id="dashboardCommunicationState" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Status data</span>
-                <span id="dashboardStatusDataState" class="dashboard-metric-value">Unavailable</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Last status poll</span>
-                <span id="dashboardLastStatusPoll" class="dashboard-metric-value">Never</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Status freshness</span>
-                <span id="dashboardStatusFreshness" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Last good communication</span>
-                <span id="dashboardLastGoodComm" class="dashboard-metric-value">Never</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Status stale since</span>
-                <span id="dashboardStaleSince" class="dashboard-metric-value">N/A</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="dashboard-panel">
-            <h3>Time source</h3>
-            <div class="dashboard-metric-list">
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Active source</span>
-                <span id="dashboardActiveSource" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Receiver-reported source</span>
-                <span id="dashboardReceiverSource" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Last time sync</span>
-                <span id="dashboardLastTimeSync" class="dashboard-metric-value">Never</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Time/status alignment</span>
-                <span id="dashboardAlignmentStatus" class="dashboard-metric-value">Waiting for data</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Last good GPS lock</span>
-                <span id="dashboardLastGoodLock" class="dashboard-metric-value">Never</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Authoritative sync health</span>
-                <span id="dashboardAuthoritativeSync" class="dashboard-metric-value">Unknown</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="dashboard-panel">
-            <h3>Session monitoring</h3>
-            <div class="dashboard-metric-list">
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Runtime source state</span>
-                <span id="dashboardRuntimeSourceState" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Receiver health state</span>
-                <span id="dashboardReceiverHealthState" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">GPS lock quality</span>
-                <span id="dashboardLockQualityState" class="dashboard-metric-value">Unknown</span>
-              </div>
-              <div class="dashboard-metric-row">
-                <span class="dashboard-metric-label">Authoritative sync</span>
-                <span id="dashboardLastAuthoritativeSync" class="dashboard-metric-value">Never</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="dashboard-panel dashboard-panel-diagnostics">
-            <h3>Diagnostics</h3>
-            <p id="dashboardStatusText" class="dashboard-diagnostic-text">System status not checked yet.</p>
-            <p id="dashboardErrorText" class="dashboard-diagnostic-text dashboard-diagnostic-error">No errors reported.</p>
-            <div class="dashboard-metric-row dashboard-metric-row-compact">
-              <span class="dashboard-metric-label">Recent state line</span>
-              <div id="dashboardTimeline" class="dashboard-timeline" aria-label="Recent dashboard state history"></div>
-            </div>
-            <div class="dashboard-metric-row dashboard-metric-row-compact">
-              <span class="dashboard-metric-label">Recent events</span>
-              <div id="dashboardEventList" class="dashboard-event-list" aria-label="Recent timing monitor events"></div>
-            </div>
-          </article>
-        </div>
-      </section>
-
       <section class="card mode-card" aria-label="Clock style controls">
         <p class="label">Clock style</p>
         <div class="mode-toggle" role="radiogroup" aria-label="Select clock style">
@@ -296,6 +130,132 @@
           <p id="syncStatus" class="status">Status: Initializing…</p>
           <p id="statusConsistencyHint" class="meta-note">Status and runtime source information will be cross-checked here.</p>
         </article>
+      </section>
+
+      <section class="card dashboard-card" aria-labelledby="gpsSystemStatusHeading">
+        <div class="dashboard-header">
+          <div>
+            <p class="dashboard-kicker">Monitoring dashboard</p>
+            <h2 id="gpsSystemStatusHeading" class="dashboard-title">GPS SYSTEM STATUS</h2>
+            <p id="dashboardSummaryText" class="dashboard-summary-text">Waiting for the first receiver status snapshot.</p>
+          </div>
+          <div class="dashboard-header-badges">
+            <span id="dashboardSeverityBadge" class="dashboard-severity status-neutral">Waiting</span>
+            <span id="dashboardIntegrityBadge" class="dashboard-severity status-neutral">Integrity unknown</span>
+            <span id="dashboardDataStateBadge" class="dashboard-data-state data-waiting">Waiting for data</span>
+          </div>
+        </div>
+
+        <div class="monitoring-grid" aria-live="polite">
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Receiver Reachability</p>
+              <span id="monitorReceiverReachabilityBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorReceiverReachabilityValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorReceiverReachabilityNote" class="monitoring-card-note">Awaiting receiver status.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">GPS Lock Status</p>
+              <span id="monitorGpsLockBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorGpsLockValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorGpsLockNote" class="monitoring-card-note">Awaiting lock telemetry.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Active Time Source</p>
+              <span id="monitorActiveSourceBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorActiveSourceValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorActiveSourceNote" class="monitoring-card-note">Runtime source has not been classified yet.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Timing Integrity</p>
+              <span id="monitorTimingIntegrityBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorTimingIntegrityValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorTimingIntegrityNote" class="monitoring-card-note">Confidence will update when status arrives.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">System Status</p>
+              <span id="monitorSystemStatusBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorSystemStatusValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorSystemStatusNote" class="monitoring-card-note">Overall monitor severity is pending.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Last Sync Age</p>
+              <span id="monitorLastSyncBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorLastSyncValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorLastSyncNote" class="monitoring-card-note">Last runtime synchronization has not been recorded yet.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Communication Status</p>
+              <span id="monitorCommunicationBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorCommunicationValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorCommunicationNote" class="monitoring-card-note">Backend and receiver link state pending.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Fallback State</p>
+              <span id="monitorFallbackBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorFallbackValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorFallbackNote" class="monitoring-card-note">Fallback posture will update automatically.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Last Known Good Time</p>
+              <span id="monitorLastKnownGoodBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorLastKnownGoodValue" class="monitoring-card-value">Unknown</p>
+            <p id="monitorLastKnownGoodNote" class="monitoring-card-note">Awaiting first authoritative timing record.</p>
+          </article>
+
+          <article class="monitoring-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Error Message</p>
+              <span id="monitorErrorBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="monitorErrorValue" class="monitoring-card-value">No active error</p>
+            <p id="monitorErrorNote" class="monitoring-card-note">Receiver and backend errors will appear here.</p>
+          </article>
+        </div>
+
+        <div class="dashboard-bottom-grid">
+          <article class="dashboard-diagnostics-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">System Diagnostics</p>
+              <span id="dashboardSummaryBadge" class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <p id="dashboardStatusText" class="dashboard-diagnostic-text">System status not checked yet.</p>
+            <p id="dashboardErrorText" class="dashboard-diagnostic-text dashboard-diagnostic-error">No errors reported.</p>
+          </article>
+
+          <article class="dashboard-events-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Recent Events</p>
+              <span class="monitoring-card-badge badge-info">INFO</span>
+            </div>
+            <div id="dashboardEventList" class="dashboard-event-list" aria-label="Recent timing monitor events"></div>
+          </article>
+        </div>
       </section>
 
       <p class="coder-credit">Coded by <a href="#" target="_blank">AlHuDaR</a></p>
