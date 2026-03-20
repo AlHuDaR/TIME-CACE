@@ -1115,11 +1115,14 @@ class GPSDisplayManager {
     };
     this.lastDashboardSignature = "";
     this.lastLiveRefreshSecond = -1;
-    this.lastFallbackOverlaySignature = "";
+    this.lastFallbackCardSignature = "";
+    this.dismissedFallbackCardSignature = "";
     this.timeline = [];
   }
 
   init() {
+    this.elements.fallbackInfoCloseBtn?.addEventListener("click", () => this.dismissFallbackInfoCard());
+
     this.gpsTimeSync.addEventListener("gpstimeupdate", (event) => {
       this.updateDisplay(event.detail);
     });
@@ -1156,7 +1159,7 @@ class GPSDisplayManager {
     this.elements.syncStatus.textContent = this.syncManager.formatStatus();
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
     this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
-    this.updateFallbackInfoOverlay(data, receiverStatus);
+    this.updateFallbackInfoCard(data, receiverStatus);
 
     this.updateDashboard(data, receiverStatus, sessionState);
   }
@@ -1175,46 +1178,82 @@ class GPSDisplayManager {
     this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
     this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
     this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
-    this.updateFallbackInfoOverlay(data, receiverStatus);
     this.updateDashboard(data, receiverStatus, sessionState);
   }
 
-  updateFallbackInfoOverlay(data, receiverStatus) {
-    if (!this.elements.fallbackInfoOverlay) {
+  isFallbackSource(source) {
+    return !["gps-locked", "gps-unlocked", "holdover"].includes(source);
+  }
+
+  getFallbackCardSourceLabel(data) {
+    if (data.currentSource === "internet-fallback") {
+      return "INTERNET/HTTP DATE";
+    }
+
+    if (data.currentSource === "local") {
+      return "LOCAL COMPUTER TIME";
+    }
+
+    return this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+  }
+
+  dismissFallbackInfoCard() {
+    if (!this.elements.fallbackInfoCard || !this.lastFallbackCardSignature) {
       return;
     }
 
-    const shouldShow = ["internet-fallback", "local"].includes(data.currentSource);
-    const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
-    const snapshot = shouldShow
-      ? JSON.stringify({
-        source: data.currentSource,
-        date: data.date || "Unknown",
-        time: data.time || "Unknown",
-        statusText,
-      })
-      : "";
+    this.dismissedFallbackCardSignature = this.lastFallbackCardSignature;
+    this.hideFallbackInfoCard();
+  }
 
-    if (snapshot === this.lastFallbackOverlaySignature) {
+  hideFallbackInfoCard() {
+    this.elements.fallbackInfoCard?.classList.add("hidden");
+    this.elements.fallbackInfoCard?.classList.remove("is-advisory", "is-critical");
+    this.elements.fallbackInfoCard?.setAttribute("aria-hidden", "true");
+  }
+
+  updateFallbackInfoCard(data, receiverStatus) {
+    if (!this.elements.fallbackInfoCard) {
       return;
     }
 
-    this.lastFallbackOverlaySignature = snapshot;
-    this.elements.fallbackInfoOverlay.classList.toggle("is-active", shouldShow);
-    this.elements.fallbackInfoOverlay.setAttribute("aria-hidden", String(!shouldShow));
-
+    const shouldShow = this.isFallbackSource(data.currentSource);
     if (!shouldShow) {
+      this.lastFallbackCardSignature = "";
+      this.dismissedFallbackCardSignature = "";
+      this.hideFallbackInfoCard();
       return;
     }
 
-    this.elements.fallbackInfoSource.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+    const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
+    const snapshot = JSON.stringify({
+      source: data.currentSource,
+      date: data.date || "Unknown",
+      time: data.time || "Unknown",
+      statusText,
+    });
+
+    const hasChanged = snapshot !== this.lastFallbackCardSignature;
+    this.lastFallbackCardSignature = snapshot;
+
+    this.elements.fallbackInfoSource.textContent = this.getFallbackCardSourceLabel(data);
     this.elements.fallbackInfoDate.textContent = data.date || "Unknown";
     this.elements.fallbackInfoTime.textContent = data.time || "Unknown";
     this.elements.fallbackInfoStatus.textContent = statusText;
-    this.elements.fallbackInfoPanel.className = [
-      "fallback-info-panel",
-      data.currentSource === "internet-fallback" ? "fallback-info-advisory" : "fallback-info-critical",
-    ].join(" ");
+    this.elements.fallbackInfoCard.classList.toggle("is-advisory", data.currentSource === "internet-fallback");
+    this.elements.fallbackInfoCard.classList.toggle("is-critical", data.currentSource !== "internet-fallback");
+
+    if (hasChanged) {
+      this.dismissedFallbackCardSignature = "";
+    }
+
+    if (this.dismissedFallbackCardSignature === snapshot) {
+      this.hideFallbackInfoCard();
+      return;
+    }
+
+    this.elements.fallbackInfoCard.classList.remove("hidden");
+    this.elements.fallbackInfoCard.setAttribute("aria-hidden", "false");
   }
 
   updateDashboard(data, receiverStatus, sessionState) {
@@ -1917,8 +1956,8 @@ class PrecisionClock {
       digitalOnlyControls: document.getElementById("digitalOnlyControls"),
       setTimeComputerBtn: document.getElementById("setTimeComputerBtn"),
       setTimeInternetBtn: document.getElementById("setTimeInternetBtn"),
-      fallbackInfoOverlay: document.getElementById("fallbackInfoOverlay"),
-      fallbackInfoPanel: document.getElementById("fallbackInfoPanel"),
+      fallbackInfoCard: document.getElementById("fallbackInfoCard"),
+      fallbackInfoCloseBtn: document.getElementById("fallbackInfoCloseBtn"),
       fallbackInfoSource: document.getElementById("fallbackInfoSource"),
       fallbackInfoDate: document.getElementById("fallbackInfoDate"),
       fallbackInfoTime: document.getElementById("fallbackInfoTime"),
