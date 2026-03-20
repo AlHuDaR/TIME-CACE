@@ -9,6 +9,12 @@ const net = require("net");
 const app = express();
 app.set("trust proxy", 1);
 
+const FRONTEND_ASSET_FILES = Object.freeze([
+  "index.html",
+  "script.js",
+  "styles.css",
+]);
+
 const CONFIG = Object.freeze({
   port: Number(process.env.PORT || 3000),
   gpsHost: process.env.GPS_HOST || "127.0.0.1",
@@ -25,7 +31,6 @@ const CONFIG = Object.freeze({
     ? process.env.SERVE_STATIC === "true"
     : process.env.NODE_ENV !== "production",
   nodeEnv: process.env.NODE_ENV || "development",
-  omanOffsetMs: 4 * 60 * 60 * 1000,
   minConnectionIntervalMs: Number(process.env.MIN_CONNECTION_INTERVAL_MS || 5000),
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 15000),
   receiverStatusCacheMs: Number(process.env.RECEIVER_STATUS_CACHE_MS || 4000),
@@ -104,10 +109,6 @@ app.use(cors({
   },
 }));
 app.use(express.json());
-
-if (CONFIG.serveStatic) {
-  app.use(express.static(publicPath));
-}
 
 function createOmanDateFormatter(options = {}) {
   return new Intl.DateTimeFormat("en-US", {
@@ -261,6 +262,15 @@ function createLocalFallback(extra = {}) {
   return payload;
 }
 
+function getOmanDisplayParts(timestamp) {
+  const date = new Date(timestamp);
+
+  return {
+    date: formatOmanDate(date),
+    time: formatOmanTime(date),
+  };
+}
+
 async function getPreciseInternetTime() {
   const timeSources = [
     "https://time.google.com",
@@ -302,17 +312,21 @@ async function getPreciseInternetTime() {
 
 function parseGpsTimeResponse(raw) {
   const normalized = raw.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
-  const match = normalized.match(/F3\s+\w+\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/i)
-    || normalized.match(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
+  const explicitMatch = normalized.match(/F3\s+(\w+)\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/i);
+  const fallbackMatch = explicitMatch
+    ? null
+    : normalized.match(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})/);
 
-  if (!match) {
+  if (!explicitMatch && !fallbackMatch) {
     throw new Error("Could not parse receiver time response");
   }
 
-  const [, dateStr, timeStr] = match;
+  const timeMode = explicitMatch ? explicitMatch[1] : "UTC";
+  const dateStr = explicitMatch ? explicitMatch[2] : fallbackMatch[1];
+  const timeStr = explicitMatch ? explicitMatch[3] : fallbackMatch[2];
   const [month, day, year] = dateStr.split("/").map(Number);
   const [hours, minutes, seconds] = timeStr.split(":").map(Number);
-  const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds) - CONFIG.omanOffsetMs;
+  const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds);
 
   const hasHoldover = /HOLDOVER/i.test(normalized);
   const explicitUnlocked = /(UNLOCK|NO\s+GPS|ANTENNA\s+FAULT|SEARCHING)/i.test(normalized);
@@ -338,8 +352,9 @@ function parseGpsTimeResponse(raw) {
 
   return {
     raw: normalized,
-    date: dateStr,
-    time: timeStr,
+    receiverDate: dateStr,
+    receiverTime: timeStr,
+    receiverTimeMode: timeMode.toUpperCase(),
     timestamp: utcTimestamp,
     isLocked,
     gpsLockState,
@@ -611,6 +626,7 @@ async function readReceiverTime() {
 
   const connection = await connectToGPS("F3\r\n");
   const parsed = parseGpsTimeResponse(connection.raw);
+  const omanDisplay = getOmanDisplayParts(parsed.timestamp);
 
   const snapshot = updateReceiverSnapshot({
     receiverReachable: connection.receiverReachable,
@@ -644,9 +660,12 @@ async function readReceiverTime() {
     lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
     lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
     consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
-    date: parsed.date,
-    time: parsed.time,
+    date: omanDisplay.date,
+    time: omanDisplay.time,
     timestamp: parsed.timestamp,
+    receiverDate: parsed.receiverDate,
+    receiverTime: parsed.receiverTime,
+    receiverTimeMode: parsed.receiverTimeMode,
     raw: parsed.raw,
   };
 }
@@ -813,20 +832,21 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
 
     if (useInternet) {
       const internetTime = await getPreciseInternetTime();
-      omanTimestamp = internetTime.timestamp + CONFIG.omanOffsetMs;
+      omanTimestamp = internetTime.timestamp;
       source = "Internet";
     } else {
-      omanTimestamp = Date.now() + CONFIG.omanOffsetMs;
+      omanTimestamp = Date.now();
       source = "Computer";
     }
 
-    const omanDate = new Date(omanTimestamp);
-    const mm = String(omanDate.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(omanDate.getUTCDate()).padStart(2, "0");
-    const yyyy = omanDate.getUTCFullYear();
-    const hh = String(omanDate.getUTCHours()).padStart(2, "0");
-    const min = String(omanDate.getUTCMinutes()).padStart(2, "0");
-    const ss = String(omanDate.getUTCSeconds()).padStart(2, "0");
+    const receiverUtcDate = new Date(omanTimestamp);
+    const receiverDisplay = getOmanDisplayParts(omanTimestamp);
+    const mm = String(receiverUtcDate.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(receiverUtcDate.getUTCDate()).padStart(2, "0");
+    const yyyy = receiverUtcDate.getUTCFullYear();
+    const hh = String(receiverUtcDate.getUTCHours()).padStart(2, "0");
+    const min = String(receiverUtcDate.getUTCMinutes()).padStart(2, "0");
+    const ss = String(receiverUtcDate.getUTCSeconds()).padStart(2, "0");
 
     await throttleReceiverAccess();
     const command = `F3 UTC ${mm}/${dd}/${yyyy} ${hh}:${min}:${ss}\r\n`;
@@ -853,11 +873,14 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
     res.json({
       success: true,
       message: "GPS time set successfully",
-      date: `${mm}/${dd}/${yyyy}`,
-      time: `${hh}:${min}:${ss}`,
+      date: receiverDisplay.date,
+      time: receiverDisplay.time,
       timezone: "GST (UTC+04:00)",
       source,
       backendOnline: true,
+      receiverUtcDate: `${mm}/${dd}/${yyyy}`,
+      receiverUtcTime: `${hh}:${min}:${ss}`,
+      receiverTimeMode: "UTC",
     });
   } catch (error) {
     const classified = classifyReceiverError(error);
@@ -890,15 +913,15 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
 app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, res) => {
   try {
     const internetTime = await getPreciseInternetTime();
-    const omanDisplayTime = new Date(internetTime.timestamp + CONFIG.omanOffsetMs);
+    const omanDisplay = getOmanDisplayParts(internetTime.timestamp);
 
     res.json({
       success: true,
       source: "internet-http-date",
       currentSource: "internet-fallback",
       currentSourceLabel: "Internet fallback",
-      date: formatOmanDate(omanDisplayTime),
-      time: formatOmanTime(omanDisplayTime),
+      date: omanDisplay.date,
+      time: omanDisplay.time,
       timezone: "GST (UTC+04:00)",
       timestamp: internetTime.timestamp,
       backendOnline: true,
@@ -906,7 +929,6 @@ app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, r
       loginOk: lastReceiverSnapshot.loginOk,
       isLocked: false,
       gpsLockState: lastReceiverSnapshot.gpsLockState || "unknown",
-      currentSourceLabel: "Internet fallback",
       receiverCommunicationState: lastReceiverSnapshot.receiverCommunicationState,
       statusText: "Using Internet time fallback via backend",
       lastError: null,
@@ -933,8 +955,19 @@ app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, r
 });
 
 if (CONFIG.serveStatic) {
+  app.use("/images", express.static(path.join(publicPath, "images"), {
+    fallthrough: false,
+    index: false,
+  }));
+
+  FRONTEND_ASSET_FILES.filter((fileName) => fileName !== "index.html").forEach((fileName) => {
+    app.get(`/${fileName}`, (req, res) => {
+      res.sendFile(path.join(publicPath, fileName));
+    });
+  });
+
   app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
+    res.sendFile(path.join(publicPath, "index.html"));
   });
 }
 

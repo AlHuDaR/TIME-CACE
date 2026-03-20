@@ -27,6 +27,12 @@ RAFO Calibration Center Time Display is a browser-based Oman time dashboard for 
 
 The backend should be deployed separately from Netlify, for example on a private VM, Docker host, or internal Node.js service.
 
+### Receiver time semantics
+
+- The backend currently uses the XLi `F3` command path for reading and setting time.
+- The XLi manual documents `F3 UTC mm/dd/yyyy hh:mm:ss` as a UTC-oriented command-line set operation, so the backend now treats receiver command timestamps as **UTC on the wire** and converts them to Oman time only for operator-facing display fields.
+- Because the exact deployed receiver configuration can still affect adjacent behavior such as `F69` display/output mode and operator expectations, any further protocol changes should be validated against the real unit before altering command selection or parsing assumptions.
+
 ## Features
 
 - Oman time display in digital mode.
@@ -345,6 +351,7 @@ If you enable backend auth locally, also inject the same token on the frontend.
 - **Netlify frontend + separate backend** remains the correct production architecture.
 - The backend must have network access to the internal Symmetricom XLi receiver.
 - In production, prefer API-only backend hosting with `SERVE_STATIC=false` unless you intentionally want local-style static serving.
+- When `SERVE_STATIC=true`, the backend serves only the intended frontend assets (`index.html`, `script.js`, `styles.css`, and `images/`) instead of exposing the whole repository root.
 - Do not commit real receiver credentials to Git.
 - Existing user-visible clock features remain intact:
   - digital mode

@@ -908,15 +908,14 @@ body.old-style .analog-nav {
 
 #notification-container {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 1rem;
+  right: 1rem;
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 0.75rem;
-  width: min(90vw, 420px);
+  width: min(24rem, calc(100vw - 2rem));
   pointer-events: none;
 }
 
@@ -1086,6 +1085,13 @@ body.old-style .analog-nav {
 }
 
 @media (max-width: 620px) {
+  #notification-container {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(92vw, 26rem);
+  }
+
   .dashboard-header,
   .dashboard-metric-row {
     flex-direction: column;
