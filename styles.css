@@ -126,17 +126,24 @@ h1 {
 
 .gps-indicator {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
   min-width: 0;
 }
 
 .gps-info {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
   min-width: 0;
+}
+
+.gps-info-badge-row,
+.gps-info-message-row {
+  display: block;
+  min-width: 0;
+  width: 100%;
 }
 
 .lock-pulse {
@@ -207,9 +214,12 @@ h1 {
 }
 
 .lock-text {
+  display: block;
   font-size: 0.88rem;
   color: var(--muted);
   font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .gps-details {
@@ -1150,7 +1160,9 @@ a {
 
   .gps-indicator,
   .gps-info {
-    justify-content: center;
+    align-items: flex-start;
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .gps-details {
@@ -1206,9 +1218,10 @@ a {
   }
 
   .gps-info {
-    align-items: center;
+    align-items: flex-start;
     flex-direction: column;
     gap: 0.45rem;
+    text-align: left;
   }
 
   .mode-btn,
