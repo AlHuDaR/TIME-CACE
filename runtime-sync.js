@@ -1,5 +1,18 @@
 (function (global) {
-  const { APP_CONFIG, resolveApiBaseUrl, normalizeBaseUrl, normalizeDataState, buildMonitoringModel, humanizeSource, formatClockTime } = global.RAFOTimeApp;
+  const {
+    APP_CONFIG,
+    OMAN_DATE_TIME_FORMATTER,
+    resolveApiBaseUrl,
+    normalizeBaseUrl,
+    normalizeDataState,
+    buildMonitoringModel,
+    humanizeSource,
+    formatClockTime,
+  } = global.RAFOTimeApp;
+
+  if (!OMAN_DATE_TIME_FORMATTER || typeof OMAN_DATE_TIME_FORMATTER.formatToParts !== "function") {
+    throw new Error("OMAN_DATE_TIME_FORMATTER is unavailable. Ensure api-client.js loads before runtime-sync.js.");
+  }
 
 class GPSTimeSync {
   constructor() {
