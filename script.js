@@ -1109,6 +1109,7 @@ class GPSDisplayManager {
       local: "source-local",
     };
     this.lastDashboardSignature = "";
+    this.lastLiveRefreshSecond = -1;
     this.timeline = [];
   }
 
@@ -1153,7 +1154,13 @@ class GPSDisplayManager {
     this.updateDashboard(data, receiverStatus, sessionState);
   }
 
-  refreshLiveStatus() {
+  refreshLiveStatus(force = false) {
+    const currentSecond = Math.floor(Date.now() / 1000);
+    if (!force && currentSecond === this.lastLiveRefreshSecond) {
+      return;
+    }
+
+    this.lastLiveRefreshSecond = currentSecond;
     const data = this.gpsTimeSync.getCurrentState();
     const receiverStatus = this.gpsTimeSync.getReceiverStatus();
     const sessionState = this.gpsTimeSync.getSessionState();
@@ -1934,7 +1941,7 @@ class PrecisionClock {
 
     this.gpsTimeSync.addEventListener("gpstimeupdate", () => {
       this.syncManager.markSuccessfulSync();
-      this.gpsDisplay.refreshLiveStatus();
+      this.gpsDisplay.refreshLiveStatus(true);
     });
 
     this.inputHandler.init();
