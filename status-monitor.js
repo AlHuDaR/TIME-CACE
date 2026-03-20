@@ -1,212 +1,211 @@
 (function (global) {
   const { formatClockTime, formatRelativeAge } = global.RAFOTimeApp;
 
-function normalizeDataState(dataState, stale = false) {
-  if (stale && dataState !== "unavailable") {
-    return "stale";
+  function normalizeDataState(dataState, stale = false) {
+    if (stale && dataState !== "unavailable") {
+      return "stale";
+    }
+
+    if (["live", "cached", "stale", "unavailable"].includes(dataState)) {
+      return dataState;
+    }
+
+    return "waiting";
   }
 
-  if (["live", "cached", "stale", "unavailable"].includes(dataState)) {
-    return dataState;
+  function dataStateLabel(dataState) {
+    return {
+      live: "Live data",
+      cached: "Cached snapshot",
+      stale: "Stale snapshot",
+      unavailable: "Unavailable",
+      waiting: "Waiting for data",
+    }[dataState] || "Waiting for data";
   }
 
-  return "waiting";
-}
-
-function dataStateLabel(dataState) {
-  return {
-    live: "Live data",
-    cached: "Cached snapshot",
-    stale: "Stale snapshot",
-    unavailable: "Unavailable",
-    waiting: "Waiting for data",
-  }[dataState] || "Waiting for data";
-}
-
-function humanizeSource(source) {
-  return {
-    "gps-locked": "GPS locked",
-    "gps-unlocked": "GPS unlocked",
-    holdover: "Holdover",
-    "internet-fallback": "Internet fallback",
-    local: "Local fallback",
-  }[source] || source.replace(/-/g, " ");
-}
-
-function humanizeLockState(lockState) {
-  return {
-    locked: "Locked",
-    unlocked: "Unlocked",
-    holdover: "Holdover",
-    unknown: "Unknown",
-  }[lockState] || "Unknown";
-}
-
-function valueToneClass(tone) {
-  return `value-${tone || "neutral"}`;
-}
-
-const MONITORING = Object.freeze({
-  severityOrder: Object.freeze(["normal", "advisory", "warning", "critical"]),
-  severityMeta: Object.freeze({
-    normal: { label: "Normal", className: "status-normal", tone: "normal", notificationType: "success" },
-    advisory: { label: "Advisory", className: "status-advisory", tone: "advisory", notificationType: "info" },
-    warning: { label: "Warning", className: "status-warning", tone: "warning", notificationType: "warning" },
-    critical: { label: "Critical", className: "status-critical", tone: "critical", notificationType: "error" },
-  }),
-  integrityMeta: Object.freeze({
-    high: { label: "High confidence", tone: "normal", className: "status-normal" },
-    reduced: { label: "Reduced confidence", tone: "advisory", className: "status-advisory" },
-    degraded: { label: "Degraded", tone: "warning", className: "status-warning" },
-    low: { label: "Low confidence / uncertain", tone: "critical", className: "status-critical" },
-  }),
-});
-
-function maxSeverity(...levels) {
-  return levels.reduce((highest, level) => {
-    const currentIndex = MONITORING.severityOrder.indexOf(level || "normal");
-    const highestIndex = MONITORING.severityOrder.indexOf(highest || "normal");
-    return currentIndex > highestIndex ? level : highest;
-  }, "normal");
-}
-
-function formatTimestampWithAge(timestamp, emptyLabel = "Never") {
-  if (!timestamp) {
-    return emptyLabel;
+  function humanizeSource(source) {
+    return {
+      "gps-locked": "GPS locked",
+      "gps-unlocked": "GPS unlocked",
+      holdover: "Holdover",
+      "internet-fallback": "Internet fallback",
+      local: "Browser emergency fallback",
+    }[source] || source.replace(/-/g, " ");
   }
 
-  return `${formatClockTime(timestamp)} (${formatRelativeAge(timestamp)})`;
-}
-
-function formatDurationFrom(timestamp, emptyLabel = "Unknown") {
-  if (!timestamp) {
-    return emptyLabel;
+  function humanizeLockState(lockState) {
+    return {
+      locked: "Locked",
+      unlocked: "Unlocked",
+      holdover: "Holdover",
+      unknown: "Unknown",
+    }[lockState] || "Unknown";
   }
 
-  const value = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
-  if (!Number.isFinite(value)) {
-    return emptyLabel;
+  function valueToneClass(tone) {
+    return `value-${tone || "neutral"}`;
   }
 
-  const diff = Math.max(0, Date.now() - value);
-  const totalSeconds = Math.floor(diff / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const MONITORING = Object.freeze({
+    severityOrder: Object.freeze(["normal", "advisory", "warning", "critical"]),
+    severityMeta: Object.freeze({
+      normal: { label: "Normal", className: "status-normal", tone: "normal", notificationType: "success" },
+      advisory: { label: "Advisory", className: "status-advisory", tone: "advisory", notificationType: "info" },
+      warning: { label: "Warning", className: "status-warning", tone: "warning", notificationType: "warning" },
+      critical: { label: "Critical", className: "status-critical", tone: "critical", notificationType: "error" },
+    }),
+    integrityMeta: Object.freeze({
+      high: { label: "High confidence", tone: "normal", className: "status-normal" },
+      reduced: { label: "Reduced confidence", tone: "advisory", className: "status-advisory" },
+      degraded: { label: "Degraded", tone: "warning", className: "status-warning" },
+      low: { label: "Low confidence / uncertain", tone: "critical", className: "status-critical" },
+    }),
+  });
 
-  if (days > 0) {
-    return `${days}d ${hours}h`;
+  function maxSeverity(...levels) {
+    return levels.reduce((highest, level) => {
+      const currentIndex = MONITORING.severityOrder.indexOf(level || "normal");
+      const highestIndex = MONITORING.severityOrder.indexOf(highest || "normal");
+      return currentIndex > highestIndex ? level : highest;
+    }, "normal");
   }
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
+
+  function formatTimestampWithAge(timestamp, emptyLabel = "Never") {
+    if (!timestamp) {
+      return emptyLabel;
+    }
+
+    return `${formatClockTime(timestamp)} (${formatRelativeAge(timestamp)})`;
   }
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
+
+  function formatDurationFrom(timestamp, emptyLabel = "Unknown") {
+    if (!timestamp) {
+      return emptyLabel;
+    }
+
+    const value = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
+    if (!Number.isFinite(value)) {
+      return emptyLabel;
+    }
+
+    const diff = Math.max(0, Date.now() - value);
+    const totalSeconds = Math.floor(diff / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
   }
-  return `${seconds}s`;
-}
 
-function mapSeverityToTone(level) {
-  return MONITORING.severityMeta[level]?.tone || "neutral";
-}
+  function mapSeverityToTone(level) {
+    return MONITORING.severityMeta[level]?.tone || "neutral";
+  }
 
-function describeTimingIntegrity(level) {
-  return MONITORING.integrityMeta[level]?.label || "Confidence unknown";
-}
+  function describeTimingIntegrity(level) {
+    return MONITORING.integrityMeta[level]?.label || "Confidence unknown";
+  }
 
-function buildMonitoringModel(runtimeState, receiverStatus, sessionState) {
-  const dataState = normalizeDataState(receiverStatus.dataState, receiverStatus.stale);
-  const backendMonitoringState = receiverStatus.monitoringState || runtimeState.monitoringState || {};
-  const runtimeTimeSourceState = runtimeState.currentSource === "gps-locked"
-    ? "healthy"
-    : runtimeState.currentSource === "internet-fallback"
-      ? "degraded"
-      : runtimeState.currentSource === "local"
-        ? "unavailable"
-        : ["gps-unlocked", "holdover"].includes(runtimeState.currentSource)
-          ? "warning"
-          : "unknown";
-  const receiverHealthState = !receiverStatus.backendOnline
-    ? "unavailable"
-    : !receiverStatus.receiverReachable
-      ? "critical"
-      : receiverStatus.loginOk
-        ? "healthy"
-        : "critical";
-  const gpsLockQualityState = receiverStatus.gpsLockState === "locked"
-    ? "healthy"
-    : receiverStatus.gpsLockState === "holdover"
-      ? "warning"
-      : receiverStatus.gpsLockState === "unlocked"
+  function buildMonitoringModel(runtimeState, receiverStatus, sessionState) {
+    const dataState = normalizeDataState(receiverStatus.dataState, receiverStatus.stale);
+    const backendMonitoringState = receiverStatus.monitoringState || runtimeState.monitoringState || {};
+    const receiverConfigured = receiverStatus.receiverConfigured !== false;
+    const runtimeTimeSourceState = runtimeState.currentSource === "gps-locked"
+      ? "healthy"
+      : runtimeState.currentSource === "internet-fallback"
         ? "degraded"
-        : "unknown";
-  const statusDataFreshnessState = dataState === "live"
-    ? "fresh"
-    : dataState === "cached"
-      ? "cached"
-      : dataState === "stale"
-        ? "stale"
-        : dataState === "unavailable"
+        : runtimeState.currentSource === "local"
           ? "unavailable"
-          : "unknown";
-  const communicationAuthState = !receiverStatus.backendOnline
-    ? "backend-offline"
-    : !receiverStatus.receiverReachable
-      ? "receiver-unreachable"
-      : receiverStatus.loginOk
-        ? "authenticated"
-        : "auth-failed";
+          : ["gps-unlocked", "holdover"].includes(runtimeState.currentSource)
+            ? "warning"
+            : "unknown";
+    const receiverHealthState = !receiverStatus.backendOnline
+      ? "unavailable"
+      : !receiverConfigured
+        ? "standby"
+        : !receiverStatus.receiverReachable
+          ? "critical"
+          : receiverStatus.loginOk
+            ? "healthy"
+            : "critical";
+    const gpsLockQualityState = !receiverConfigured
+      ? "standby"
+      : receiverStatus.gpsLockState === "locked"
+        ? "healthy"
+        : receiverStatus.gpsLockState === "holdover"
+          ? "warning"
+          : receiverStatus.gpsLockState === "unlocked"
+            ? "degraded"
+            : "unknown";
+    const statusDataFreshnessState = dataState === "live"
+      ? "fresh"
+      : dataState === "cached"
+        ? "cached"
+        : dataState === "stale"
+          ? "stale"
+          : dataState === "unavailable"
+            ? "unavailable"
+            : "unknown";
+    const communicationAuthState = !receiverStatus.backendOnline
+      ? "backend-offline"
+      : !receiverConfigured
+        ? "disabled"
+        : !receiverStatus.receiverReachable
+          ? "receiver-unreachable"
+          : receiverStatus.loginOk
+            ? "authenticated"
+            : "auth-failed";
 
-  const mismatchWhileFresh = Boolean(
-    receiverStatus.checkedAt
-      && !receiverStatus.stale
-      && receiverStatus.currentSource
-      && runtimeState.currentSource
-      && receiverStatus.currentSource !== runtimeState.currentSource,
-  );
+    const mismatchWhileFresh = Boolean(
+      receiverStatus.checkedAt
+        && !receiverStatus.stale
+        && receiverConfigured
+        && receiverStatus.currentSource
+        && runtimeState.currentSource
+        && receiverStatus.currentSource !== runtimeState.currentSource,
+    );
 
-  const timingIntegrityState = backendMonitoringState.timingIntegrityState
-    || (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable"
-      ? "low"
-      : (
-        !receiverStatus.receiverReachable
-        || !receiverStatus.loginOk
-        || receiverStatus.gpsLockState === "holdover"
-        || dataState === "stale"
-      )
-        ? "degraded"
-        : (
-          dataState === "cached"
-          || runtimeState.currentSource === "internet-fallback"
-          || receiverStatus.gpsLockState === "unlocked"
-          || mismatchWhileFresh
-        )
+    const timingIntegrityState = backendMonitoringState.timingIntegrityState
+      || (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable"
+        ? "low"
+        : (!receiverConfigured || runtimeState.currentSource === "internet-fallback")
           ? "reduced"
-          : "high");
+          : (!receiverStatus.receiverReachable || !receiverStatus.loginOk || receiverStatus.gpsLockState === "holdover" || dataState === "stale")
+            ? "degraded"
+            : (dataState === "cached" || receiverStatus.gpsLockState === "unlocked" || mismatchWhileFresh)
+              ? "reduced"
+              : "high");
 
-  const alarmSeverityState = backendMonitoringState.alarmSeverityState
-    || (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || !receiverStatus.receiverReachable || !receiverStatus.loginOk
-      ? "critical"
-      : (dataState === "stale" || receiverStatus.gpsLockState === "holdover" || receiverStatus.gpsLockState === "unlocked" || sessionState.communicationIssueCount >= 2)
-        ? "warning"
-        : (dataState === "cached" || runtimeState.currentSource === "internet-fallback" || mismatchWhileFresh)
-          ? "advisory"
-          : "normal");
+    const alarmSeverityState = backendMonitoringState.alarmSeverityState
+      || (!receiverStatus.backendOnline || runtimeState.currentSource === "local"
+        ? "critical"
+        : runtimeState.currentSource === "internet-fallback"
+          ? receiverConfigured ? "warning" : "advisory"
+          : (!receiverConfigured || (dataState === "cached" && runtimeState.currentSource !== "gps-locked"))
+            ? "advisory"
+            : (!receiverStatus.receiverReachable || !receiverStatus.loginOk)
+              ? "critical"
+              : (dataState === "stale" || receiverStatus.gpsLockState === "holdover" || receiverStatus.gpsLockState === "unlocked" || sessionState.communicationIssueCount >= 2)
+                ? "warning"
+                : mismatchWhileFresh
+                  ? "advisory"
+                  : "normal");
 
-  return {
-    runtimeTimeSourceState,
-    receiverHealthState: backendMonitoringState.receiverHealthState || receiverHealthState,
-    gpsLockQualityState: backendMonitoringState.gpsLockQualityState || gpsLockQualityState,
-    statusDataFreshnessState: backendMonitoringState.statusDataFreshnessState || statusDataFreshnessState,
-    communicationAuthState: backendMonitoringState.communicationAuthState || communicationAuthState,
-    timingIntegrityState,
-    alarmSeverityState,
-    mismatchWhileFresh,
-    dataState,
-  };
-}
-
+    return {
+      runtimeTimeSourceState,
+      receiverHealthState: backendMonitoringState.receiverHealthState || receiverHealthState,
+      gpsLockQualityState: backendMonitoringState.gpsLockQualityState || gpsLockQualityState,
+      statusDataFreshnessState: backendMonitoringState.statusDataFreshnessState || statusDataFreshnessState,
+      communicationAuthState: backendMonitoringState.communicationAuthState || communicationAuthState,
+      timingIntegrityState,
+      alarmSeverityState,
+      mismatchWhileFresh,
+      dataState,
+    };
+  }
 
   Object.assign(global.RAFOTimeApp, {
     normalizeDataState,

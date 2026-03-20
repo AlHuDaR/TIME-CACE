@@ -41,6 +41,8 @@ class PrecisionClock {
       setTimeInternetBtn: document.getElementById("setTimeInternetBtn"),
       fallbackInfoCard: document.getElementById("fallbackInfoCard"),
       fallbackInfoCloseBtn: document.getElementById("fallbackInfoCloseBtn"),
+      fallbackInfoHeading: document.getElementById("fallbackInfoHeading"),
+      fallbackInfoSubheading: document.getElementById("fallbackInfoSubheading"),
       fallbackInfoSource: document.getElementById("fallbackInfoSource"),
       fallbackInfoDate: document.getElementById("fallbackInfoDate"),
       fallbackInfoTime: document.getElementById("fallbackInfoTime"),

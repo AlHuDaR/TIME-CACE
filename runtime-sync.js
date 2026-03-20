@@ -1,9 +1,10 @@
 (function (global) {
-  const { APP_CONFIG, resolveApiBaseUrl, normalizeDataState, buildMonitoringModel, humanizeSource, formatClockTime } = global.RAFOTimeApp;
+  const { APP_CONFIG, resolveApiBaseUrl, normalizeBaseUrl, normalizeDataState, buildMonitoringModel, humanizeSource, formatClockTime } = global.RAFOTimeApp;
 
 class GPSTimeSync {
   constructor() {
     this.apiBaseUrl = resolveApiBaseUrl();
+    this.apiBackupUrl = normalizeBaseUrl(APP_CONFIG.apiBackupUrl);
     this.notifications = global.appMessageCenter || new global.RAFOTimeApp.MessageCenter();
     this.eventTarget = new EventTarget();
     this.syncInterval = null;
@@ -36,6 +37,7 @@ class GPSTimeSync {
   createReceiverStatus(overrides = {}) {
     return {
       backendOnline: false,
+      receiverConfigured: true,
       receiverReachable: false,
       loginOk: false,
       isLocked: false,
@@ -44,6 +46,7 @@ class GPSTimeSync {
       currentSource: "local",
       currentSourceLabel: "Local fallback",
       receiverCommunicationState: "not-started",
+      fallbackReason: null,
       lastError: null,
       checkedAt: null,
       lastSuccessfulPollAt: null,
@@ -66,6 +69,7 @@ class GPSTimeSync {
   createState(overrides = {}) {
     return {
       backendOnline: false,
+      receiverConfigured: true,
       receiverReachable: false,
       loginOk: false,
       isLocked: false,
@@ -73,6 +77,7 @@ class GPSTimeSync {
       statusText: "Using local computer time",
       currentSource: "local",
       currentSourceLabel: "Local computer time",
+      fallbackReason: null,
       lastError: null,
       date: null,
       time: null,
@@ -123,6 +128,7 @@ class GPSTimeSync {
   buildErrorState(error, fallback = {}) {
     return this.createState({
       backendOnline: Boolean(error?.payload?.backendOnline),
+      receiverConfigured: error?.payload?.receiverConfigured !== false,
       receiverReachable: Boolean(error?.payload?.receiverReachable),
       loginOk: Boolean(error?.payload?.loginOk),
       isLocked: Boolean(error?.payload?.isLocked),
@@ -132,6 +138,7 @@ class GPSTimeSync {
       statusText: error?.payload?.statusText || fallback.statusText || `Backend unavailable: ${error.message}`,
       lastError: error?.payload?.lastError || error.message,
       monitoringState: error?.payload?.monitoringState || fallback.monitoringState || null,
+      fallbackReason: error?.payload?.fallbackReason || fallback.fallbackReason || null,
       ...fallback,
     });
   }
@@ -144,6 +151,7 @@ class GPSTimeSync {
       if (gpsResult.success && gpsResult.timestamp) {
         nextState = this.createState({
           backendOnline: true,
+          receiverConfigured: gpsResult.receiverConfigured !== false,
           receiverReachable: Boolean(gpsResult.receiverReachable ?? true),
           loginOk: Boolean(gpsResult.loginOk ?? true),
           isLocked: Boolean(gpsResult.isLocked),
@@ -158,6 +166,7 @@ class GPSTimeSync {
           raw: gpsResult.raw || null,
           sourceLabel: gpsResult.currentSourceLabel || (gpsResult.isLocked ? "GPS receiver locked" : "GPS receiver reachable, unlock state"),
           monitoringState: gpsResult.monitoringState || null,
+          fallbackReason: gpsResult.fallbackReason || null,
         });
       }
     } catch (error) {
@@ -173,6 +182,7 @@ class GPSTimeSync {
         if (internetResult.success && internetResult.timestamp) {
           nextState = this.createState({
             backendOnline: true,
+            receiverConfigured: internetResult.receiverConfigured !== false && nextState?.receiverConfigured !== false,
             receiverReachable: Boolean(nextState?.receiverReachable || internetResult.receiverReachable),
             loginOk: Boolean(nextState?.loginOk || internetResult.loginOk),
             isLocked: false,
@@ -187,14 +197,17 @@ class GPSTimeSync {
             raw: null,
             sourceLabel: internetResult.currentSourceLabel || "Internet fallback",
             monitoringState: internetResult.monitoringState || null,
+            fallbackReason: internetResult.fallbackReason || nextState?.fallbackReason || null,
           });
         }
       } catch (error) {
         if (nextState) {
           nextState.backendOnline = nextState.backendOnline || Boolean(error?.payload?.backendOnline);
+          nextState.receiverConfigured = nextState.receiverConfigured && error?.payload?.receiverConfigured !== false;
           nextState.receiverReachable = nextState.receiverReachable || Boolean(error?.payload?.receiverReachable);
           nextState.loginOk = nextState.loginOk || Boolean(error?.payload?.loginOk);
           nextState.lastError = nextState.lastError || error?.payload?.lastError || error.message;
+          nextState.fallbackReason = nextState.fallbackReason || error?.payload?.fallbackReason || null;
         }
       }
     }
@@ -204,6 +217,7 @@ class GPSTimeSync {
       nextState = this.createState({
         ...nextState,
         backendOnline: Boolean(nextState?.backendOnline),
+        receiverConfigured: nextState?.receiverConfigured !== false,
         receiverReachable: Boolean(nextState?.receiverReachable),
         loginOk: Boolean(nextState?.loginOk),
         isLocked: false,
@@ -217,6 +231,7 @@ class GPSTimeSync {
         ...localResult,
         sourceLabel: "Local computer time",
         monitoringState: nextState?.monitoringState || null,
+        fallbackReason: nextState?.fallbackReason || (nextState?.backendOnline ? "backend-fallback-unavailable" : "backend-offline"),
       });
     }
 
@@ -281,6 +296,7 @@ class GPSTimeSync {
       } else {
         this.mergeReceiverStatus({
           backendOnline: false,
+          receiverConfigured: this.receiverStatus.receiverConfigured !== false,
           receiverReachable: false,
           loginOk: false,
           isLocked: false,
@@ -289,6 +305,7 @@ class GPSTimeSync {
           currentSource: this.receiverStatus.currentSource || "local",
           currentSourceLabel: this.receiverStatus.currentSourceLabel || "Status unavailable",
           receiverCommunicationState: "backend-offline",
+          fallbackReason: "backend-offline",
           lastError: error.message,
           dataState: "unavailable",
         }, {
@@ -437,27 +454,54 @@ class GPSTimeSync {
   }
 
   async fetchJson(path, options = {}) {
-    const response = await fetch(`${this.apiBaseUrl}${path}`, {
-      ...options,
-      headers: this.getRequestHeaders(options.headers || {}),
-    });
+    const baseUrls = [this.apiBaseUrl, this.apiBackupUrl].filter(Boolean);
+    let lastFailure = null;
 
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch (error) {
-      payload = null;
+    for (const baseUrl of baseUrls) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), APP_CONFIG.requestTimeoutMs);
+
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          ...options,
+          headers: this.getRequestHeaders(options.headers || {}),
+          signal: controller.signal,
+        });
+
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          const errorMessage = payload?.error || payload?.statusText || `Request failed with ${response.status}`;
+          const failure = new Error(errorMessage);
+          failure.status = response.status;
+          failure.payload = payload;
+          throw failure;
+        }
+
+        if (baseUrl !== this.apiBaseUrl) {
+          this.apiBaseUrl = baseUrl;
+        }
+        return payload;
+      } catch (error) {
+        const failure = error.name === "AbortError"
+          ? new Error(`Request timeout after ${APP_CONFIG.requestTimeoutMs} ms`)
+          : error;
+        if (failure !== error) {
+          failure.payload = error?.payload || null;
+          failure.status = error?.status || 0;
+        }
+        lastFailure = failure;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
     }
 
-    if (!response.ok) {
-      const errorMessage = payload?.error || payload?.statusText || `Request failed with ${response.status}`;
-      const failure = new Error(errorMessage);
-      failure.status = response.status;
-      failure.payload = payload;
-      throw failure;
-    }
-
-    return payload;
+    throw lastFailure || new Error("Unable to reach configured API endpoint");
   }
 
   getLocalTime() {
@@ -530,7 +574,7 @@ class GPSTimeSync {
       "gps-unlocked": "GPS RECEIVER",
       holdover: "HOLDOVER",
       "internet-fallback": "INTERNET/HTTP DATE",
-      local: "LOCAL TIME",
+      local: "BROWSER FALLBACK",
     }[source] || source.toUpperCase();
   }
 
@@ -540,7 +584,7 @@ class GPSTimeSync {
       "gps-unlocked": "GPS receiver unlocked",
       holdover: "Receiver holdover",
       "internet-fallback": "Internet fallback",
-      local: this.receiverStatus.backendOnline ? "Local fallback" : "Backend offline",
+      local: this.receiverStatus.backendOnline ? "Browser emergency fallback" : "Backend offline",
     }[source] || source.replace(/-/g, " ");
   }
 
