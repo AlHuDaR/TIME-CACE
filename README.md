@@ -31,6 +31,7 @@ The backend should be deployed separately from Netlify, for example on a private
 - Old-style analog watch mode.
 - Analog-only fullscreen mode.
 - GPS status bar with receiver/runtime source messaging.
+- Full GPS System Status dashboard with operator-focused health, diagnostics, freshness, and source alignment views.
 - Separate system-status polling for backend and receiver health.
 - Dark mode toggle.
 - Precision toggle for milliseconds.
@@ -56,10 +57,23 @@ Returns receiver state such as:
 - `receiverReachable`
 - `loginOk`
 - `isLocked`
+- `gpsLockState` (`locked`, `unlocked`, `holdover`, `unknown`)
 - `statusText`
 - `currentSource`
+- `currentSourceLabel`
+- `receiverCommunicationState`
 - `lastError`
 - `checkedAt`
+- `statusAgeMs`
+- `dataState` (`live`, `cached`, `unavailable`)
+- `fetchedFromCache`
+- `cacheAgeMs`
+
+The frontend dashboard derives operator-facing severity from those fields:
+
+- **Critical**: backend offline, receiver unreachable, or receiver login failure.
+- **Warning**: GPS unlocked, holdover, Internet fallback, or stale status data.
+- **Normal**: fresh status data with a reachable authenticated receiver and GPS lock.
 
 This endpoint is intended for optional frontend health polling separate from the main time-sync cycle. The clock still uses `GET /api/time` for authoritative time updates; status polling only refreshes operational state.
 
@@ -113,6 +127,7 @@ Additional optional frontend runtime settings are now supported:
 
 - `STATUS_POLLING_ENABLED` defaults to `true`. Set it to `false` if you want the UI to rely only on `/api/time` updates.
 - `STATUS_POLLING_INTERVAL_MS` defaults to `15000`.
+- The dashboard treats status older than `45s` as stale in the frontend so operators can distinguish live versus delayed `/api/status` data without affecting the authoritative `/api/time` clock path.
 - `API_AUTH_TOKEN` is only needed when backend auth is enabled.
 
 ## Local Development
@@ -228,9 +243,12 @@ ALLOWED_ORIGIN=https://your-site.netlify.app,https://deploy-preview-12--your-sit
 - The frontend can accurately distinguish between:
   - GPS receiver locked,
   - GPS receiver reachable but unlocked,
+  - receiver holdover,
   - Internet fallback,
   - local fallback.
+- The GPS System Status dashboard keeps `/api/status` operational data separate from `/api/time` runtime sync, and explicitly flags when those two views differ or when status data may be stale.
 - The frontend now polls `/api/status` independently, so operator-facing health indicators can update between full time synchronizations without changing the clock source or displayed time.
+- The dashboard code is intentionally structured so future alarm/event-history/drift-integrity features can be added without replacing the current clock or API model.
 
 ## Security Notes
 
