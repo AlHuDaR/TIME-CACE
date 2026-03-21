@@ -1512,12 +1512,10 @@ body.dark-mode .official-time-actions {
 }
 
 .official-ptb-clock-svg {
-  width: 100%;
-  max-width: min(36vw, 560px);
+  width: clamp(350px, 28vw, 480px);
   height: auto;
   display: block;
 }
-
 
 .official-time-content-column {
   display: grid;
