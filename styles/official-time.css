@@ -224,6 +224,8 @@ body.dark-mode .official-status-card[data-severity="critical"] {
   display: flex;
   gap: var(--control-gap);
   flex-wrap: wrap;
+  justify-content: flex-end;
+  justify-content: center;
 }
 .btn-primary {
   width: 100%;
