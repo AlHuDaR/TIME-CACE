@@ -1,0 +1,145 @@
+body.analog-only .coder-credit {
+  position: fixed;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+body.dark-mode.analog-only .coder-credit {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+body.analog-only {
+  overflow: auto;
+}
+
+body.analog-only .header,
+body.analog-only .mode-card,
+body.analog-only .meta-grid,
+body.analog-only .dashboard-card,
+body.analog-only #digitalClock,
+body.analog-only .gps-status-bar {
+  display: none !important;
+}
+
+body.analog-only #analogClock {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  place-items: center;
+  align-content: center;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  background: var(--bg);
+  z-index: 9999;
+  padding: clamp(0.85rem, 3vw, 1.5rem);
+  overflow: auto;
+  gap: clamp(0.75rem, 2vh, 1.25rem);
+}
+
+body.analog-only .analog-clock {
+  width: min(92vw, var(--clock-panel-size-analog-only));
+  max-width: min(92vw, var(--clock-panel-size-analog-only));
+  min-width: min(280px, 100%);
+  margin: auto;
+  position: relative;
+}
+
+body.analog-only .analog-nav {
+  position: static;
+  transform: none;
+  width: min(100%, 34rem);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  z-index: 10;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+body.analog-only .nav-pill {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: normal;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(2px);
+}
+
+body.dark-mode.analog-only .nav-pill {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+body.analog-only .drift {
+  position: absolute;
+  top: 65%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  flex-shrink: 0;
+  display: none !important;
+}
+
+body.old-style #gpsStatusBar,
+body.old-style #monitoringDashboard {
+  display: none !important;
+}
+
+body.old-style #analogClock {
+  max-width: min(100%, 920px);
+  margin-inline: auto;
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+body.old-style .analog-clock {
+  width: min(100%, clamp(320px, 64vw, 640px));
+}
+
+body.old-style .meta-grid {
+  max-width: min(1100px, 100%);
+  margin-inline: auto;
+}
+
+body.old-style .analog-nav {
+  display: flex;
+  position: static;
+  transform: none;
+  width: 100%;
+  background: transparent;
+  backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  padding-top: 0.35rem;
+  flex-direction: row;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+@media (min-width: 993px) {
+  body.old-style .meta-grid > .card:first-child {
+    border-right: 1px solid var(--border);
+  }
+
+  body.old-style .meta-grid > .card:nth-child(2) {
+    border-left: 1px solid var(--border);
+  }
+}
