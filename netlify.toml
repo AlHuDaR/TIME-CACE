@@ -3,8 +3,9 @@
 
 [[redirects]]
   from = "/"
-  to = "/official-time"
-  status = 302
+  to = "/official-time.html"
+  status = 301
+  force = true
 
 [[redirects]]
   from = "/official-time"
