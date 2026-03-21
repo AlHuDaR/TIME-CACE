@@ -30,6 +30,7 @@ function readEnvNumber(name, fallback) {
 
 const FRONTEND_ASSET_FILES = Object.freeze([
   "index.html",
+  "official-time.html",
   "api-client.js",
   "status-monitor.js",
   "fallback-card.js",
@@ -947,14 +948,14 @@ if (CONFIG.serveStatic) {
     index: false,
   }));
 
-  FRONTEND_ASSET_FILES.filter((fileName) => fileName !== "index.html").forEach((fileName) => {
+  FRONTEND_ASSET_FILES.forEach((fileName) => {
     app.get(`/${fileName}`, (req, res) => {
       res.sendFile(path.join(publicPath, fileName));
     });
   });
 
   app.get("/", (req, res) => {
-    res.sendFile(path.join(publicPath, "index.html"));
+    res.sendFile(path.join(publicPath, "official-time.html"));
   });
 }
 
