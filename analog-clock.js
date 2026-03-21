@@ -81,7 +81,7 @@
     const centerX = 400;
     const centerY = 400;
     const clockRadius = 380;
-    const logoSize = clockRadius * 0.78;
+    const logoSize = clockRadius * 1.23;
     const centerLogoGroup = make("g", {
       id: `${instanceToken}-centerBrand`,
       opacity: 0.46,
