@@ -8,6 +8,7 @@
     buildMonitoringModel,
     humanizeSource,
     formatClockTime,
+    formatTimeParts,
   } = global.RAFOTimeApp;
 
   if (!OMAN_DATE_TIME_FORMATTER || typeof OMAN_DATE_TIME_FORMATTER.formatToParts !== "function") {
@@ -526,7 +527,7 @@ class GPSTimeSync {
       success: true,
       timestamp: now.getTime(),
       date: `${map.month}/${map.day}/${map.year}`,
-      time: `${map.hour}:${map.minute}:${map.second}`,
+      time: formatTimeParts(map.hour, map.minute, map.second),
     };
   }
 

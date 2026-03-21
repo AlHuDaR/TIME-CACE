@@ -150,6 +150,14 @@
     });
   }
 
+  function formatTimeSegment(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  function formatTimeParts(hour, minute, second) {
+    return [hour, minute, second].map(formatTimeSegment).join(":");
+  }
+
   function formatClockTime(value) {
     if (!value) {
       return "Never";
@@ -160,11 +168,26 @@
       return "Never";
     }
 
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return formatTimeParts(date.getHours(), date.getMinutes(), date.getSeconds());
+  }
+
+  function normalizeRenderedTime(value) {
+    if (value instanceof Date) {
+      return formatClockTime(value);
+    }
+
+    if (typeof value !== "string") {
+      return value;
+    }
+
+    const match = value.trim().match(/^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?$/);
+    if (!match) {
+      return value;
+    }
+
+    const [, hour, minute, second, milliseconds] = match;
+    const normalized = formatTimeParts(hour, minute, second);
+    return milliseconds ? `${normalized}.${String(milliseconds).padStart(3, "0")}` : normalized;
   }
 
   function formatRelativeAge(timestamp, fallback = "Unknown") {
@@ -206,7 +229,10 @@
     resolveSiteBaseUrl,
     buildAppUrl,
     syncAppLinks,
+    formatTimeSegment,
+    formatTimeParts,
     formatClockTime,
+    normalizeRenderedTime,
     formatRelativeAge,
   });
 })(window);

@@ -7,9 +7,11 @@
     buildAppUrl,
     getOmanAnalogParts,
     syncAppLinks,
+    formatTimeParts,
+    formatClockTime,
   } = global.RAFOTimeApp || {};
 
-  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks) {
+  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks || !formatTimeParts || !formatClockTime) {
     throw new Error("Official time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -107,7 +109,7 @@
       const omanParts = this.getOmanParts(syncedNow);
       const utcTime = this.formatTime(syncedNow, "UTC");
       const deviceTime = this.formatTime(deviceNow);
-      const omanTime = `${omanParts.hour}:${omanParts.minute}:${omanParts.second}`;
+      const omanTime = formatTimeParts(omanParts.hour, omanParts.minute, omanParts.second);
 
       this.elements.digitalTime.textContent = omanTime;
       this.elements.dateLine.textContent = `(UTC +04:00), ${OMAN_DATE_FORMATTER.format(syncedNow)}`;
@@ -158,7 +160,7 @@
       this.elements.hourHand?.setAttribute("transform", `rotate(${hourProgress * 30} 400 400)`);
 
       if (this.elements.analogTimeText) {
-        this.elements.analogTimeText.textContent = `${String(omanParts.hour).padStart(2, "0")}:${String(omanParts.minute).padStart(2, "0")}:${String(omanParts.second).padStart(2, "0")}`;
+        this.elements.analogTimeText.textContent = formatTimeParts(omanParts.hour, omanParts.minute, omanParts.second);
       }
 
       if (this.elements.analogDateText) {
@@ -174,10 +176,10 @@
       const receiverStatus = detail.receiverStatus || this.gpsTimeSync.getReceiverStatus();
       const sourceLabel = this.gpsTimeSync.getSourceDisplayName(detail.currentSource);
       const freshness = receiverStatus.checkedAt
-        ? `Status snapshot at ${new Date(receiverStatus.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+        ? `Status snapshot at ${formatClockTime(receiverStatus.checkedAt)}`
         : "Status snapshot pending";
       const syncText = detail.lastSyncTimestamp
-        ? `Last runtime sync at ${new Date(detail.lastSyncTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+        ? `Last runtime sync at ${formatClockTime(detail.lastSyncTimestamp)}`
         : "Runtime sync pending";
       const sourceTone = !receiverStatus.backendOnline || detail.currentSource === "local"
         ? "critical"
