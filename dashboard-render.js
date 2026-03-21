@@ -28,6 +28,44 @@
       this.lastLiveRefreshSecond = -1;
     }
 
+    hasStatusBar() {
+      return Boolean(
+        this.elements.sourceIndicator
+        && this.elements.lockStatus
+        && this.elements.lockPulse
+        && this.elements.lastSyncTime
+        && this.elements.offsetDisplay
+        && this.elements.statusFreshness,
+      );
+    }
+
+    hasPrimarySourceDetails() {
+      return Boolean(
+        this.elements.primarySourceDescription
+        && this.elements.primarySourceNote
+        && this.elements.syncStatus
+        && this.elements.statusConsistencyHint,
+      );
+    }
+
+    hasMonitoringDashboard() {
+      return Boolean(
+        this.elements.monitoringDashboard
+        && this.elements.dashboardSummaryText
+        && this.elements.dashboardSeverityBadge
+        && this.elements.dashboardIntegrityBadge
+        && this.elements.dashboardDataStateBadge
+        && this.elements.dashboardSummaryBadge
+        && this.elements.dashboardStatusText
+        && this.elements.dashboardErrorText
+        && this.elements.dashboardEventList,
+      );
+    }
+
+    isOldStylePage() {
+      return document.body.classList.contains("old-style") || document.body.classList.contains("analog-only");
+    }
+
     init() {
       this.gpsTimeSync.addEventListener("gpstimeupdate", (event) => {
         this.updateDisplay(event.detail);
@@ -43,31 +81,36 @@
     }
 
     updateDisplay(data) {
-      const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
-      this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
-      this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
-
       const receiverStatus = data.receiverStatus || this.gpsTimeSync.getReceiverStatus();
       const sessionState = data.sessionState || this.gpsTimeSync.getSessionState();
-      this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
-      this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
-      this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
 
-      if (data.lastSyncTimestamp) {
-        this.elements.lastSyncTime.textContent = `Last sync: ${formatClockTime(data.lastSyncTimestamp)}`;
+      if (this.hasStatusBar() && !this.isOldStylePage()) {
+        const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
+        this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
+        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+        this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
+        this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
+        this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
+
+        this.elements.lastSyncTime.textContent = data.lastSyncTimestamp
+          ? `Last sync: ${formatClockTime(data.lastSyncTimestamp)}`
+          : "Last sync: Never";
+
+        this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
+        this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
       }
 
-      this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
-      this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
       this.updateReceiverActionButtons(receiverStatus);
 
-      this.elements.primarySourceDescription.textContent = this.getPrimarySourceDescription(data, receiverStatus);
-      this.elements.primarySourceNote.textContent = this.getPrimarySourceNote(data, receiverStatus, sessionState);
-      this.elements.syncStatus.textContent = this.syncManager.formatStatus();
-      this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
-      this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
-      this.updateFallbackInfoCard(data, receiverStatus);
+      if (this.hasPrimarySourceDetails()) {
+        this.elements.primarySourceDescription.textContent = this.getPrimarySourceDescription(data, receiverStatus);
+        this.elements.primarySourceNote.textContent = this.getPrimarySourceNote(data, receiverStatus, sessionState);
+        this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+        this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
+        this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
+      }
 
+      this.updateFallbackInfoCard(data, receiverStatus);
       this.updateMonitoringDashboard({ data, receiverStatus, sessionState });
     }
 
@@ -81,10 +124,27 @@
       const data = this.gpsTimeSync.getCurrentState();
       const receiverStatus = this.gpsTimeSync.getReceiverStatus();
       const sessionState = this.gpsTimeSync.getSessionState();
-      this.elements.syncStatus.textContent = this.syncManager.formatStatus();
-      this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
-      this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
-      this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
+
+      if (this.hasPrimarySourceDetails()) {
+        this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+        this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-locked");
+        this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
+      }
+
+      if (this.hasStatusBar() && !this.isOldStylePage()) {
+        const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
+        this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
+        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+        this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
+        this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
+        this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
+        this.elements.lastSyncTime.textContent = data.lastSyncTimestamp
+          ? `Last sync: ${formatClockTime(data.lastSyncTimestamp)}`
+          : "Last sync: Never";
+        this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
+        this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
+      }
+
       this.updateMonitoringDashboard({ data, receiverStatus, sessionState });
     }
 
@@ -123,6 +183,10 @@
     }
 
     updateMonitoringDashboard(statusData) {
+      if (!this.hasMonitoringDashboard() || this.isOldStylePage()) {
+        return;
+      }
+
       const snapshot = this.buildMonitoringDashboardSnapshot(statusData);
       const signature = JSON.stringify(snapshot);
       if (signature === this.lastDashboardSignature) {

@@ -83,6 +83,23 @@ class DisplayManager {
     this.elements.digitalOnlyControls.classList.toggle("hidden", !isVisible);
   }
 
+  setSectionVisibility(section, isVisible) {
+    if (!section) {
+      return;
+    }
+
+    section.classList.toggle("hidden", !isVisible);
+    section.setAttribute("aria-hidden", String(!isVisible));
+    if ("inert" in section) {
+      section.inert = !isVisible;
+    }
+  }
+
+  setModeScopedSectionsHidden(isOldStyleMode) {
+    this.setSectionVisibility(this.elements.gpsStatusBar, !isOldStyleMode);
+    this.setSectionVisibility(this.elements.monitoringDashboard, !isOldStyleMode);
+  }
+
   showSection(section) {
     section.classList.remove("hidden", "is-fading");
     section.classList.add("is-visible");
@@ -103,6 +120,7 @@ class DisplayManager {
     this.updateUrl(mode);
 
     const isDigital = mode === "digital";
+    this.setModeScopedSectionsHidden(!isDigital);
     if (isDigital) {
       this.showSection(this.elements.digitalClock);
       this.hideSection(this.elements.analogClock);
@@ -129,6 +147,7 @@ class DisplayManager {
     this.updateUrl("analog-only");
     document.body.classList.remove("old-style");
     document.body.classList.add("analog-only");
+    this.setModeScopedSectionsHidden(true);
     this.elements.digitalClock.classList.add("hidden");
     this.elements.analogClock.classList.remove("hidden");
     this.elements.digitalModeBtn.classList.remove("active");
