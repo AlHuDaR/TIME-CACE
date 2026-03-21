@@ -222,10 +222,8 @@ body.dark-mode .official-status-card[data-severity="critical"] {
   min-width: 0;
   padding: 0.2rem 0;
   display: flex;
-  justify-content: flex-end;
   gap: var(--control-gap);
   flex-wrap: wrap;
-  justify-content: center;
 }
 .btn-primary {
   width: 100%;
