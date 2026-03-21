@@ -118,6 +118,13 @@ let monitoringMemory = {
 
 const rateLimitStore = new Map();
 
+function setNoStore(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  res.set("Surrogate-Control", "no-store");
+}
+
 function pruneExpiredRateLimitEntries(now = Date.now()) {
   if (now - lastRateLimitPruneAt < Math.min(CONFIG.rateLimitWindowMs, 10000)) {
     return;
@@ -948,19 +955,25 @@ if (CONFIG.serveStatic) {
   app.use("/images", express.static(path.join(publicPath, "images"), {
     fallthrough: false,
     index: false,
+    setHeaders(res) {
+      setNoStore(res);
+    },
   }));
 
   FRONTEND_ASSET_FILES.forEach((fileName) => {
     app.get(`/${fileName}`, (req, res) => {
+      setNoStore(res);
       res.sendFile(path.join(publicPath, fileName));
     });
   });
 
   app.get("/official-time", (req, res) => {
+    setNoStore(res);
     res.sendFile(path.join(publicPath, "official-time.html"));
   });
 
   app.get("/dashboard", (req, res) => {
+    setNoStore(res);
     res.sendFile(path.join(publicPath, "index.html"));
   });
 
