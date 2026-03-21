@@ -965,7 +965,7 @@ if (CONFIG.serveStatic) {
   });
 
   app.get("/", (req, res) => {
-    res.sendFile(path.join(publicPath, "index.html"));
+    res.redirect("/official-time");
   });
 }
 

@@ -54,7 +54,7 @@
     async init() {
       const mode = new URLSearchParams(window.location.search).get("mode");
       if (["digital", "analog", "analog-only"].includes(mode)) {
-        window.location.replace(buildAppUrl("/", { mode }).toString());
+        window.location.replace(buildAppUrl("/dashboard", { mode }).toString());
         return;
       }
 
