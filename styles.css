@@ -1448,3 +1448,240 @@ body.old-style .analog-nav {
     width: min(70vh, 800px);
   }
 }
+
+.mode-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.official-time-page {
+  background: linear-gradient(180deg, #f7f9fb 0%, #eef3f7 100%);
+}
+
+body.dark-mode.official-time-page {
+  background: linear-gradient(180deg, #0d1c26 0%, #122838 100%);
+}
+
+.official-time-layout {
+  width: min(1280px, calc(100vw - 1.25rem));
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: clamp(0.75rem, 1.6vw, 1.1rem) 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(0.7rem, 1.4vw, 1rem);
+}
+
+.official-time-header,
+.official-status-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(17, 56, 74, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 14px 28px rgba(15, 45, 64, 0.07);
+}
+
+body.dark-mode .official-time-header,
+body.dark-mode .official-status-card {
+  background: rgba(16, 42, 56, 0.9);
+  border-color: rgba(224, 240, 245, 0.12);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+}
+
+.official-time-header {
+  padding: 1rem 1.2rem;
+  text-align: left;
+}
+
+.official-time-eyebrow,
+.official-time-subtitle,
+.official-time-kicker,
+.official-status-card__title,
+.official-status-card__note {
+  color: var(--muted);
+}
+
+.official-time-eyebrow,
+.official-time-kicker,
+.official-status-card__title {
+  margin: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.official-time-header h1,
+.official-time-content-column h2,
+.official-time-digital,
+.official-status-card__value {
+  margin: 0;
+}
+
+.official-time-header h1 {
+  margin-top: 0.2rem;
+  font-size: clamp(1.65rem, 2.5vw, 2.4rem);
+  line-height: 1.08;
+}
+
+.official-time-subtitle {
+  margin-top: 0.25rem;
+  font-size: clamp(0.95rem, 1.5vw, 1.1rem);
+}
+
+.official-time-hero {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.82fr) minmax(340px, 1.18fr);
+  gap: clamp(1rem, 2vw, 1.5rem);
+  align-items: center;
+}
+
+.official-time-clock-column {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.official-time-analog-clock {
+  width: min(100%, 440px);
+}
+
+.official-time-content-column {
+  display: grid;
+  gap: 0.45rem;
+  align-content: center;
+}
+
+.official-time-content-column h2 {
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  line-height: 1.15;
+}
+
+.official-time-digital {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(3.6rem, 8vw, 6.4rem);
+  line-height: 0.9;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.official-time-date {
+  margin: 0.15rem 0 0;
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
+  color: #b77322;
+}
+
+.official-time-status-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.official-status-card {
+  padding: 0.85rem 0.95rem;
+  display: grid;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.official-status-card__title {
+  font-size: 0.72rem;
+}
+
+.official-status-card__value {
+  font-size: clamp(1.15rem, 1.8vw, 1.7rem);
+  line-height: 1.12;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.official-status-card__value--source {
+  font-size: clamp(0.95rem, 1.35vw, 1.15rem);
+}
+
+.official-status-card__note {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.official-status-card[data-severity="healthy"] {
+  border-color: rgba(18, 124, 56, 0.18);
+  box-shadow: 0 14px 28px rgba(15, 45, 64, 0.07), inset 0 0 0 1px rgba(18, 124, 56, 0.05);
+}
+
+.official-status-card[data-severity="warning"] {
+  border-color: rgba(192, 108, 0, 0.2);
+  background: linear-gradient(180deg, rgba(255, 250, 240, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.official-status-card[data-severity="critical"] {
+  border-color: rgba(179, 90, 31, 0.22);
+  background: linear-gradient(180deg, rgba(255, 245, 242, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+body.dark-mode .official-status-card[data-severity="warning"] {
+  background: linear-gradient(180deg, rgba(78, 53, 24, 0.55), rgba(16, 42, 56, 0.94));
+}
+
+body.dark-mode .official-status-card[data-severity="critical"] {
+  background: linear-gradient(180deg, rgba(91, 40, 32, 0.55), rgba(16, 42, 56, 0.94));
+}
+
+@media (max-width: 1180px) {
+  .official-time-hero {
+    grid-template-columns: minmax(260px, 0.86fr) minmax(320px, 1.14fr);
+  }
+
+  .official-time-analog-clock {
+    width: min(100%, 390px);
+  }
+
+  .official-time-status-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .official-time-layout {
+    width: min(100vw - 1rem, 100%);
+    min-height: auto;
+  }
+
+  .official-time-hero {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
+  .official-time-content-column {
+    text-align: center;
+  }
+
+  .official-time-analog-clock {
+    width: min(100%, 360px);
+  }
+
+  .official-time-status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .official-time-layout {
+    width: min(100vw - 0.75rem, 100%);
+  }
+
+  .official-time-header,
+  .official-status-card {
+    border-radius: 16px;
+  }
+
+  .official-time-digital {
+    font-size: clamp(2.7rem, 15vw, 4rem);
+  }
+
+  .official-time-status-strip {
+    grid-template-columns: 1fr;
+  }
+}
