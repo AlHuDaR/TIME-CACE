@@ -74,6 +74,26 @@
     tzText.textContent = "MCT (UTC+04:00)";
     svg.append(tzText);
 
+    const centerX = 400;
+    const centerY = 400;
+    const clockRadius = 380;
+    const logoSize = clockRadius * 0.34;
+    const logoId = "ptbClockCenterLogo";
+
+    if (!svg.querySelector(`#${logoId}`)) {
+      svg.append(make("image", {
+        id: logoId,
+        href: "images/cal logo.png",
+        x: centerX - (logoSize / 2),
+        y: centerY - (logoSize / 2),
+        width: logoSize,
+        height: logoSize,
+        preserveAspectRatio: "xMidYMid meet",
+        filter: "url(#logoShadow)",
+        overflow: "visible",
+      }));
+    }
+
     const handsGroup = make("g", { id: "hands" });
     const hourHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 230, stroke: "#1a6b8c", "stroke-width": 14, "stroke-linecap": "round", opacity: 0.86 });
     const minuteHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 170, stroke: "#1f7699", "stroke-width": 10, "stroke-linecap": "round", opacity: 0.84 });
