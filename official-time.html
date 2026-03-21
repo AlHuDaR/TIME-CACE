@@ -10,44 +10,21 @@
   </head>
   <body class="official-time-page">
     <main class="official-time-layout">
-      <header class="official-time-header">
-        <p class="official-time-eyebrow">Royal Air Force of Oman</p>
-        <h1>Calibration Center (CACE)</h1>
-        <p class="official-time-subtitle">Official Reference Time</p>
-      </header>
-
       <section class="official-time-hero" aria-label="Official Oman time display">
         <div class="official-time-clock-column">
-          <article class="official-time-clock-card" aria-label="Analog official Oman time clock">
-            <div class="official-analog-clock" aria-hidden="true">
-              <div class="official-analog-clock__face">
-                <div class="official-analog-clock__ticks" id="officialClockTicks"></div>
-                <div class="official-analog-clock__numbers">
-                  <span style="--index: 1">1</span>
-                  <span style="--index: 2">2</span>
-                  <span style="--index: 3">3</span>
-                  <span style="--index: 4">4</span>
-                  <span style="--index: 5">5</span>
-                  <span style="--index: 6">6</span>
-                  <span style="--index: 7">7</span>
-                  <span style="--index: 8">8</span>
-                  <span style="--index: 9">9</span>
-                  <span style="--index: 10">10</span>
-                  <span style="--index: 11">11</span>
-                  <span style="--index: 12">12</span>
-                </div>
-                <div id="officialHourHand" class="official-analog-clock__hand official-analog-clock__hand--hour"></div>
-                <div id="officialMinuteHand" class="official-analog-clock__hand official-analog-clock__hand--minute"></div>
-                <div id="officialSecondHand" class="official-analog-clock__hand official-analog-clock__hand--second"></div>
-                <div class="official-analog-clock__center"></div>
-              </div>
-            </div>
+          <article class="official-time-clock-card official-time-clock-frame" aria-label="Analog official Oman time clock">
+            <svg id="officialPtbClockSvg" class="ptb-clock-svg official-ptb-clock-svg" viewBox="0 0 800 800" role="img" aria-label="Analog official Oman time clock"></svg>
           </article>
         </div>
 
         <div class="official-time-content-column">
-          <p class="official-time-kicker">Official Oman Time</p>
-          <h2>Maintained by RAFO Calibration Center</h2>
+          <div class="official-time-brand">
+            <p class="official-time-brand-line">Royal Air Force of Oman</p>
+            <p class="official-time-brand-line">Calibration Center (CACE)</p>
+          </div>
+          <p class="official-time-kicker">Official Oman Time (GST)</p>
+          <h1>Official Oman Time (GST)</h1>
+          <h2>(GST : Maintained by RAFO Calibration Center, Oman)</h2>
           <p id="officialDigitalTime" class="official-time-digital" aria-live="polite">--:--:--</p>
           <p id="officialDateLine" class="official-time-date">(UTC +04:00), --</p>
         </div>
@@ -87,6 +64,7 @@
     </main>
 
     <script src="api-client.js"></script>
+    <script src="analog-clock.js"></script>
     <script src="status-monitor.js"></script>
     <script src="fallback-card.js"></script>
     <script src="runtime-sync.js"></script>
