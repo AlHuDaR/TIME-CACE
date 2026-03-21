@@ -225,6 +225,7 @@ body.dark-mode .official-status-card[data-severity="critical"] {
   justify-content: flex-end;
   gap: var(--control-gap);
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .official-time-actions .mode-btn {
