@@ -1,10 +1,19 @@
 [build]
   publish = "."
 
+# Force the root path away from the legacy static index.html page.
 [[redirects]]
   from = "/"
   to = "/official-time"
   status = 302
+  force = true
+
+# Catch direct requests to the published root file as well.
+[[redirects]]
+  from = "/index.html"
+  to = "/official-time"
+  status = 301
+  force = true
 
 [[redirects]]
   from = "/official-time"
