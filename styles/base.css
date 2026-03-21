@@ -25,15 +25,24 @@
   --layout-padding-block: clamp(0.65rem, 1.5vw, 1rem);
   --section-gap: clamp(0.85rem, 1.6vw, 1.25rem);
   --section-gap-tight: clamp(0.65rem, 1.2vw, 0.95rem);
+  --space-2xs: clamp(0.3rem, 0.8vw, 0.45rem);
+  --space-xs: clamp(0.45rem, 1vw, 0.65rem);
+  --space-sm: clamp(0.65rem, 1.2vw, 0.9rem);
+  --space-md: clamp(0.85rem, 1.6vw, 1.15rem);
+  --space-lg: clamp(1rem, 2vw, 1.4rem);
   --card-radius: clamp(14px, 1.35vw, 18px);
   --card-radius-sm: 14px;
   --card-padding: clamp(0.8rem, 1.4vw, 1rem);
+  --panel-padding: clamp(0.8rem, 1.4vw, 1rem);
+  --panel-padding-lg: clamp(1rem, 1.8vw, 1.25rem);
   --control-gap: clamp(0.5rem, 1vw, 0.75rem);
   --touch-target: 42px;
   --clock-panel-size: clamp(280px, min(62vw, 70vh), 560px);
   --clock-panel-size-analog-only: clamp(280px, min(88vw, calc(100dvh - 11rem)), 760px);
   --official-clock-size: clamp(280px, min(32vw, 64vh), 520px);
   --content-readable: 72ch;
+  --panel-surface: linear-gradient(180deg, color-mix(in srgb, var(--panel) 94%, #ffffff 6%), var(--panel));
+  --panel-surface-soft: linear-gradient(180deg, color-mix(in srgb, var(--tile) 82%, #ffffff 18%), var(--tile));
 }
 
 body.dark-mode {
@@ -56,7 +65,9 @@ body.dark-mode {
   --shadow-lg: 0 18px 36px rgba(0, 0, 0, 0.34);
 }
 
-* , *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -153,8 +164,9 @@ h2 {
   gap: var(--section-gap);
 }
 
-.card {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 94%, #ffffff 6%), var(--panel));
+.card,
+.surface-card {
+  background: var(--panel-surface);
   border: 1px solid var(--border);
   border-radius: var(--card-radius);
   padding: var(--card-padding);
@@ -190,7 +202,7 @@ h2 {
   border-radius: 999px;
   background: color-mix(in srgb, var(--panel) 92%, #ffffff 8%);
   color: var(--text);
-  padding: 0.48rem 0.95rem;
+  padding: clamp(0.44rem, 1vw, 0.56rem) clamp(0.82rem, 1.8vw, 1rem);
   font-weight: 600;
   cursor: pointer;
   transition:

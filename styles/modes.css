@@ -143,3 +143,53 @@ body.old-style .analog-nav {
     border-left: 1px solid var(--border);
   }
 }
+
+@media (max-width: 640px) {
+  body.analog-only .analog-clock {
+    width: min(94vw, calc(100dvh - 10rem));
+    max-width: min(94vw, calc(100dvh - 10rem));
+  }
+}
+
+@media (max-width: 420px) {
+  body.analog-only .analog-nav {
+    width: 100%;
+    max-width: none;
+    flex-direction: column;
+    margin-top: 0.25rem;
+  }
+
+  body.analog-only .nav-pill {
+    width: 100%;
+    font-size: 0.82rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  body.analog-only .coder-credit {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.8rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  body.analog-only #analogClock {
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: start;
+  }
+
+  body.analog-only .analog-clock {
+    width: min(76vh, 92vw);
+    max-width: min(76vh, 92vw);
+  }
+}
+
+@media (min-width: 1600px) and (min-height: 1000px) {
+  body.analog-only .analog-clock {
+    width: min(70vh, 800px);
+    max-width: min(70vh, 800px);
+  }
+
+  body.analog-only .analog-nav {
+    width: min(70vh, 800px);
+  }
+}
