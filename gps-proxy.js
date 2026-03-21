@@ -38,6 +38,8 @@ const FRONTEND_ASSET_FILES = Object.freeze([
   "dashboard-render.js",
   "ui-controls.js",
   "main.js",
+  "official-time.js",
+  "analog-clock.js",
   "styles.css",
 ]);
 
@@ -954,8 +956,12 @@ if (CONFIG.serveStatic) {
     });
   });
 
-  app.get("/", (req, res) => {
+  app.get("/official-time", (req, res) => {
     res.sendFile(path.join(publicPath, "official-time.html"));
+  });
+
+  app.get("/", (req, res) => {
+    res.redirect(302, "/official-time");
   });
 }
 
