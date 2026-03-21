@@ -29,7 +29,7 @@
     defs.append(logoShadow);
     svg.append(defs);
 
-    svg.append(make("rect", { x: 0, y: 0, width: 800, height: 800, fill: "#e8e8e8" }));
+    svg.append(make("rect", { x: 0, y: 0, width: 800, height: 800, fill: "none" }));
     svg.append(make("circle", { cx: 400, cy: 400, r: 380, fill: "none", stroke: "#1a6b8c", "stroke-width": 6 }));
 
     const tickGroup = make("g", { id: "ticks" });
