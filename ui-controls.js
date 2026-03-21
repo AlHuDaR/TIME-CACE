@@ -1,5 +1,5 @@
 (function (global) {
-  const { APP_CONFIG, OMAN_DATE_LINE_FORMATTER, buildAppUrl } = global.RAFOTimeApp;
+  const { APP_CONFIG, OMAN_DATE_LINE_FORMATTER, buildAppUrl, formatTimeParts } = global.RAFOTimeApp;
 
 class DisplayManager {
   constructor(elements, syncManager, gpsTimeSync) {
@@ -192,8 +192,8 @@ class DisplayManager {
     this.elements.hourHand?.setAttribute("transform", `rotate(${hourProgress * 30} 400 400)`);
 
     const timeText = this.showMilliseconds
-      ? `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}.${String(ms).padStart(3, "0")}`
-      : `${String(oman.hour).padStart(2, "0")}:${String(oman.minute).padStart(2, "0")}:${String(oman.second).padStart(2, "0")}`;
+      ? `${formatTimeParts(oman.hour, oman.minute, oman.second)}.${String(ms).padStart(3, "0")}`
+      : formatTimeParts(oman.hour, oman.minute, oman.second);
 
     if (timeText !== this.lastRenderedAnalog.timeText && this.elements.analogTimeText) {
       this.elements.analogTimeText.textContent = timeText;

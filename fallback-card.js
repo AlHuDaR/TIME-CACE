@@ -1,5 +1,5 @@
 (function (global) {
-  const { APP_CONFIG } = global.RAFOTimeApp;
+  const { APP_CONFIG, formatClockTime, normalizeRenderedTime } = global.RAFOTimeApp;
   const DEFAULT_TRANSIENT_DURATION_MS = 5000;
   const DEFAULT_FALLBACK_DURATION_MS = 8000;
 
@@ -145,7 +145,7 @@
         subheading: summary,
         sourceLabel: lines.find((line) => line.startsWith("Source:"))?.replace(/^Source:\s*/, "") || APP_CONFIG.statusLabels[type] || "Information",
         date: lines.find((line) => line.startsWith("Date:"))?.replace(/^Date:\s*/, "") || "--/--/----",
-        time: lines.find((line) => line.startsWith("Time:"))?.replace(/^Time:\s*/, "") || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        time: normalizeRenderedTime(lines.find((line) => line.startsWith("Time:"))?.replace(/^Time:\s*/, "")) || formatClockTime(new Date()),
         statusText: lines.find((line) => line.startsWith("Status:"))?.replace(/^Status:\s*/, "") || lines.join(" • "),
         severity: type,
         key: key || `transient:${type}:${lines.join("|")}`,
@@ -181,7 +181,7 @@
       }
       fallbackInfoSource.textContent = payload.sourceLabel;
       fallbackInfoDate.textContent = payload.date;
-      fallbackInfoTime.textContent = payload.time;
+      fallbackInfoTime.textContent = normalizeRenderedTime(payload.time) || payload.time;
       fallbackInfoStatus.textContent = payload.statusText;
       fallbackInfoCard.classList.toggle("is-advisory", payload.severity === "info" || payload.severity === "success");
       fallbackInfoCard.classList.toggle("is-critical", payload.severity === "warning" || payload.severity === "error");
