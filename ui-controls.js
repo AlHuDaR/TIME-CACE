@@ -1,5 +1,5 @@
 (function (global) {
-  const { APP_CONFIG, OMAN_DATE_LINE_FORMATTER } = global.RAFOTimeApp;
+  const { APP_CONFIG, OMAN_DATE_LINE_FORMATTER, buildAppUrl } = global.RAFOTimeApp;
 
 class DisplayManager {
   constructor(elements, syncManager, gpsTimeSync) {
@@ -57,9 +57,14 @@ class DisplayManager {
   }
 
   updateUrl(mode) {
-    const url = new URL(window.location.href);
+    const url = buildAppUrl(window.location.pathname, new URLSearchParams(window.location.search));
     url.searchParams.set("mode", mode);
-    window.history.replaceState({}, "", url);
+    if (url.origin === window.location.origin) {
+      window.history.replaceState({}, "", url);
+      return;
+    }
+
+    window.location.assign(url.toString());
   }
 
   applyPrecisionMode(enabled) {
