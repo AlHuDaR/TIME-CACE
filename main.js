@@ -22,6 +22,8 @@ class PrecisionClock {
       analogDateText: null,
       analogTimeText: null,
       driftMonitor: document.getElementById("driftMonitor"),
+      gpsStatusBar: document.getElementById("gpsStatusBar"),
+      monitoringDashboard: document.getElementById("monitoringDashboard"),
       digitalClock: document.getElementById("digitalClock"),
       analogClock: document.getElementById("analogClock"),
       digitalModeBtn: document.getElementById("digitalModeBtn"),
