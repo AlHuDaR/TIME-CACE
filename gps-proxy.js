@@ -960,8 +960,12 @@ if (CONFIG.serveStatic) {
     res.sendFile(path.join(publicPath, "official-time.html"));
   });
 
+  app.get("/dashboard", (req, res) => {
+    res.sendFile(path.join(publicPath, "index.html"));
+  });
+
   app.get("/", (req, res) => {
-    res.redirect(302, "/official-time");
+    res.sendFile(path.join(publicPath, "index.html"));
   });
 }
 

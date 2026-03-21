@@ -1,5 +1,5 @@
 (function (global) {
-  const { buildPtbAnalogClock, getOmanAnalogParts } = global.RAFOTimeApp;
+  const { buildPtbAnalogClock, getOmanAnalogParts, syncAppLinks } = global.RAFOTimeApp;
 
 class PrecisionClock {
   constructor() {
@@ -101,6 +101,7 @@ class PrecisionClock {
   }
 
   async init() {
+    syncAppLinks();
     this.applyFavicon();
     this.handleLogoFallback();
     this.buildAnalogDial();
