@@ -1,7 +1,13 @@
 (function (global) {
-  const { GPSTimeSync, APP_CONFIG, OMAN_DATE_TIME_FORMATTER } = global.RAFOTimeApp || {};
+  const {
+    GPSTimeSync,
+    APP_CONFIG,
+    OMAN_DATE_TIME_FORMATTER,
+    buildPtbAnalogClock,
+    getOmanAnalogParts,
+  } = global.RAFOTimeApp || {};
 
-  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER) {
+  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !getOmanAnalogParts) {
     throw new Error("Official time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -27,10 +33,14 @@
         sourceCard: document.getElementById("officialSourceCard"),
         sourceValue: document.getElementById("officialSourceValue"),
         sourceNote: document.getElementById("officialSourceNote"),
-        hourHand: document.getElementById("officialHourHand"),
-        minuteHand: document.getElementById("officialMinuteHand"),
-        secondHand: document.getElementById("officialSecondHand"),
-        ticks: document.getElementById("officialClockTicks"),
+        ptbClockSvg: document.getElementById("officialPtbClockSvg"),
+        hourHand: null,
+        minuteHand: null,
+        secondHand: null,
+        secondHandGroup: null,
+        analogDateText: null,
+        analogTimeText: null,
+        analogTimeZoneText: null,
       };
 
       this.gpsTimeSync = new GPSTimeSync();
@@ -40,7 +50,7 @@
     }
 
     async init() {
-      this.buildTicks();
+      this.buildAnalogDial();
       this.applyFavicon();
       await this.gpsTimeSync.init();
       this.gpsTimeSync.addEventListener("gpstimeupdate", this.boundUpdate);
@@ -65,20 +75,8 @@
       favicon.href = "images/cal logo.png";
     }
 
-    buildTicks() {
-      if (!this.elements.ticks) {
-        return;
-      }
-      const fragment = document.createDocumentFragment();
-      for (let i = 0; i < 60; i += 1) {
-        const tick = document.createElement("span");
-        tick.className = i % 5 === 0
-          ? "official-analog-clock__tick official-analog-clock__tick--major"
-          : "official-analog-clock__tick";
-        tick.style.setProperty("--tick-index", String(i));
-        fragment.append(tick);
-      }
-      this.elements.ticks.replaceChildren(fragment);
+    buildAnalogDial() {
+      Object.assign(this.elements, buildPtbAnalogClock(this.elements.ptbClockSvg));
     }
 
     startRenderLoop() {
@@ -112,13 +110,7 @@
     }
 
     getOmanParts(date) {
-      const parts = OMAN_DATE_TIME_FORMATTER.formatToParts(date);
-      const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-      return {
-        hour: map.hour,
-        minute: map.minute,
-        second: map.second,
-      };
+      return getOmanAnalogParts(date);
     }
 
     formatTime(date, timeZone) {
@@ -148,13 +140,21 @@
     }
 
     updateAnalogClock(omanParts, milliseconds) {
-      const secondProgress = Number(omanParts.second) + milliseconds / 1000;
-      const minuteProgress = Number(omanParts.minute) + secondProgress / 60;
-      const hourProgress = (Number(omanParts.hour) % 12) + minuteProgress / 60;
+      const secondProgress = omanParts.second + milliseconds / 1000;
+      const minuteProgress = omanParts.minute + secondProgress / 60;
+      const hourProgress = (omanParts.hour % 12) + minuteProgress / 60;
 
-      this.elements.secondHand.style.transform = `translateX(-50%) rotate(${secondProgress * 6}deg)`;
-      this.elements.minuteHand.style.transform = `translateX(-50%) rotate(${minuteProgress * 6}deg)`;
-      this.elements.hourHand.style.transform = `translateX(-50%) rotate(${hourProgress * 30}deg)`;
+      this.elements.secondHandGroup?.setAttribute("transform", `rotate(${secondProgress * 6} 400 400)`);
+      this.elements.minuteHand?.setAttribute("transform", `rotate(${minuteProgress * 6} 400 400)`);
+      this.elements.hourHand?.setAttribute("transform", `rotate(${hourProgress * 30} 400 400)`);
+
+      if (this.elements.analogTimeText) {
+        this.elements.analogTimeText.textContent = `${String(omanParts.hour).padStart(2, "0")}:${String(omanParts.minute).padStart(2, "0")}:${String(omanParts.second).padStart(2, "0")}`;
+      }
+
+      if (this.elements.analogDateText) {
+        this.elements.analogDateText.textContent = omanParts.date;
+      }
     }
 
     applyStatus(detail) {
