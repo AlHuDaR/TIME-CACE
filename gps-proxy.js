@@ -952,13 +952,15 @@ app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, r
 });
 
 if (CONFIG.serveStatic) {
-  app.use("/images", express.static(path.join(publicPath, "images"), {
-    fallthrough: false,
-    index: false,
-    setHeaders(res) {
-      setNoStore(res);
-    },
-  }));
+  ["images", "styles"].forEach((assetDir) => {
+    app.use(`/${assetDir}`, express.static(path.join(publicPath, assetDir), {
+      fallthrough: false,
+      index: false,
+      setHeaders(res) {
+        setNoStore(res);
+      },
+    }));
+  });
 
   FRONTEND_ASSET_FILES.forEach((fileName) => {
     app.get(`/${fileName}`, (req, res) => {
