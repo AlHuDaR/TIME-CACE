@@ -1,5 +1,7 @@
 (function (global) {
   const { OMAN_ANALOG_PARTS_FORMATTER } = global.RAFOTimeApp || {};
+  const CLOCK_LOGO_PATH = "images/cal logo.png";
+  let analogClockInstanceCount = 0;
 
   if (!OMAN_ANALOG_PARTS_FORMATTER) {
     throw new Error("OMAN_ANALOG_PARTS_FORMATTER is unavailable. Ensure api-client.js loads before analog-clock.js.");
@@ -16,11 +18,13 @@
       Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
       return el;
     };
+    const instanceToken = `${(svg.id || "ptbClockSvg").replace(/[^a-zA-Z0-9_-]/g, "") || "ptbClockSvg"}-${analogClockInstanceCount += 1}`;
+    const logoShadowId = `${instanceToken}-logoShadow`;
 
     svg.replaceChildren();
 
     const defs = make("defs");
-    const logoShadow = make("filter", { id: "logoShadow", x: "-40%", y: "-40%", width: "180%", height: "180%" });
+    const logoShadow = make("filter", { id: logoShadowId, x: "-40%", y: "-40%", width: "180%", height: "180%" });
     logoShadow.append(make("feDropShadow", { dx: "1.4", dy: "1.6", stdDeviation: "2", "flood-color": "#0f4358", "flood-opacity": "0.55" }));
     defs.append(logoShadow);
     svg.append(defs);
@@ -77,22 +81,25 @@
     const centerX = 400;
     const centerY = 400;
     const clockRadius = 380;
-    const logoSize = clockRadius * 0.34;
-    const logoId = "ptbClockCenterLogo";
-
-    if (!svg.querySelector(`#${logoId}`)) {
-      svg.append(make("image", {
-        id: logoId,
-        href: "images/cal logo.png",
-        x: centerX - (logoSize / 2),
-        y: centerY - (logoSize / 2),
-        width: logoSize,
-        height: logoSize,
-        preserveAspectRatio: "xMidYMid meet",
-        filter: "url(#logoShadow)",
-        overflow: "visible",
-      }));
-    }
+    const logoSize = clockRadius * 0.78;
+    const centerLogoGroup = make("g", {
+      id: `${instanceToken}-centerBrand`,
+      opacity: 0.46,
+      "pointer-events": "none",
+    });
+    const centerLogo = make("image", {
+      id: `${instanceToken}-centerLogo`,
+      href: CLOCK_LOGO_PATH,
+      x: centerX - (logoSize / 2),
+      y: centerY - (logoSize / 2),
+      width: logoSize,
+      height: logoSize,
+      preserveAspectRatio: "xMidYMid meet",
+      filter: `url(#${logoShadowId})`,
+    });
+    centerLogo.setAttributeNS("http://www.w3.org/1999/xlink", "href", CLOCK_LOGO_PATH);
+    centerLogoGroup.append(centerLogo);
+    svg.append(centerLogoGroup);
 
     const handsGroup = make("g", { id: "hands" });
     const hourHand = make("line", { x1: 400, y1: 400, x2: 400, y2: 230, stroke: "#1a6b8c", "stroke-width": 14, "stroke-linecap": "round", opacity: 0.86 });

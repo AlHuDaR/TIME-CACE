@@ -780,23 +780,6 @@ body.dark-mode .fallback-info-card {
   z-index: 1;
 }
 
-.clock-center-logo {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: min(52vw, 325px);
-  max-width: 100%;
-  transform: translate(-50%, -50%);
-  opacity: 0.5;
-  pointer-events: none;
-  z-index: 0;
-  object-fit: contain;
-}
-
-#digitalClock .clock-center-logo {
-  display: none !important;
-}
-
 .label {
   margin: 0;
   color: var(--muted);
@@ -845,22 +828,6 @@ body.dark-mode .fallback-info-card {
   position: relative;
 }
 
-.analog-clock .clock-center-logo {
-  width: 58%;
-  height: auto;
-  max-width: 325px;
-  max-height: 58%;
-  object-fit: contain;
-  object-position: center;
-  z-index: 2;
-}
-
-body.old-style .analog-clock .clock-center-logo {
-  width: 50%;
-  max-width: 279px;
-  max-height: 50%;
-  opacity: 0.5;
-}
 
 .ptb-clock-svg {
   width: 100%;
@@ -1551,13 +1518,6 @@ body.dark-mode .official-time-actions {
   display: block;
 }
 
-.official-clock-center-logo {
-  width: 39%;
-  max-width: 210px;
-  max-height: 39%;
-  opacity: 0.45;
-  z-index: 1;
-}
 
 .official-time-content-column {
   display: grid;
