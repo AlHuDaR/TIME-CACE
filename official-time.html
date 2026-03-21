@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAFO Calibration Center Official Reference Time</title>
+    <meta name="rafo-api-base-url" content="" />
+    <meta name="rafo-api-backup-url" content="" />
+    <meta name="rafo-site-base-url" content="https://time-cace.netlify.app" />
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="official-time-page">
+    <main class="official-time-layout">
+      <section class="official-time-hero" aria-label="Official Oman time display">
+        <div class="official-time-clock-column">
+          <article class="official-time-clock-card official-time-clock-frame" aria-label="Analog official Oman time clock">
+            <svg id="officialPtbClockSvg" class="ptb-clock-svg official-ptb-clock-svg" viewBox="0 0 800 800" role="img" aria-label="Analog official Oman time clock"></svg>
+          </article>
+        </div>
+
+        <div class="official-time-content-column">
+          <div class="official-time-brand">
+            <p class="official-time-brand-line">Royal Air Force of Oman</p>
+            <p class="official-time-brand-line">Calibration Center (CACE)</p>
+          </div>
+          <h1>Official Oman Time (GST)</h1>
+          <h2>(GST : Maintained by RAFO Calibration Center, Oman)</h2>
+          <p id="officialDigitalTime" class="official-time-digital" aria-live="polite">--:--:--</p>
+          <p id="officialDateLine" class="official-time-date">(UTC +04:00), --</p>
+        </div>
+      </section>
+
+      <section class="official-time-status-strip" aria-label="Reference time status grid">
+        <article class="official-status-card">
+          <p class="official-status-card__title">UTC Time</p>
+          <p id="officialUtcTime" class="official-status-card__value">--:--:--</p>
+          <p class="official-status-card__note">Universal coordinated reference</p>
+        </article>
+        <article class="official-status-card">
+          <p class="official-status-card__title">Oman Time</p>
+          <p id="officialOmanTime" class="official-status-card__value">--:--:--</p>
+          <p class="official-status-card__note">Operational display output</p>
+        </article>
+        <article class="official-status-card">
+          <p class="official-status-card__title">Device Time</p>
+          <p id="officialDeviceTime" class="official-status-card__value">--:--:--</p>
+          <p class="official-status-card__note">Local workstation clock</p>
+        </article>
+        <article id="officialDifferenceCard" class="official-status-card">
+          <p class="official-status-card__title">Time Difference</p>
+          <p id="officialDifferenceValue" class="official-status-card__value">0 ms</p>
+          <p id="officialDifferenceNote" class="official-status-card__note">Device vs. synchronized reference</p>
+        </article>
+        <article id="officialSourceCard" class="official-status-card">
+          <p class="official-status-card__title">Time Source / Sync Status</p>
+          <p id="officialSourceValue" class="official-status-card__value official-status-card__value--source">Initializing</p>
+          <p id="officialSourceNote" class="official-status-card__note">Waiting for the first runtime synchronization.</p>
+        </article>
+      </section>
+
+      <nav class="official-time-actions" aria-label="Official time navigation">
+        <a class="mode-btn mode-link-btn" href="/dashboard" data-app-link="/dashboard">Back to Dashboard</a>
+      </nav>
+    </main>
+
+    <script src="api-client.js"></script>
+    <script src="analog-clock.js"></script>
+    <script src="status-monitor.js"></script>
+    <script src="fallback-card.js"></script>
+    <script src="runtime-sync.js"></script>
+    <script src="official-time.js"></script>
+  </body>
+</html>
