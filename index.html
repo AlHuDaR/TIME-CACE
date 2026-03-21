@@ -6,8 +6,8 @@
     <title>RAFO Calibration Center Time Display</title>
     <meta name="rafo-api-base-url" content="" />
     <meta name="rafo-api-backup-url" content="" />
+    <meta name="rafo-site-base-url" content="https://time-cace.netlify.app" />
     <link rel="stylesheet" href="styles.css" />
-</script>
   </head>
   <body>
     <main class="layout">
@@ -19,7 +19,7 @@
           <p class="subtitle">Managed reference time display</p>
         </div>
         <div class="header-actions" aria-label="Display settings">
-          <a class="mode-btn mode-link-btn" href="/official-time">Official Time Page</a>
+          <a class="mode-btn mode-link-btn" href="/official-time" data-app-link="/official-time">Official Time Page</a>
           <button id="darkModeBtn" class="mode-btn" type="button" aria-pressed="false">Dark mode</button>
           <button id="precisionToggleBtn" class="mode-btn" type="button" aria-pressed="true">Precision: ON</button>
         </div>
@@ -55,7 +55,7 @@
           <button id="digitalModeBtn" class="mode-btn active" type="button" aria-pressed="true">Digital</button>
           <button id="analogModeBtn" class="mode-btn" type="button" aria-pressed="false">Old style watch</button>
           <button id="analogOnlyBtn" class="mode-btn" type="button" aria-pressed="false">Analog</button>
-          <a class="mode-btn mode-link-btn" href="/official-time">Official Time</a>
+          <a class="mode-btn mode-link-btn" href="/official-time" data-app-link="/official-time">Official Time</a>
         </div>
       </section>
 

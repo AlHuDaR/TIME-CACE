@@ -5,9 +5,10 @@
     OMAN_DATE_TIME_FORMATTER,
     buildPtbAnalogClock,
     getOmanAnalogParts,
+    syncAppLinks,
   } = global.RAFOTimeApp || {};
 
-  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !getOmanAnalogParts) {
+  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !getOmanAnalogParts || !syncAppLinks) {
     throw new Error("Official time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -50,6 +51,7 @@
     }
 
     async init() {
+      syncAppLinks();
       this.buildAnalogDial();
       this.applyFavicon();
       await this.gpsTimeSync.init();

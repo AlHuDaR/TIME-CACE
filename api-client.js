@@ -28,6 +28,9 @@
     apiBackupUrl: typeof global.APP_CONFIG?.API_BACKUP_URL === "string" && global.APP_CONFIG.API_BACKUP_URL.trim()
       ? global.APP_CONFIG.API_BACKUP_URL.trim()
       : readMetaConfig("rafo-api-backup-url"),
+    siteBaseUrl: typeof global.APP_CONFIG?.SITE_BASE_URL === "string" && global.APP_CONFIG.SITE_BASE_URL.trim()
+      ? global.APP_CONFIG.SITE_BASE_URL.trim()
+      : readMetaConfig("rafo-site-base-url"),
     apiAuthToken: typeof global.APP_CONFIG?.API_AUTH_TOKEN === "string"
       ? global.APP_CONFIG.API_AUTH_TOKEN.trim()
       : "",
@@ -100,6 +103,53 @@
     return "/api";
   }
 
+  function resolveSiteBaseUrl() {
+    const configured = normalizeBaseUrl(APP_CONFIG.siteBaseUrl);
+    const { protocol, origin, hostname } = global.location;
+    const isHttp = protocol === "http:" || protocol === "https:";
+    const isLocalhost = APP_CONFIG.localhostNames.includes(hostname);
+
+    if (!isHttp || isLocalhost) {
+      return origin;
+    }
+
+    return configured || origin;
+  }
+
+  function buildAppUrl(pathname = "/", searchParams) {
+    const target = new URL(pathname, resolveSiteBaseUrl());
+
+    if (searchParams instanceof URLSearchParams) {
+      target.search = searchParams.toString();
+    } else if (searchParams && typeof searchParams === "object") {
+      const params = new URLSearchParams();
+      Object.entries(searchParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          params.set(key, String(value));
+        }
+      });
+      target.search = params.toString();
+    }
+
+    return target;
+  }
+
+  function syncAppLinks(root = global.document) {
+    if (!root?.querySelectorAll) {
+      return;
+    }
+
+    root.querySelectorAll("[data-app-link]").forEach((link) => {
+      const targetPath = link.getAttribute("data-app-link");
+      if (!targetPath) {
+        return;
+      }
+
+      const url = buildAppUrl(targetPath);
+      link.href = url.toString();
+    });
+  }
+
   function formatClockTime(value) {
     if (!value) {
       return "Never";
@@ -153,6 +203,9 @@
     OMAN_ANALOG_PARTS_FORMATTER,
     normalizeBaseUrl,
     resolveApiBaseUrl,
+    resolveSiteBaseUrl,
+    buildAppUrl,
+    syncAppLinks,
     formatClockTime,
     formatRelativeAge,
   });
