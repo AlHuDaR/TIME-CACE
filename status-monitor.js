@@ -184,7 +184,9 @@
     );
 
     const timingIntegrityState = backendMonitoringState.timingIntegrityState
-      || (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable"
+      || ((runtimeState.currentSource === "internet-fallback" && runtimeState.internetFallbackMode === "remote-browser")
+        ? "reduced"
+        : (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable"
         ? "low"
         : (!receiverConfigured || runtimeState.currentSource === "internet-fallback")
           ? "reduced"
@@ -192,10 +194,12 @@
             ? "degraded"
             : (dataState === "cached" || receiverStatus.gpsLockState === "unlocked" || mismatchWhileFresh)
               ? "reduced"
-              : "high");
+              : "high"));
 
     const alarmSeverityState = backendMonitoringState.alarmSeverityState
-      || (!receiverStatus.backendOnline || runtimeState.currentSource === "local"
+      || ((runtimeState.currentSource === "internet-fallback" && runtimeState.internetFallbackMode === "remote-browser")
+        ? "warning"
+        : (!receiverStatus.backendOnline || runtimeState.currentSource === "local"
         ? "critical"
         : runtimeState.currentSource === "internet-fallback"
           ? receiverConfigured ? "warning" : "advisory"
@@ -207,7 +211,7 @@
                 ? "warning"
                 : mismatchWhileFresh
                   ? "advisory"
-                  : "normal");
+                  : "normal"));
 
     return {
       runtimeTimeSourceState,

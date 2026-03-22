@@ -174,7 +174,7 @@
       }
 
       const receiverStatus = detail.receiverStatus || this.gpsTimeSync.getReceiverStatus();
-      const sourceLabel = this.gpsTimeSync.getSourceDisplayName(detail.currentSource);
+      const sourceLabel = this.gpsTimeSync.getSourceDisplayName(detail);
       const freshness = receiverStatus.checkedAt
         ? `Status snapshot at ${formatClockTime(receiverStatus.checkedAt)}`
         : "Status snapshot pending";
@@ -188,7 +188,10 @@
           : "healthy";
 
       this.elements.sourceValue.textContent = sourceLabel;
-      this.elements.sourceNote.textContent = `${detail.statusText}. ${freshness}. ${syncText}.`;
+      const remoteNote = detail.currentSource === "internet-fallback" && detail.internetFallbackMode === "remote-browser" && detail.remoteSourceName
+        ? ` Remote reference: ${detail.remoteSourceName}.`
+        : "";
+      this.elements.sourceNote.textContent = `${detail.statusText}. ${freshness}. ${syncText}.${remoteNote}`;
       this.elements.sourceCard.dataset.severity = sourceTone;
     }
 

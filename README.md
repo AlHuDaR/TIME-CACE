@@ -1,168 +1,180 @@
 # RAFO Calibration Center Time Display
 
-RAFO Calibration Center Time Display is a web-based Oman reference time system for the Royal Air Force of Oman Calibration Center (CACE). The project combines a browser frontend with a Node.js/Express backend that can read time from a Symmetricom / Microsemi XLi receiver, fall back to backend Internet time when needed, and finally degrade to local browser time if no remote source is available.
+RAFO Calibration Center Time Display is a web-based Oman reference time system for the Royal Air Force of Oman Calibration Center (CACE). It combines a browser frontend with an optional Node.js/Express backend that can read time from a Symmetricom / Microsemi XLi receiver, serve backend Internet fallback time, and now continue with a browser-reachable remote Internet reference when the local backend is unavailable before finally degrading to local device time.
 
-The current project ships with two main user-facing pages:
-- an **Official Time** page intended for clean reference display
-- a **Dashboard** page intended for operator monitoring, diagnostics, and control actions
+## Overview
 
-## What the app does
+The project exposes two primary user-facing pages:
 
-The application keeps an Oman time display running with a clear source priority:
+- **Official Time** — a presentation-style Oman reference time display.
+- **Dashboard** — an operator-focused monitoring and control page.
 
-1. **GPS receiver time** from the Symmetricom / Microsemi XLi receiver when reachable
-2. **Backend Internet fallback time** when the receiver path is unavailable or disabled
-3. **Local computer/browser fallback time** when remote sources cannot be reached
+The application keeps Oman time displayed in **Gulf Standard Time (GST, UTC+04:00)** and preserves multiple operating modes, receiver status monitoring, fallback notifications, and source/status summaries.
 
-The frontend continuously synchronizes with the backend, tracks source changes, and shows operator-friendly monitoring details such as receiver reachability, lock status, timing integrity, freshness, fallback state, and recent events.
+## Current pages and routes
 
-## Current features
+### Frontend routes
 
-- Oman time display using **Gulf Standard Time (GST, UTC+04:00)**
-- Dual page experience:
-  - **Official Time page** for a presentation-style reference clock
-  - **Dashboard page** for operator monitoring and controls
-- Multiple display modes on the dashboard:
-  - **Digital**
-  - **Old style watch**
-  - **Analog-only fullscreen-style mode**
+When served by Express or Netlify, the current public routes are:
+
+- `/official-time` → official reference time page
+- `/dashboard` → dashboard page
+- `/` → redirects to `/official-time` in the Express app, and to `/official-time.html` in Netlify via `netlify.toml`
+
+### Dashboard modes
+
+The dashboard supports these display modes and URL variants:
+
+- **Digital mode** → `/dashboard?mode=digital`
+- **Old-style mode** (watch-style analog panel) → `/dashboard?mode=analog`
+- **Analog-only mode** → `/dashboard?mode=analog-only`
+
+### Source files behind the pages
+
+- `official-time.html` — Official Time page
+- `index.html` — Dashboard page
+
+## Features
+
+- Oman time display using **Asia/Muscat / GST (UTC+04:00)**
+- **Dashboard page** for operators and monitoring
+- **Official Time page** for clean reference display
+- Preserved dashboard modes:
+  - **Digital mode**
+  - **Analog mode** / **old-style mode**
+  - **Analog-only mode**
 - PTB-style analog clock rendering
 - Millisecond precision toggle
-- Dark mode with saved preference in `localStorage`
-- Keyboard shortcuts for mode switching, pause, fullscreen, and dark mode
-- Monitoring dashboard with receiver health, active source, timing integrity, sync age, communication status, fallback state, and event history
-- Fallback information card when runtime source changes
-- Optional receiver time write-back from:
+- Dark mode with saved preference
+- Keyboard shortcuts for mode switching, dark mode, fullscreen, and pause/resume
+- Live source/status rendering for:
+  - receiver/backend source
+  - Internet fallback source
+  - local browser/device fallback
+- Monitoring dashboard for:
+  - receiver reachability
+  - GPS lock state
+  - active source
+  - timing integrity
+  - sync freshness
+  - communication status
+  - fallback state
+  - recent events
+- Fallback information card / notification behavior
+- Receiver write-back actions for setting receiver time from:
   - the local computer clock
-  - backend Internet time
-- Backend API with:
-  - health endpoint
-  - status endpoint
-  - authoritative time endpoint
-  - Internet fallback endpoint
-  - receiver time set endpoint
-- Optional API token protection and route-specific rate limiting
-- Netlify-friendly static hosting configuration for the frontend
-- Local Express static serving option for running frontend and backend together
+  - Internet time
+- Netlify-friendly static frontend deployment
+- Express option to serve frontend and backend together
 
-## Pages and routes
+## How time sourcing works now
 
-### Frontend pages
+The runtime now follows a safer multi-level fallback chain:
 
-When static assets are served by Express or Netlify, the project currently exposes these routes:
+1. **Primary: backend / receiver path**
+   - The frontend first tries the backend `/api/time` endpoint.
+   - If the receiver is reachable and locked, the app uses receiver-backed time.
+   - If the backend is running and already supplying backend Internet fallback, the frontend continues to use that backend response normally.
 
-- `/official-time` → official Oman reference time page
-- `/dashboard` → operator dashboard page
-- `/` → redirects to `/official-time`
+2. **Secondary: Internet reference fallback**
+   - If backend receiver time is unavailable, the frontend still tries the backend Internet endpoint at `/api/time/internet`.
+   - If the backend itself is unavailable, the frontend now tries a **browser-reachable remote Internet time source directly**.
+   - The default browser-side remote sources are:
+     - `https://worldtimeapi.org/api/timezone/Asia/Muscat`
+     - `https://timeapi.io/api/Time/current/zone?timeZone=Asia/Muscat`
 
-The underlying files are:
-- `official-time.html`
-- `index.html`
+3. **Last fallback: local browser/device time**
+   - The app only falls back to local device time when both backend time and remote Internet fallback are unavailable.
 
-### Dashboard display modes
+### What this means in practice
 
-The dashboard supports URL-driven mode switching via the `mode` query parameter:
+- If the local backend on port `3000` is running, the app behaves as before.
+- If the backend is down but the browser still has Internet access, the app can continue on **remote Internet fallback** instead of dropping straight to device time.
+- If both the backend and remote Internet sources are unavailable, the app uses **local browser/device time** as the last resort.
 
-- `/dashboard?mode=digital`
-- `/dashboard?mode=analog`
-- `/dashboard?mode=analog-only`
+## Source and status behavior
 
-The UI also lets users switch modes interactively.
+The UI still preserves the existing professional source/status presentation, but it now distinguishes more clearly between:
 
-### Backend API routes
+- **Receiver locked / receiver-backed source**
+- **Backend Internet fallback**
+- **Remote Internet fallback** (browser-side, used when backend is offline)
+- **Local device fallback**
 
-- `GET /api/health` — backend health and configuration summary
-- `GET /api/status` — receiver/monitoring status snapshot
-- `GET /api/time` — primary synchronized time endpoint used by the runtime
-- `GET /api/time/internet` — backend Internet fallback time
-- `POST /api/time/set` — writes time to the receiver using either the computer or Internet source
+This affects:
+
+- dashboard source badge and status text
+- official-time source card
+- fallback information card wording
+- monitoring cards describing active source, fallback state, and integrity
+
+## Backend API routes
+
+The backend currently exposes these routes:
+
+- `GET /api/health` — backend health/config summary
+- `GET /api/status` — receiver and monitoring snapshot
+- `GET /api/time` — primary synchronized runtime time endpoint
+- `GET /api/time/internet` — backend Internet fallback time endpoint
+- `POST /api/time/set` — set receiver time from computer or Internet time
 
 ## Project structure
 
 ### Key files
 
-- `gps-proxy.js` — Express server, API routes, static serving, CORS, auth, and rate limiting
-- `receiver-protocol.js` — receiver connection helpers, protocol parsing, and config validation
-- `index.html` — dashboard page markup
-- `official-time.html` — official reference time page markup
-- `api-client.js` — shared frontend configuration and URL helpers
-- `runtime-sync.js` — runtime sync engine, fallback logic, API access, and polling
-- `status-monitor.js` — monitoring model and status normalization helpers
-- `dashboard-render.js` — dashboard rendering and live monitoring presentation
-- `fallback-card.js` — transient notifications and fallback information card logic
-- `ui-controls.js` — mode controls, preferences, keyboard shortcuts, and receiver actions
-- `main.js` — dashboard bootstrap and render loop
-- `official-time.js` — official time page bootstrap and live updates
-- `analog-clock.js` — PTB-style SVG analog clock generation
-- `styles.css` — root stylesheet that imports modular stylesheets
-- `styles/base.css` — shared design tokens and global styles
-- `styles/dashboard.css` — dashboard layout and monitoring styles
-- `styles/modes.css` — digital/analog/analog-only mode styling
-- `styles/official-time.css` — official page styling
-- `styles/responsive.css` — responsive adjustments
-- `netlify.toml` — Netlify redirects and cache-control headers
+- `gps-proxy.js` — Express server, API routes, fallback logic, static serving, auth, and rate limiting
+- `receiver-protocol.js` — receiver TCP helpers, parsing, and config validation
+- `api-client.js` — shared frontend configuration and API/base URL resolution
+- `runtime-sync.js` — runtime sync engine and multi-level fallback selection
+- `status-monitor.js` — monitoring-state normalization and severity logic
+- `dashboard-render.js` — dashboard status/source/fallback rendering
+- `fallback-card.js` — fallback notification and source-change messaging
+- `official-time.js` — official-time page runtime and status rendering
+- `ui-controls.js` — dashboard mode switching, preferences, and receiver actions
+- `main.js` — dashboard bootstrap
+- `analog-clock.js` — analog clock generation
+- `index.html` — dashboard markup
+- `official-time.html` — official-time markup
+- `styles.css` and `styles/` — visual styling
 - `.env.example` — sample backend configuration
-- `tests/protocol-harness.js` — protocol and receiver behavior test harness
+- `netlify.toml` — Netlify routing and cache-control configuration
+- `tests/protocol-harness.js` — protocol/configuration test harness
 
-### Top-level layout summary
+## Requirements and environment
 
-```text
-TIME-CACE/
-├── index.html
-├── official-time.html
-├── gps-proxy.js
-├── receiver-protocol.js
-├── api-client.js
-├── runtime-sync.js
-├── status-monitor.js
-├── dashboard-render.js
-├── fallback-card.js
-├── ui-controls.js
-├── main.js
-├── official-time.js
-├── analog-clock.js
-├── styles.css
-├── styles/
-├── images/
-├── tests/
-├── .env.example
-├── package.json
-└── netlify.toml
-```
+### Is Node.js required?
 
-## Requirements and prerequisites
+- **Yes, for the full local backend/receiver workflow.**
+- The Node.js backend is required if you want:
+  - the receiver integration
+  - `/api/time`, `/api/status`, `/api/time/internet`, and `/api/time/set`
+  - local Express serving of the frontend
+- If you only host the static frontend somewhere else, Node.js is not required on the client machine, but backend-backed features will not be available unless you point the frontend at a running API.
 
-If you want to run the project locally with its current backend, **Node.js is required**.
+### Is npm required?
 
-- **Node.js 18 or newer** is required by the project (`"node": ">=18"`)
-- **npm** is also required, and **npm is installed automatically with Node.js**
-- A receiver connection is optional if you want live Symmetricom / Microsemi XLi integration
-- If you do not have receiver access, you can still run the project in fallback mode by disabling receiver mode in `.env`
+- **Yes, if you run the backend locally.**
+- **npm is included with Node.js**, so install Node.js first.
 
-### Required software
+### Is `npm install` required?
 
-- **Node.js 18+**
-- **npm** (comes with Node.js)
+- **Yes**, before running any of the backend scripts in `package.json`.
 
-## Installation and setup
+### Node version
 
-> Important: if you use the backend or run the combined local app, you must install Node.js first, then run `npm install` before starting the project.
+- The project currently requires **Node.js 18 or newer**.
 
-### 1. Install Node.js
+## Installation
 
-Download and install Node.js from the official Node.js website for your operating system. npm is included with the Node.js installer.
-
-### 2. Install project dependencies
-
-From the repository root:
+1. Install **Node.js 18+**.
+2. Open a terminal in the repository root.
+3. Install dependencies:
 
 ```bash
 npm install
 ```
 
-### 3. Create a local environment file
-
-Create a `.env` file from `.env.example`.
+4. Create a local environment file from `.env.example`.
 
 **Windows (Command Prompt):**
 
@@ -176,41 +188,36 @@ copy .env.example .env
 cp .env.example .env
 ```
 
-Then edit `.env` with the correct values for your environment.
-
-### 4. Configure whether the receiver is used
-
-- Use real receiver credentials if you want live receiver integration
-- Set `RECEIVER_ENABLED=false` if you want to run without a receiver and use backend fallback behavior instead
+5. Edit `.env` for your environment.
 
 ## Environment configuration
 
-The backend reads configuration from `.env`. The frontend does not require a separate `.env` file for basic local use when served by the backend.
+The backend reads configuration from `.env`.
 
-### Core backend variables
+### Core variables
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `PORT` | No | Backend HTTP port. Default: `3000` |
-| `RECEIVER_ENABLED` | No | Enables/disables receiver mode |
+| `RECEIVER_ENABLED` | No | Enables/disables receiver integration |
 | `GPS_HOST` | Conditional | Receiver host/IP when receiver mode is enabled |
 | `GPS_PORT` | No | Receiver TCP port. Default: `23` |
 | `GPS_USERNAME` | Conditional | Receiver username when receiver mode is enabled |
 | `GPS_PASSWORD` | Conditional | Receiver password when receiver mode is enabled |
 | `ALLOWED_ORIGIN` | Recommended | Allowed frontend origin(s) for CORS |
-| `SERVE_STATIC` | No | Serve the frontend from Express when `true` |
-| `NODE_ENV` | No | Environment mode |
+| `SERVE_STATIC` | No | Serve frontend files from Express when `true` |
+| `NODE_ENV` | No | Node environment |
 
-### Optional backend tuning and protection
+### Optional tuning and protection
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `MIN_CONNECTION_INTERVAL_MS` | No | Minimum spacing between receiver TCP sessions |
+| `MIN_CONNECTION_INTERVAL_MS` | No | Minimum gap between receiver TCP connections |
 | `REQUEST_TIMEOUT_MS` | No | Receiver socket timeout |
-| `RECEIVER_STATUS_CACHE_MS` | No | Status cache duration |
-| `STATUS_STALE_MS` | No | Backend stale-data threshold |
-| `API_AUTH_ENABLED` | No | Enables API token auth when `true` |
-| `API_AUTH_TOKEN` | Conditional | Token used when API auth is enabled |
+| `RECEIVER_STATUS_CACHE_MS` | No | Backend status cache duration |
+| `STATUS_STALE_MS` | No | Backend stale-status threshold |
+| `API_AUTH_ENABLED` | No | Enable token auth |
+| `API_AUTH_TOKEN` | Conditional | Token used when auth is enabled |
 | `RATE_LIMIT_WINDOW_MS` | No | Rate-limit window |
 | `RATE_LIMIT_TIME_MAX` | No | Max `/api/time` requests per window |
 | `RATE_LIMIT_STATUS_MAX` | No | Max `/api/status` requests per window |
@@ -219,141 +226,130 @@ The backend reads configuration from `.env`. The frontend does not require a sep
 
 ## How to run locally
 
-### Option A — Run frontend and backend together
+### Windows
 
-This is the simplest local setup.
+After `npm install` and `.env` setup:
+
+```bat
+npm start
+```
+
+Then open:
+
+- `http://localhost:3000/official-time`
+- `http://localhost:3000/dashboard`
+
+### macOS / Linux
+
+After `npm install` and `.env` setup:
 
 ```bash
 npm start
 ```
 
-This starts the Express server, serves the frontend, and exposes the API. By default, the app listens on `http://localhost:3000` unless you change `PORT`.
+Then open:
 
-Local routes when using this mode:
 - `http://localhost:3000/official-time`
 - `http://localhost:3000/dashboard`
 
-### Option B — Run in development with auto-restart
-
-```bash
-npm run dev
-```
-
-This uses `nodemon` to restart the backend automatically when backend files change.
-
-### Option C — Run backend API without static frontend serving
-
-```bash
-npm run start:api
-```
-
-Use this when the frontend is hosted separately and should call a standalone backend.
-
-### Option D — Force full local serving mode
-
-```bash
-npm run start:full
-```
-
-This explicitly enables Express static serving for the frontend.
-
 ## Available npm scripts
 
-The following scripts currently exist in `package.json`:
+These are the scripts currently defined in `package.json`:
 
-- `npm start` — start the Express backend (`node gps-proxy.js`)
-- `npm run dev` — start with `nodemon`
+- `npm start` — run `node gps-proxy.js`
+- `npm run dev` — run `nodemon gps-proxy.js`
 - `npm run start:api` — run backend-only mode with `SERVE_STATIC=false`
-- `npm run start:full` — run backend with static asset serving enabled
-- `npm run check` — run Node syntax checks across the main backend/frontend scripts
+- `npm run start:full` — run backend with static serving enabled
+- `npm run check` — syntax-check the main backend/frontend scripts
 - `npm run test:protocol` — run the protocol harness
 - `npm test` — alias for `npm run test:protocol`
 
-## Frontend behavior and UI notes
+## Frontend/API configuration when hosted separately
 
-### Official Time page
+The frontend supports these pre-load configuration options:
 
-The official page is designed as a presentation-style reference display and currently includes:
+### Primary API base URL
 
-- large digital Oman time
-- analog reference clock
-- UTC time
-- Oman time
-- local device time
-- synchronized-vs-device time difference
-- current sync/source status summary
+```html
+<meta name="rafo-api-base-url" content="https://your-backend.example.com/api" />
+```
 
-### Dashboard page
+or:
 
-The dashboard is the operator-focused page and currently includes:
+```html
+<script>
+  window.APP_CONFIG = {
+    API_BASE_URL: "https://your-backend.example.com/api"
+  };
+</script>
+```
 
-- GPS/source status bar
-- digital time tiles with optional milliseconds
-- analog watch view
-- receiver action buttons for setting receiver time
-- Oman date and timezone metadata
-- primary source description and sync summary
-- monitoring dashboard with severity/integrity badges
-- diagnostics and recent event feed
+### Backup API base URL
 
-### Responsiveness and visual behavior
+```html
+<meta name="rafo-api-backup-url" content="https://backup-backend.example.com/api" />
+```
 
-The styles are split into modular CSS files and include responsive behavior for smaller screens, old-style analog mode, and analog-only mode. The UI also supports:
+or:
 
-- saved dark mode preference
-- saved precision preference
-- fullscreen toggle through keyboard shortcut
-- adaptive routing links that work with configured site base URLs
+```html
+<script>
+  window.APP_CONFIG = {
+    API_BACKUP_URL: "https://backup-backend.example.com/api"
+  };
+</script>
+```
 
-### Keyboard shortcuts on the dashboard
+### Optional browser-side remote Internet sources
 
-- `1` — digital mode
-- `2` — old style watch mode
-- `3` — analog-only mode
-- `D` — toggle dark mode
-- `F` — toggle fullscreen
-- `Space` — pause/resume rendering
-- `Esc` — leave analog-only mode
+The browser-side remote fallback sources can also be overridden before scripts load:
+
+```html
+<script>
+  window.APP_CONFIG = {
+    REMOTE_TIME_SOURCES: [
+      {
+        name: "Example Remote Time",
+        url: "https://example.com/time",
+        parser: "worldtimeapi"
+      }
+    ]
+  };
+</script>
+```
+
+Current built-in parser values used by the code are:
+
+- `worldtimeapi`
+- `timeapiio`
 
 ## Deployment notes
 
-### Netlify/static frontend deployment
+### Netlify
 
-The repository includes a `netlify.toml` file that:
+`netlify.toml` currently:
 
 - publishes the repository root
 - redirects `/` to `/official-time.html`
-- maps `/official-time` to `official-time.html`
-- maps `/dashboard` to `index.html`
-- applies no-store cache headers
+- routes `/official-time` to `official-time.html`
+- routes `/dashboard` to `index.html`
+- sends no-store cache headers
 
-This means the frontend can be deployed as a static site on Netlify.
+This preserves static Netlify behavior for the frontend.
 
-### Backend deployment
+### Express/local serving
 
-The backend is a local/hosted Node.js Express service defined in `gps-proxy.js`. If you deploy the frontend separately from the backend, you can point the frontend to a hosted API.
+When `SERVE_STATIC=true` or when `NODE_ENV` is not `production`, `gps-proxy.js` serves the frontend directly and exposes the API from the same process.
 
-The frontend supports these configuration methods before scripts load:
+## Troubleshooting
 
-- `window.APP_CONFIG.API_BASE_URL = "https://your-backend.example.com/api"`
-- `<meta name="rafo-api-base-url" content="https://your-backend.example.com/api">`
-
-Optional backup API:
-
-- `window.APP_CONFIG.API_BACKUP_URL = "https://backup-backend.example.com/api"`
-- `<meta name="rafo-api-backup-url" content="https://backup-backend.example.com/api">`
-
-The frontend also supports a site base URL override for generated internal links.
-
-## Troubleshooting and important notes
-
-- If `npm start` fails immediately, make sure you already ran `npm install`.
-- If you are using receiver mode, invalid `GPS_HOST`, `GPS_USERNAME`, or `GPS_PASSWORD` values will prevent receiver-backed operation.
-- If the receiver is intentionally unavailable, set `RECEIVER_ENABLED=false` to run in fallback-oriented mode.
-- If the frontend is hosted on a different origin than the backend, make sure `ALLOWED_ORIGIN` is configured correctly.
-- If API auth is enabled, the frontend must be given the matching token.
-- If the backend is unavailable, the frontend can still display local fallback time, but authoritative backend features will be unavailable.
-- `.env` is intended for local/private deployment settings and should not be committed.
+- If backend startup fails, make sure you ran `npm install` first.
+- If receiver integration is not needed, set `RECEIVER_ENABLED=false`.
+- If the backend is unavailable but the browser still has Internet access, the app should now continue on **remote Internet fallback** before using local device time.
+- If both backend and remote Internet sources fail, the app will use **local device/browser time**.
+- If the frontend is hosted on a different origin than the backend, make sure `ALLOWED_ORIGIN` is set correctly.
+- If API auth is enabled, the frontend must send the correct token.
+- `.env` is for local/private deployment settings and should not be committed.
 
 ## Testing and checks
 
@@ -363,7 +359,7 @@ Run the protocol harness:
 npm test
 ```
 
-Run the syntax checks:
+Run syntax checks:
 
 ```bash
 npm run check

@@ -87,7 +87,7 @@
       if (this.hasStatusBar() && !this.isOldStylePage()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
-        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data);
         this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
         this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
         this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
@@ -134,7 +134,7 @@
       if (this.hasStatusBar() && !this.isOldStylePage()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
-        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data.currentSource);
+        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data);
         this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
         this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
         this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
@@ -238,7 +238,7 @@
         waiting: "WAITING",
       }[dataState] || "WAITING";
       const receiverSourceLabel = receiverStatus.currentSourceLabel
-        || this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus.currentSource);
+        || this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus);
 
       return {
         dataState,
@@ -323,10 +323,12 @@
 
       if (data.currentSource === "internet-fallback") {
         return {
-          value: "BACKEND FALLBACK",
-          note: receiverStatus.receiverConfigured === false
-            ? "Reduced integrity: this deployment is intentionally using backend Internet time."
-            : "Reduced integrity: backend Internet fallback is active because the receiver is not providing locked time.",
+          value: data.internetFallbackMode === "remote-browser" ? "REMOTE FALLBACK" : "BACKEND FALLBACK",
+          note: data.internetFallbackMode === "remote-browser"
+            ? "Reduced integrity: the browser is using a direct Internet reference source because the backend path is unavailable."
+            : receiverStatus.receiverConfigured === false
+              ? "Reduced integrity: this deployment is intentionally using backend Internet time."
+              : "Reduced integrity: backend Internet fallback is active because the receiver is not providing locked time.",
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -345,6 +347,16 @@
     }
 
     getSystemStatusCard(data, receiverStatus) {
+      if (data.currentSource === "internet-fallback" && data.internetFallbackMode === "remote-browser") {
+        return {
+          value: "REMOTE INTERNET FALLBACK",
+          note: "Backend is offline, but the browser is maintaining continuity from a direct Internet reference source.",
+          badge: "WARNING",
+          badgeTone: "warning",
+          chipClass: "status-warning",
+        };
+      }
+
       if (!receiverStatus.backendOnline || data.currentSource === "local" || !data.lastSyncTimestamp || (receiverStatus.receiverConfigured !== false && !receiverStatus.receiverReachable)) {
         return {
           value: !receiverStatus.backendOnline
@@ -443,10 +455,14 @@
 
       if (data.currentSource === "internet-fallback") {
         return {
-          value: receiverStatus.receiverConfigured === false ? "Backend Internet source" : "Backend fallback active",
-          note: receiverStatus.receiverConfigured === false
-            ? "This deployment is intentionally using backend Internet time as its primary hosted source."
-            : "Backend fallback is supplying time until authoritative receiver lock returns.",
+          value: data.internetFallbackMode === "remote-browser"
+            ? "Remote Internet fallback"
+            : receiverStatus.receiverConfigured === false ? "Backend Internet source" : "Backend fallback active",
+          note: data.internetFallbackMode === "remote-browser"
+            ? "The browser is using a direct Internet time source because the backend is unavailable."
+            : receiverStatus.receiverConfigured === false
+              ? "This deployment is intentionally using backend Internet time as its primary hosted source."
+              : "Backend fallback is supplying time until authoritative receiver lock returns.",
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -534,10 +550,14 @@
 
       if (data.currentSource === "internet-fallback") {
         return {
-          value: receiverStatus.receiverConfigured === false ? "Backend Internet source" : "Backend Internet fallback",
-          note: receiverStatus.receiverConfigured === false
-            ? "This environment is hosted without a direct receiver and is operating on backend Internet time."
-            : "Runtime is operating on backend Internet time until the receiver path recovers.",
+          value: data.internetFallbackMode === "remote-browser"
+            ? "Remote Internet fallback"
+            : receiverStatus.receiverConfigured === false ? "Backend Internet source" : "Backend Internet fallback",
+          note: data.internetFallbackMode === "remote-browser"
+            ? `Runtime is operating on direct Internet time${data.remoteSourceName ? ` from ${data.remoteSourceName}` : ""} because the backend is unavailable.`
+            : receiverStatus.receiverConfigured === false
+              ? "This environment is hosted without a direct receiver and is operating on backend Internet time."
+              : "Runtime is operating on backend Internet time until the receiver path recovers.",
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -667,8 +687,10 @@
         return "Receiver reachable but GPS unlocked";
       }
       if (data.currentSource === "internet-fallback") {
-        return receiverStatus.receiverReachable
-          ? "Receiver degraded — backend fallback active"
+        return data.internetFallbackMode === "remote-browser"
+          ? "Backend offline — remote Internet fallback active"
+          : receiverStatus.receiverReachable
+            ? "Receiver degraded — backend fallback active"
           : receiverStatus.receiverConfigured === false
             ? "Receiver disabled — backend Internet source active"
             : "Receiver unreachable — backend fallback active";
@@ -691,9 +713,11 @@
         return "Primary source preferred, but the Symmetricom XLi receiver is reachable without current GPS lock.";
       }
       if (data.currentSource === "internet-fallback") {
-        return receiverStatus.receiverConfigured === false
-          ? "This deployment is running from a hosted backend Internet time source without a direct receiver connection."
-          : "Primary receiver is not providing locked time, so backend Internet fallback is active.";
+        return data.internetFallbackMode === "remote-browser"
+          ? "The backend is unavailable, so the display is temporarily using a browser-reachable Internet reference source."
+          : receiverStatus.receiverConfigured === false
+            ? "This deployment is running from a hosted backend Internet time source without a direct receiver connection."
+            : "Primary receiver is not providing locked time, so backend Internet fallback is active.";
       }
       if (!receiverStatus.backendOnline) {
         return "The backend is currently unavailable, so the display is using local workstation time until remote sync resumes.";
@@ -703,8 +727,11 @@
 
     getPrimarySourceNote(data, receiverStatus, sessionState) {
       const parts = [];
-      parts.push(`Runtime source: ${this.gpsTimeSync.getSourceDisplayName(data.currentSource)}.`);
-      parts.push(`Receiver source: ${receiverStatus.currentSourceLabel || this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus.currentSource)}.`);
+      parts.push(`Runtime source: ${this.gpsTimeSync.getSourceDisplayName(data)}.`);
+      parts.push(`Receiver source: ${receiverStatus.currentSourceLabel || this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus)}.`);
+      if (data.currentSource === "internet-fallback" && data.internetFallbackMode === "remote-browser" && data.remoteSourceName) {
+        parts.push(`Remote reference source: ${data.remoteSourceName}.`);
+      }
       parts.push(`System status: ${receiverStatus.statusText}.`);
       if (sessionState.lastKnownGoodGpsLockAt) {
         parts.push(`Last known good GPS lock: ${formatRelativeAge(sessionState.lastKnownGoodGpsLockAt)}.`);

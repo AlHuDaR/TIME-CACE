@@ -35,10 +35,12 @@
       return ["internet-fallback", "local"].includes(source);
     }
 
-    getSourceLabel(source) {
+    getSourceLabel(source, metadata = {}) {
       return {
-        "internet-fallback": "BACKEND INTERNET FALLBACK",
-        local: "LOCAL EMERGENCY FALLBACK",
+        "internet-fallback": metadata.internetFallbackMode === "remote-browser" || metadata.backendOnline === false
+          ? "REMOTE INTERNET FALLBACK"
+          : "BACKEND INTERNET FALLBACK",
+        local: metadata.backendOnline === false ? "LOCAL DEVICE FALLBACK" : "LOCAL EMERGENCY FALLBACK",
       }[source] || String(source || "UNKNOWN").toUpperCase();
     }
 
@@ -51,19 +53,30 @@
       const gpsLockState = receiverStatus.gpsLockState || data.gpsLockState || "unknown";
       const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
       const fallbackReason = data.fallbackReason || receiverStatus.fallbackReason || "reason-unknown";
+      const internetFallbackMode = data.internetFallbackMode || receiverStatus.internetFallbackMode || null;
       const fallbackMode = currentSource === "internet-fallback"
-        ? receiverConfigured
+        ? internetFallbackMode === "remote-browser"
+          ? "remote-browser-internet-fallback"
+          : receiverConfigured
           ? "backend-internet-fallback"
           : "hosted-internet-source"
         : backendOnline
           ? "browser-emergency-fallback"
           : "backend-offline-browser-fallback";
       const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
-      const heading = currentSource === "internet-fallback" ? "Backend fallback active" : "Local emergency fallback active";
+      const heading = currentSource === "internet-fallback"
+        ? internetFallbackMode === "remote-browser"
+          ? "Remote Internet fallback active"
+          : "Backend fallback active"
+        : backendOnline
+          ? "Local emergency fallback active"
+          : "Local device fallback active";
       const subheading = currentSource === "internet-fallback"
-        ? receiverConfigured
-          ? "The backend is keeping the display live while the receiver path is degraded or unavailable."
-          : "This deployment is intentionally running on backend Internet time because no direct receiver is configured."
+        ? internetFallbackMode === "remote-browser"
+          ? "The backend is offline, so the browser is maintaining continuity from a direct Internet reference source."
+          : receiverConfigured
+            ? "The backend is keeping the display live while the receiver path is degraded or unavailable."
+            : "This deployment is intentionally running on backend Internet time because no direct receiver is configured."
         : backendOnline
           ? "Backend fallback sources are unavailable, so the browser is maintaining continuity locally."
           : "The backend is offline, so the browser is maintaining continuity on the local workstation clock.";
@@ -72,7 +85,7 @@
       return {
         kind: "fallback",
         source: currentSource,
-        sourceLabel: this.getSourceLabel(currentSource),
+        sourceLabel: this.getSourceLabel(currentSource, { backendOnline, internetFallbackMode }),
         date: data.date || "Unknown",
         time: data.time || "Unknown",
         statusText,
@@ -89,6 +102,7 @@
           receiverCommunicationState,
           fallbackReason,
           fallbackMode,
+          internetFallbackMode,
         }),
         metadata: {
           category: "fallback-state",
@@ -101,6 +115,7 @@
           receiverCommunicationState,
           fallbackReason,
           fallbackMode,
+          internetFallbackMode,
           silentMode: currentSource === "internet-fallback",
         },
       };
@@ -115,6 +130,7 @@
       gpsLockState = "unknown",
       receiverCommunicationState = "comm-unknown",
       fallbackReason = "reason-unknown",
+      internetFallbackMode = null,
       fallbackMode = currentSource === "internet-fallback" ? "backend-internet-fallback" : "browser-emergency-fallback",
     } = {}) {
       const receiverWriteState = backendOnline && receiverConfigured ? "receiver-writable" : "receiver-readonly";
@@ -129,6 +145,7 @@
         `lock-${gpsLockState}`,
         receiverCommunicationState,
         fallbackReason,
+        internetFallbackMode || "no-remote-mode",
         receiverWriteState,
       ].join("|");
     }
