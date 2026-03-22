@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAFO Calibration Center Official Digital Time</title>
+    <meta name="rafo-api-base-url" content="" />
+    <meta name="rafo-api-backup-url" content="" />
+    <meta name="rafo-site-base-url" content="https://time-cace.netlify.app" />
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles/official-digital-time.css" />
+  </head>
+  <body class="official-digital-time-page">
+    <main class="official-digital-layout">
+      <section class="digital-hero" aria-labelledby="digitalHeroHeading">
+        <img
+          src="images/cal%20logo.png"
+          alt=""
+          class="digital-hero__watermark"
+          aria-hidden="true"
+        />
+
+        <header class="digital-hero__header">
+          <div class="digital-hero__brand-block">
+            <p class="digital-hero__eyebrow">Royal Air Force of Oman</p>
+            <h1 id="digitalHeroHeading">Official Digital Time Reference</h1>
+            <p class="digital-hero__subheading">Calibration Center (CACE) synchronized Oman time display</p>
+          </div>
+          <nav class="digital-hero__actions" aria-label="Official digital time navigation">
+            <a class="mode-btn mode-link-btn" href="/dashboard" data-app-link="/dashboard">Dashboard</a>
+            <a class="mode-btn mode-link-btn" href="/official-time" data-app-link="/official-time">Official Time</a>
+          </nav>
+        </header>
+
+        <div class="digital-hero__status" aria-live="polite">
+          <p id="digitalOffsetLine" class="digital-hero__offset">Your clock is synchronized</p>
+          <p id="digitalAccuracyLine" class="digital-hero__accuracy">Accuracy of synchronization was ±0.000 seconds</p>
+          <p id="digitalLocationLine" class="digital-hero__location">Time in Seeb, Oman now:</p>
+        </div>
+
+        <div class="digital-hero__main">
+          <div class="digital-hero__clock-wrap">
+            <p id="digitalHeroClock" class="digital-hero__clock" aria-live="polite">--:--:--</p>
+            <p id="digitalHeroSource" class="digital-hero__source">Source: Unavailable · Status: Lost (no valid time source)</p>
+          </div>
+
+          <aside class="digital-hero__meta" aria-label="Current Oman date and observances">
+            <p id="digitalHeroDate" class="digital-hero__date">--</p>
+            <p id="digitalHeroObservance" class="digital-hero__observance">Operational observances: none scheduled</p>
+          </aside>
+        </div>
+
+        <section class="digital-world-strip" aria-labelledby="digitalWorldStripHeading">
+          <div class="digital-world-strip__header">
+            <p class="digital-world-strip__eyebrow">Key world clocks</p>
+            <h2 id="digitalWorldStripHeading">Reference cities</h2>
+          </div>
+          <div id="keyWorldClocks" class="digital-world-strip__grid"></div>
+        </section>
+      </section>
+
+      <section class="world-reference" aria-labelledby="worldReferenceHeading">
+        <div class="world-reference__intro">
+          <p class="world-reference__eyebrow">Scroll for more</p>
+          <h2 id="worldReferenceHeading">World Time Reference</h2>
+          <p class="world-reference__description">
+            A structured global city and timezone overview built on the same synchronized runtime used by the primary RAFO time displays.
+          </p>
+        </div>
+
+        <section class="world-reference__group" aria-labelledby="worldReferenceMajorHeading">
+          <div class="world-reference__group-header">
+            <h3 id="worldReferenceMajorHeading">Major city references</h3>
+            <p>Highlighted operational anchors with live local times.</p>
+          </div>
+          <div id="highlightedCities" class="city-cloud city-cloud--major"></div>
+        </section>
+
+        <section class="world-reference__group" aria-labelledby="worldReferenceSecondaryHeading">
+          <div class="world-reference__group-header">
+            <h3 id="worldReferenceSecondaryHeading">Additional cities</h3>
+            <p>Secondary references spanning the Middle East, Europe, Africa, Asia, and North America.</p>
+          </div>
+          <div id="secondaryCities" class="city-cloud city-cloud--secondary"></div>
+        </section>
+
+        <section class="world-reference__group" aria-labelledby="worldReferenceZonesHeading">
+          <div class="world-reference__group-header">
+            <h3 id="worldReferenceZonesHeading">Timezone standards</h3>
+            <p>Useful timezone labels and standards for quick operational context.</p>
+          </div>
+          <div id="timezoneLabels" class="timezone-labels"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="api-client.js"></script>
+    <script src="status-monitor.js"></script>
+    <script src="fallback-card.js"></script>
+    <script src="runtime-sync.js"></script>
+    <script src="official-digital-time.js"></script>
+  </body>
+</html>

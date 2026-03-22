@@ -7,6 +7,7 @@ const distDir = path.join(rootDir, "dist");
 const STATIC_ASSET_PATHS = Object.freeze([
   "index.html",
   "official-time.html",
+  "official-digital-time.html",
   "api-client.js",
   "status-monitor.js",
   "fallback-card.js",
@@ -15,6 +16,7 @@ const STATIC_ASSET_PATHS = Object.freeze([
   "ui-controls.js",
   "main.js",
   "official-time.js",
+  "official-digital-time.js",
   "analog-clock.js",
   "styles.css",
   "styles",
@@ -24,6 +26,7 @@ const STATIC_ASSET_PATHS = Object.freeze([
 const REDIRECTS = `\
 / /official-time.html 301!
 /official-time /official-time.html 200
+/official-digital-time /official-digital-time.html 200
 /dashboard /index.html 200
 `;
 

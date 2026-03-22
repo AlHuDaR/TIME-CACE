@@ -9,7 +9,7 @@
     "dev": "nodemon gps-proxy.js",
     "start:api": "SERVE_STATIC=false NODE_ENV=production node gps-proxy.js",
     "start:full": "SERVE_STATIC=true node gps-proxy.js",
-    "check": "node --check gps-proxy.js && node --check receiver-protocol.js && node --check time-source-service.js && node --check tests/protocol-harness.js && node --check tests/time-source-harness.js && node --check tests/runtime-sync-harness.js && node --check scripts/build-static.js && node --check api-client.js && node --check status-monitor.js && node --check fallback-card.js && node --check runtime-sync.js && node --check dashboard-render.js && node --check ui-controls.js && node --check main.js && node --check official-time.js",
+    "check": "node --check gps-proxy.js && node --check receiver-protocol.js && node --check time-source-service.js && node --check tests/protocol-harness.js && node --check tests/time-source-harness.js && node --check tests/runtime-sync-harness.js && node --check scripts/build-static.js && node --check api-client.js && node --check status-monitor.js && node --check fallback-card.js && node --check runtime-sync.js && node --check dashboard-render.js && node --check ui-controls.js && node --check main.js && node --check official-time.js && node --check official-digital-time.js",
     "test:protocol": "node ./tests/protocol-harness.js",
     "test": "npm run test:protocol && npm run test:time-sources && node ./tests/runtime-sync-harness.js",
     "test:time-sources": "node ./tests/time-source-harness.js"
