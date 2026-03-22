@@ -18,7 +18,7 @@
       : 5000,
     requestTimeoutMs: Number(global.APP_CONFIG?.API_REQUEST_TIMEOUT_MS) > 0
       ? Number(global.APP_CONFIG.API_REQUEST_TIMEOUT_MS)
-      : 35000,
+      : 5000,
     remoteTimeRequestTimeoutMs: Number(global.APP_CONFIG?.REMOTE_TIME_REQUEST_TIMEOUT_MS) > 0
       ? Number(global.APP_CONFIG.REMOTE_TIME_REQUEST_TIMEOUT_MS)
       : 5000,
