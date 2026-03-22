@@ -87,39 +87,76 @@
     };
   }
 
-  createState(overrides = {}) {
-    return {
-      backendOnline: false,
-      receiverConfigured: true,
-      receiverReachable: false,
-      loginOk: false,
-      isLocked: false,
-      gpsLockState: "unknown",
-      statusText: "Emergency local fallback active",
-      status: "Emergency local fallback active",
-      currentSource: "local-clock",
-      currentSourceLabel: "LOCAL CLOCK",
-      sourceKey: "local-clock",
-      sourceLabel: "LOCAL CLOCK",
-      sourceTier: "emergency-fallback",
-      authoritative: false,
-      traceable: false,
-      fallback: true,
-      fallbackReason: null,
-      lastError: null,
-      date: null,
-      time: null,
-      timestamp: Date.now(),
-      isoTimestamp: new Date().toISOString(),
-      raw: null,
-      roundTripMs: null,
-      monitoringState: null,
-      upstream: null,
-      protocol: null,
-      resolutionErrors: [],
-      ...overrides,
-    };
-  }
+    createState(overrides = {}) {
+      return {
+        backendOnline: false,
+        receiverConfigured: true,
+        receiverReachable: false,
+        loginOk: false,
+        isLocked: false,
+        gpsLockState: "unknown",
+        statusText: "Emergency local fallback active",
+        status: "Emergency local fallback active",
+        currentSource: "local-clock",
+        currentSourceLabel: "LOCAL CLOCK",
+        sourceKey: "local-clock",
+        sourceLabel: "LOCAL CLOCK",
+        sourceTier: "emergency-fallback",
+        authoritative: false,
+        traceable: false,
+        fallback: true,
+        fallbackReason: null,
+        lastError: null,
+        date: null,
+        time: null,
+        timestamp: Date.now(),
+        isoTimestamp: new Date().toISOString(),
+        raw: null,
+        roundTripMs: null,
+        monitoringState: null,
+        upstream: null,
+        protocol: null,
+        resolutionErrors: [],
+        ...overrides,
+      };
+    }
+
+    resolveSourceSnapshot(payload = {}, fallback = {}) {
+      const currentSource = payload.currentSource || payload.sourceKey || fallback.currentSource || fallback.sourceKey || "local-clock";
+      const sourceLabel = payload.sourceLabel
+        || payload.currentSourceLabel
+        || fallback.sourceLabel
+        || fallback.currentSourceLabel
+        || humanizeSource(currentSource);
+
+      return {
+        currentSource,
+        currentSourceLabel: payload.currentSourceLabel || payload.sourceLabel || fallback.currentSourceLabel || fallback.sourceLabel || sourceLabel,
+        sourceKey: payload.sourceKey || payload.currentSource || fallback.sourceKey || fallback.currentSource || currentSource,
+        sourceLabel,
+        sourceTier: payload.sourceTier || fallback.sourceTier || "emergency-fallback",
+      };
+    }
+
+    isObjectPayload(payload) {
+      return Boolean(payload) && typeof payload === "object" && !Array.isArray(payload);
+    }
+
+    validateRuntimePayload(payload) {
+      if (!this.isObjectPayload(payload)) {
+        throw new Error("API returned an invalid /time payload");
+      }
+
+      if (!Number.isFinite(Number(payload.timestamp))) {
+        throw new Error("API returned an invalid /time timestamp");
+      }
+    }
+
+    validateStatusPayload(payload) {
+      if (!this.isObjectPayload(payload)) {
+        throw new Error("API returned an invalid /status payload");
+      }
+    }
 
   async init() {
     await this.syncTime();
@@ -159,18 +196,16 @@
 
   buildErrorState(error, fallback = {}) {
     const payload = error?.payload || {};
+    const source = this.resolveSourceSnapshot(payload, fallback);
     return this.createState({
+      ...fallback,
       backendOnline: Boolean(payload.backendOnline),
       receiverConfigured: payload.receiverConfigured !== false,
       receiverReachable: Boolean(payload.receiverReachable),
       loginOk: Boolean(payload.loginOk),
       isLocked: Boolean(payload.isLocked),
       gpsLockState: payload.gpsLockState || "unknown",
-      currentSource: payload.currentSource || fallback.currentSource || "local-clock",
-      currentSourceLabel: payload.currentSourceLabel || fallback.currentSourceLabel || "LOCAL CLOCK",
-      sourceKey: payload.sourceKey || payload.currentSource || fallback.sourceKey || fallback.currentSource || "local-clock",
-      sourceLabel: payload.sourceLabel || payload.currentSourceLabel || fallback.sourceLabel || fallback.currentSourceLabel || "LOCAL CLOCK",
-      sourceTier: payload.sourceTier || fallback.sourceTier || "emergency-fallback",
+      ...source,
       authoritative: Boolean(payload.authoritative ?? fallback.authoritative),
       traceable: Boolean(payload.traceable ?? fallback.traceable),
       fallback: payload.fallback !== undefined ? Boolean(payload.fallback) : (fallback.fallback !== false),
@@ -181,7 +216,6 @@
       lastError: payload.lastError || error.message,
       monitoringState: payload.monitoringState || fallback.monitoringState || null,
       fallbackReason: payload.fallbackReason || fallback.fallbackReason || null,
-      ...fallback,
     });
   }
 
@@ -190,38 +224,34 @@
 
     try {
       const payload = await this.fetchJson("/time");
-      if (payload?.timestamp) {
-        nextState = this.createState({
-          backendOnline: true,
-          receiverConfigured: payload.receiverConfigured !== false,
-          receiverReachable: Boolean(payload.receiverReachable),
-          loginOk: Boolean(payload.loginOk),
-          isLocked: Boolean(payload.isLocked),
-          gpsLockState: payload.gpsLockState || (payload.isLocked ? "locked" : "unknown"),
-          statusText: payload.statusText || payload.status || "Timing source update received",
-          status: payload.status || payload.statusText || "Timing source update received",
-          currentSource: payload.currentSource || payload.sourceKey || "local-clock",
-          currentSourceLabel: payload.currentSourceLabel || payload.sourceLabel || humanizeSource(payload.currentSource || payload.sourceKey || "local-clock"),
-          sourceKey: payload.sourceKey || payload.currentSource || "local-clock",
-          sourceLabel: payload.sourceLabel || payload.currentSourceLabel || humanizeSource(payload.currentSource || payload.sourceKey || "local-clock"),
-          sourceTier: payload.sourceTier || "emergency-fallback",
-          authoritative: Boolean(payload.authoritative),
-          traceable: Boolean(payload.traceable),
-          fallback: Boolean(payload.fallback),
-          lastError: payload.lastError || null,
-          date: payload.date,
-          time: payload.time,
-          timestamp: payload.timestamp,
-          isoTimestamp: payload.isoTimestamp || new Date(payload.timestamp).toISOString(),
-          raw: payload.raw || null,
-          roundTripMs: payload.roundTripMs || payload.rtt || null,
-          monitoringState: payload.monitoringState || null,
-          fallbackReason: payload.fallbackReason || null,
-          upstream: payload.upstream || null,
-          protocol: payload.protocol || null,
-          resolutionErrors: payload.resolutionErrors || [],
-        });
-      }
+      this.validateRuntimePayload(payload);
+      const source = this.resolveSourceSnapshot(payload);
+      nextState = this.createState({
+        backendOnline: payload.backendOnline !== false,
+        receiverConfigured: payload.receiverConfigured !== false,
+        receiverReachable: Boolean(payload.receiverReachable),
+        loginOk: Boolean(payload.loginOk),
+        isLocked: Boolean(payload.isLocked),
+        gpsLockState: payload.gpsLockState || (payload.isLocked ? "locked" : "unknown"),
+        statusText: payload.statusText || payload.status || "Timing source update received",
+        status: payload.status || payload.statusText || "Timing source update received",
+        ...source,
+        authoritative: Boolean(payload.authoritative),
+        traceable: Boolean(payload.traceable),
+        fallback: Boolean(payload.fallback),
+        lastError: payload.lastError || null,
+        date: payload.date,
+        time: payload.time,
+        timestamp: Number(payload.timestamp),
+        isoTimestamp: payload.isoTimestamp || new Date(payload.timestamp).toISOString(),
+        raw: payload.raw || null,
+        roundTripMs: payload.roundTripMs || payload.rtt || null,
+        monitoringState: payload.monitoringState || null,
+        fallbackReason: payload.fallbackReason || null,
+        upstream: payload.upstream || null,
+        protocol: payload.protocol || null,
+        resolutionErrors: payload.resolutionErrors || [],
+      });
     } catch (error) {
       nextState = this.buildErrorState(error, {
         currentSource: "local-clock",
@@ -298,20 +328,14 @@
 
     try {
       const statusResult = await this.fetchJson("/status");
-      if (statusResult.success === false) {
-        this.mergeReceiverStatus(statusResult, {
-          lastSuccessfulPollAt: this.receiverStatus.lastSuccessfulPollAt || this.lastSuccessfulStatusPollAt,
-          lastPollAttemptAt: this.lastStatusPollAttemptAt,
-          stale: true,
-        });
-      } else {
-        this.lastSuccessfulStatusPollAt = new Date().toISOString();
-        this.mergeReceiverStatus(statusResult, {
-          lastSuccessfulPollAt: this.lastSuccessfulStatusPollAt,
-          lastPollAttemptAt: this.lastStatusPollAttemptAt,
-          stale: false,
-        });
-      }
+      this.validateStatusPayload(statusResult);
+      this.lastSuccessfulStatusPollAt = new Date().toISOString();
+      this.mergeReceiverStatus(statusResult, {
+        backendOnline: statusResult.backendOnline !== false,
+        lastSuccessfulPollAt: this.lastSuccessfulStatusPollAt,
+        lastPollAttemptAt: this.lastStatusPollAttemptAt,
+        stale: Boolean(statusResult.stale),
+      });
     } catch (error) {
       if (error?.payload) {
         const lastSuccessfulPollAt = this.receiverStatus.lastSuccessfulPollAt || this.lastSuccessfulStatusPollAt;
@@ -501,7 +525,10 @@
         try {
           payload = await response.json();
         } catch (error) {
-          payload = null;
+          const invalidJsonError = new Error(`Invalid JSON returned by ${path}`);
+          invalidJsonError.status = response.status;
+          invalidJsonError.payload = null;
+          throw invalidJsonError;
         }
 
         if (!response.ok) {
