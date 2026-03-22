@@ -107,6 +107,41 @@
     hour12: false,
   });
 
+  const DEFAULT_SOURCE_LABELS = Object.freeze({
+    "gps-xli": "GPS RECEIVER (XLi)",
+    "ntp-nist": "NTP (NIST)",
+    "ntp-npl-india": "NTP (NPL India)",
+    "https-worldtimeapi": "WorldTimeAPI",
+    "https-timeapiio": "TimeAPI.io",
+    "http-date": "INTERNET/HTTP DATE",
+    "frontend-worldtimeapi": "WorldTimeAPI",
+    "frontend-timeapiio": "TimeAPI.io",
+    "frontend-http-date": "INTERNET/HTTP DATE",
+    "local-clock": "LOCAL CLOCK",
+    "browser-local-clock": "BROWSER LOCAL CLOCK",
+  });
+
+  const RECEIVER_SOURCE_LABELS = Object.freeze({
+    ...DEFAULT_SOURCE_LABELS,
+    "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+    "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+    "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+    "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+  });
+
+  const FALLBACK_SOURCES = Object.freeze([
+    "ntp-nist",
+    "ntp-npl-india",
+    "https-worldtimeapi",
+    "https-timeapiio",
+    "http-date",
+    "frontend-worldtimeapi",
+    "frontend-timeapiio",
+    "frontend-http-date",
+    "local-clock",
+    "browser-local-clock",
+  ]);
+
   function normalizeBaseUrl(value) {
     return typeof value === "string" && value.trim()
       ? value.trim().replace(/\/$/, "")
@@ -183,6 +218,53 @@
       const url = buildAppUrl(targetPath);
       link.href = url.toString();
     });
+  }
+
+  function applyFavicon(href = "images/cal logo.png", root = global.document) {
+    if (!root?.head?.append || !root.querySelector) {
+      return null;
+    }
+
+    let favicon = root.querySelector("link[rel='icon']");
+    if (!favicon) {
+      favicon = root.createElement("link");
+      favicon.rel = "icon";
+      root.head.append(favicon);
+    }
+    favicon.href = href;
+    return favicon;
+  }
+
+  function bootWhenDocumentReady(callback, root = global.document) {
+    if (typeof callback !== "function") {
+      return;
+    }
+
+    if (root?.readyState === "loading") {
+      root.addEventListener("DOMContentLoaded", callback, { once: true });
+      return;
+    }
+
+    callback();
+  }
+
+  function getSourceLabel(source, variant = "default") {
+    const key = String(source || "").trim();
+    const labels = variant === "receiver" ? RECEIVER_SOURCE_LABELS : DEFAULT_SOURCE_LABELS;
+
+    if (labels[key]) {
+      return labels[key];
+    }
+
+    if (variant === "receiver" || variant === "humanized") {
+      return key ? key.replace(/-/g, " ") : "";
+    }
+
+    return key ? key.toUpperCase() : "UNKNOWN";
+  }
+
+  function isFallbackSource(source) {
+    return FALLBACK_SOURCES.includes(source);
   }
 
   function formatTimeSegment(value) {
@@ -264,6 +346,10 @@
     resolveSiteBaseUrl,
     buildAppUrl,
     syncAppLinks,
+    applyFavicon,
+    bootWhenDocumentReady,
+    getSourceLabel,
+    isFallbackSource,
     formatTimeSegment,
     formatTimeParts,
     formatClockTime,

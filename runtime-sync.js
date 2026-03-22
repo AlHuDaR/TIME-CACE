@@ -7,12 +7,42 @@
     normalizeDataState,
     buildMonitoringModel,
     humanizeSource,
+    getSourceLabel,
     formatClockTime,
     formatTimeParts,
   } = global.RAFOTimeApp;
 
   if (!OMAN_DATE_TIME_FORMATTER || typeof OMAN_DATE_TIME_FORMATTER.formatToParts !== "function") {
     throw new Error("OMAN_DATE_TIME_FORMATTER is unavailable. Ensure api-client.js loads before runtime-sync.js.");
+  }
+
+  function resolveSourceLabel(source, variant = "default") {
+    if (typeof getSourceLabel === "function") {
+      return getSourceLabel(source, variant);
+    }
+
+    const key = String(source || "").trim();
+    const labels = {
+      "gps-xli": "GPS RECEIVER (XLi)",
+      "ntp-nist": "NTP (NIST)",
+      "ntp-npl-india": "NTP (NPL India)",
+      "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+      "http-date": "INTERNET/HTTP DATE",
+      "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+      "frontend-http-date": "INTERNET/HTTP DATE",
+      "local-clock": "LOCAL CLOCK",
+      "browser-local-clock": "BROWSER LOCAL CLOCK",
+    };
+
+    if (labels[key]) {
+      return labels[key];
+    }
+
+    return variant === "receiver"
+      ? key.replace(/-/g, " ")
+      : key.toUpperCase();
   }
 
   class GPSTimeSync {
@@ -381,7 +411,7 @@
     return this.createFallbackStateFromTimestamp({
       timestamp,
       sourceKey: "frontend-timeapiio",
-      sourceLabel: "TimeAPI.io",
+      sourceLabel: "HTTPS TIME API (TimeAPI.io)",
       sourceTier: "internet-fallback",
       status: "Internet fallback active",
       statusText: "Backend unavailable. Frontend internet fallback active.",
@@ -1007,40 +1037,14 @@
     const state = typeof sourceOrState === "string"
       ? { currentSource: sourceOrState, backendOnline: this.currentState.backendOnline }
       : (sourceOrState || this.currentState);
-    const source = state.currentSource || "browser-local-clock";
-    return {
-      "gps-xli": "GPS RECEIVER (XLi)",
-      "ntp-nist": "NTP (NIST)",
-      "ntp-npl-india": "NTP (NPL India)",
-      "https-worldtimeapi": "WorldTimeAPI",
-      "https-timeapiio": "TimeAPI.io",
-      "http-date": "INTERNET/HTTP DATE",
-      "frontend-worldtimeapi": "WorldTimeAPI",
-      "frontend-timeapiio": "TimeAPI.io",
-      "frontend-http-date": "INTERNET/HTTP DATE",
-      "local-clock": "LOCAL CLOCK",
-      "browser-local-clock": "BROWSER LOCAL CLOCK",
-    }[source] || source.toUpperCase();
+    return resolveSourceLabel(state.currentSource || "browser-local-clock");
   }
 
   getReceiverSourceDisplayName(statusOrSource = this.receiverStatus) {
     const status = typeof statusOrSource === "string"
       ? { currentSource: statusOrSource, backendOnline: this.receiverStatus.backendOnline }
       : (statusOrSource || this.receiverStatus);
-    const source = status.currentSource || "local-clock";
-    return {
-      "gps-xli": "GPS RECEIVER (XLi)",
-      "ntp-nist": "NTP (NIST)",
-      "ntp-npl-india": "NTP (NPL India)",
-      "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
-      "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
-      "http-date": "INTERNET/HTTP DATE",
-      "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
-      "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
-      "frontend-http-date": "INTERNET/HTTP DATE",
-      "local-clock": "LOCAL CLOCK",
-      "browser-local-clock": "BROWSER LOCAL CLOCK",
-    }[source] || source.replace(/-/g, " ");
+    return resolveSourceLabel(status.currentSource || "local-clock", "receiver");
   }
 
   getCommunicationStateDisplayName(state = this.receiverStatus.receiverCommunicationState) {
