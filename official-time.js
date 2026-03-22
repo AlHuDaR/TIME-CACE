@@ -181,9 +181,11 @@
       const syncText = detail.lastSyncTimestamp
         ? `Last runtime sync at ${formatClockTime(detail.lastSyncTimestamp)}`
         : "Runtime sync pending";
-      const sourceTone = !receiverStatus.backendOnline || detail.sourceTier === "emergency-fallback"
+      const frontendInternetFallback = detail.sourceTier === "internet-fallback" && String(detail.currentSource || "").startsWith("frontend-");
+      const sourceTone = (!receiverStatus.backendOnline && !frontendInternetFallback) || detail.sourceTier === "emergency-fallback"
         ? "critical"
         : detail.sourceTier === "traceable-fallback" || detail.sourceTier === "non-traceable-fallback" || ["holdover", "unlocked"].includes(receiverStatus.gpsLockState)
+          || frontendInternetFallback
           ? "warning"
           : "healthy";
 

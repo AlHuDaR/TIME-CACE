@@ -32,7 +32,7 @@
     }
 
     isFallbackSource(source) {
-      return ["ntp-nist", "ntp-npl-india", "https-worldtimeapi", "https-timeapiio", "http-date", "local-clock", "browser-local-clock"].includes(source);
+      return ["ntp-nist", "ntp-npl-india", "https-worldtimeapi", "https-timeapiio", "http-date", "frontend-worldtimeapi", "frontend-timeapiio", "frontend-http-date", "local-clock", "browser-local-clock"].includes(source);
     }
 
     getSourceLabel(source, metadata = {}) {
@@ -42,6 +42,9 @@
         "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
         "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
         "http-date": "INTERNET/HTTP DATE",
+        "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+        "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+        "frontend-http-date": "INTERNET/HTTP DATE",
         "local-clock": "LOCAL CLOCK",
         "browser-local-clock": "BROWSER LOCAL CLOCK",
       }[source] || String(source || "UNKNOWN").toUpperCase();
@@ -64,7 +67,9 @@
       const subheading = sourceTier === "traceable-fallback"
         ? `${sourceLabel} is maintaining continuity while the GPS Receiver (XLi) is unavailable or not locked.`
         : sourceTier === "internet-fallback"
-          ? `${sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`
+          ? (String(currentSource).startsWith("frontend-")
+            ? `${sourceLabel} is active as the frontend internet fallback because the backend is unavailable or invalid.`
+            : `${sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`)
           : sourceTier === "browser-emergency-fallback"
             ? "The backend is unreachable or invalid, so the browser is temporarily maintaining continuity from the local workstation clock."
             : "All backend remote sources are unavailable, so the backend is using the local workstation clock.";

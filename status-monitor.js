@@ -31,6 +31,9 @@
       "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
       "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
       "http-date": "INTERNET/HTTP DATE",
+      "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+      "frontend-http-date": "INTERNET/HTTP DATE",
       "local-clock": "LOCAL CLOCK",
       "browser-local-clock": "BROWSER LOCAL CLOCK",
     }[source] || source.replace(/-/g, " ");

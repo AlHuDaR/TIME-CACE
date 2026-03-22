@@ -31,6 +31,7 @@
       this.lastSyncTimestamp = null;
       this.lastSuccessfulStatusPollAt = null;
       this.lastStatusPollAttemptAt = null;
+      this.lastFrontendFallbackSyncAt = 0;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
       this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "BROWSER LOCAL CLOCK", sourceTier: "browser-emergency-fallback", status: "Browser emergency fallback active", statusText: "Browser emergency fallback active" });
@@ -89,6 +90,7 @@
 
     createState(overrides = {}) {
       return {
+        success: true,
         backendOnline: false,
         receiverConfigured: true,
         receiverReachable: false,
@@ -105,17 +107,20 @@
         authoritative: false,
         traceable: false,
         fallback: true,
+        stale: false,
         fallbackReason: null,
         lastError: null,
         date: null,
         time: null,
         timestamp: Date.now(),
         isoTimestamp: new Date().toISOString(),
+        timezone: APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
         raw: null,
         roundTripMs: null,
         monitoringState: null,
         upstream: null,
         protocol: null,
+        internetFallbackMode: null,
         resolutionErrors: [],
         ...overrides,
       };
@@ -198,6 +203,7 @@
     const payload = error?.payload || {};
     const source = this.resolveSourceSnapshot(payload, fallback);
     return this.createState({
+      success: false,
       ...fallback,
       backendOnline: Boolean(payload.backendOnline),
       receiverConfigured: payload.receiverConfigured !== false,
@@ -216,7 +222,378 @@
       lastError: payload.lastError || error.message,
       monitoringState: payload.monitoringState || fallback.monitoringState || null,
       fallbackReason: payload.fallbackReason || fallback.fallbackReason || null,
+      timezone: payload.timezone || fallback.timezone || APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
+      internetFallbackMode: payload.internetFallbackMode || fallback.internetFallbackMode || null,
     });
+  }
+
+  createFallbackStateFromTimestamp({
+    timestamp,
+    sourceKey,
+    sourceLabel,
+    sourceTier,
+    status,
+    statusText,
+    upstream,
+    protocol,
+    fallbackReason,
+    internetFallbackMode = null,
+    resolutionErrors = [],
+    roundTripMs = null,
+    lastError = null,
+  }) {
+    const normalizedTimestamp = Number(timestamp);
+    if (!Number.isFinite(normalizedTimestamp)) {
+      throw new Error(`Invalid timestamp produced for ${sourceKey}`);
+    }
+
+    const displayParts = this.getOmanDisplayParts(normalizedTimestamp);
+    return this.createState({
+      success: true,
+      backendOnline: false,
+      receiverConfigured: this.receiverStatus.receiverConfigured !== false,
+      receiverReachable: false,
+      loginOk: false,
+      isLocked: false,
+      gpsLockState: "unknown",
+      currentSource: sourceKey,
+      currentSourceLabel: sourceLabel,
+      sourceKey,
+      sourceLabel,
+      sourceTier,
+      authoritative: false,
+      traceable: false,
+      fallback: true,
+      stale: false,
+      status,
+      statusText,
+      timestamp: normalizedTimestamp,
+      isoTimestamp: new Date(normalizedTimestamp).toISOString(),
+      date: displayParts.date,
+      time: displayParts.time,
+      timezone: APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
+      roundTripMs,
+      upstream,
+      protocol,
+      fallbackReason,
+      lastError,
+      internetFallbackMode,
+      resolutionErrors,
+    });
+  }
+
+  createBrowserLocalClockState(error, resolutionErrors = []) {
+    return this.createFallbackStateFromTimestamp({
+      timestamp: Date.now(),
+      sourceKey: "browser-local-clock",
+      sourceLabel: "BROWSER LOCAL CLOCK",
+      sourceTier: "browser-emergency-fallback",
+      status: "Browser emergency fallback active",
+      statusText: "Backend unavailable. Browser emergency fallback active.",
+      upstream: "browser-local-clock",
+      protocol: "local",
+      fallbackReason: "backend-unreachable-or-invalid",
+      internetFallbackMode: "browser-emergency-fallback",
+      resolutionErrors,
+      lastError: error?.message || "Backend unavailable and internet fallback failed",
+    });
+  }
+
+  refreshExistingFallbackState(error) {
+    const currentSource = this.currentState.currentSource;
+    const isFrontendInternetFallback = ["frontend-worldtimeapi", "frontend-timeapiio", "frontend-http-date"].includes(currentSource);
+    const isBrowserFallback = currentSource === "browser-local-clock";
+    if (!isFrontendInternetFallback && !isBrowserFallback) {
+      return null;
+    }
+
+    const refreshThreshold = isBrowserFallback
+      ? APP_CONFIG.browserEmergencyRetryMs
+      : APP_CONFIG.frontendEmergencyRefreshMs;
+    const elapsedMs = Date.now() - this.lastFrontendFallbackSyncAt;
+    if (elapsedMs >= refreshThreshold) {
+      return null;
+    }
+
+    return this.createFallbackStateFromTimestamp({
+      timestamp: this.getNow().getTime(),
+      sourceKey: this.currentState.sourceKey,
+      sourceLabel: this.currentState.sourceLabel,
+      sourceTier: this.currentState.sourceTier,
+      status: this.currentState.status,
+      statusText: isBrowserFallback
+        ? "Backend unavailable. Browser emergency fallback active."
+        : "Backend unavailable. Frontend internet fallback active.",
+      upstream: this.currentState.upstream,
+      protocol: this.currentState.protocol,
+      fallbackReason: this.currentState.fallbackReason || "backend-unreachable-or-invalid",
+      internetFallbackMode: this.currentState.internetFallbackMode || (isBrowserFallback ? "browser-emergency-fallback" : "frontend-internet-fallback"),
+      resolutionErrors: this.currentState.resolutionErrors || [],
+      roundTripMs: this.currentState.roundTripMs,
+      lastError: error?.message || this.currentState.lastError || "Backend unavailable",
+    });
+  }
+
+  parseWorldTimeApiPayload(payload) {
+    const timestamp = this.resolveTimestampFromFields([
+      payload?.datetime,
+      payload?.utc_datetime,
+      payload?.currentDateTime,
+      payload?.dateTime,
+      payload?.unixtime,
+      payload?.timestamp,
+    ], "WorldTimeAPI");
+
+    return this.createFallbackStateFromTimestamp({
+      timestamp,
+      sourceKey: "frontend-worldtimeapi",
+      sourceLabel: "HTTPS TIME API (WorldTimeAPI)",
+      sourceTier: "internet-fallback",
+      status: "Internet fallback active",
+      statusText: "Backend unavailable. Frontend internet fallback active.",
+      upstream: "worldtimeapi",
+      protocol: "https",
+      fallbackReason: "backend-unreachable-or-invalid",
+      internetFallbackMode: "frontend-internet-fallback",
+    });
+  }
+
+  parseTimeApiIoPayload(payload) {
+    const assembledLocalDateTime = payload?.dateTime
+      || payload?.currentLocalTime
+      || (payload?.date && payload?.time ? `${payload.date}T${payload.time.includes(":") && payload.time.length === 5 ? `${payload.time}:00` : payload.time}+04:00` : null)
+      || (Number.isFinite(Number(payload?.year))
+        && Number.isFinite(Number(payload?.month))
+        && Number.isFinite(Number(payload?.day))
+        && Number.isFinite(Number(payload?.hour))
+        && Number.isFinite(Number(payload?.minute))
+          ? `${String(payload.year).padStart(4, "0")}-${String(payload.month).padStart(2, "0")}-${String(payload.day).padStart(2, "0")}T${String(payload.hour).padStart(2, "0")}:${String(payload.minute).padStart(2, "0")}:${String(payload.seconds || 0).padStart(2, "0")}+04:00`
+          : null);
+
+    const timestamp = this.resolveTimestampFromFields([
+      assembledLocalDateTime,
+      payload?.dateTime,
+      payload?.currentLocalTime,
+      payload?.timestamp,
+      payload?.epochTime,
+    ], "TimeAPI.io");
+
+    return this.createFallbackStateFromTimestamp({
+      timestamp,
+      sourceKey: "frontend-timeapiio",
+      sourceLabel: "HTTPS TIME API (TimeAPI.io)",
+      sourceTier: "internet-fallback",
+      status: "Internet fallback active",
+      statusText: "Backend unavailable. Frontend internet fallback active.",
+      upstream: "timeapi.io",
+      protocol: "https",
+      fallbackReason: "backend-unreachable-or-invalid",
+      internetFallbackMode: "frontend-internet-fallback",
+    });
+  }
+
+  resolveTimestampFromFields(fields = [], context = "remote source") {
+    for (const value of fields) {
+      if (value === null || value === undefined || value === "") {
+        continue;
+      }
+
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 1000000000) {
+        return numeric > 1000000000000 ? numeric : numeric * 1000;
+      }
+
+      const parsed = Date.parse(String(value));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    throw new Error(`No valid timestamp field returned by ${context}`);
+  }
+
+  async fetchExternalJson(url) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), APP_CONFIG.remoteTimeRequestTimeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} returned by ${url}`);
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        throw new Error(`Invalid JSON returned by ${url}`);
+      }
+
+      if (!this.isObjectPayload(payload)) {
+        throw new Error(`Invalid JSON payload returned by ${url}`);
+      }
+
+      return payload;
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error(`Request timeout after ${APP_CONFIG.remoteTimeRequestTimeoutMs} ms`);
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  async fetchWorldTimeApiFallback() {
+    const endpoints = (APP_CONFIG.remoteInternetTimeSources || []).filter((source) => source?.parser === "worldtimeapi");
+    if (endpoints.length === 0) {
+      throw new Error("WorldTimeAPI endpoint not configured");
+    }
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        const payload = await this.fetchExternalJson(endpoint.url);
+        const state = this.parseWorldTimeApiPayload(payload);
+        return {
+          ...state,
+          upstream: "worldtimeapi",
+          protocol: "https",
+        };
+      } catch (error) {
+        lastError = new Error(`WorldTimeAPI failed: ${error.message}`);
+      }
+    }
+
+    throw lastError || new Error("WorldTimeAPI failed");
+  }
+
+  async fetchTimeApiIoFallback() {
+    const endpoints = (APP_CONFIG.remoteInternetTimeSources || []).filter((source) => source?.parser === "timeapiio");
+    if (endpoints.length === 0) {
+      throw new Error("TimeAPI.io endpoint not configured");
+    }
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        const payload = await this.fetchExternalJson(endpoint.url);
+        const state = this.parseTimeApiIoPayload(payload);
+        return {
+          ...state,
+          upstream: "timeapi.io",
+          protocol: "https",
+        };
+      } catch (error) {
+        lastError = new Error(`TimeAPI.io failed: ${error.message}`);
+      }
+    }
+
+    throw lastError || new Error("TimeAPI.io failed");
+  }
+
+  async fetchHttpDateFallback() {
+    const endpoints = APP_CONFIG.remoteHttpDateSources || [];
+    if (!Array.isArray(endpoints) || endpoints.length === 0) {
+      throw new Error("HTTP Date endpoint not configured");
+    }
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), APP_CONFIG.remoteTimeRequestTimeoutMs);
+
+      try {
+        const startedAt = Date.now();
+        const response = await fetch(endpoint.url, {
+          method: "HEAD",
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} returned by ${endpoint.url}`);
+        }
+
+        const headerValue = response.headers.get("date");
+        if (!headerValue) {
+          throw new Error(`Date header not exposed by ${endpoint.url}`);
+        }
+
+        const parsedTimestamp = Date.parse(headerValue);
+        if (!Number.isFinite(parsedTimestamp)) {
+          throw new Error(`Date header invalid for ${endpoint.url}`);
+        }
+
+        const roundTripMs = Math.max(0, Date.now() - startedAt);
+        return this.createFallbackStateFromTimestamp({
+          timestamp: parsedTimestamp + Math.round(roundTripMs / 2),
+          sourceKey: "frontend-http-date",
+          sourceLabel: "INTERNET/HTTP DATE",
+          sourceTier: "internet-fallback",
+          status: "Internet fallback active",
+          statusText: "Backend unavailable. Frontend internet fallback active.",
+          upstream: "http-date",
+          protocol: "https",
+          fallbackReason: "backend-unreachable-or-invalid",
+          internetFallbackMode: "frontend-internet-fallback",
+          roundTripMs,
+        });
+      } catch (error) {
+        lastError = error.name === "AbortError"
+          ? new Error(`HTTP Date failed: request timeout after ${APP_CONFIG.remoteTimeRequestTimeoutMs} ms`)
+          : new Error(`HTTP Date failed: ${error.message}`);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    throw lastError || new Error("HTTP Date failed");
+  }
+
+  async resolveFrontendEmergencyFallback(backendError) {
+    const cachedState = this.refreshExistingFallbackState(backendError);
+    if (cachedState) {
+      return cachedState;
+    }
+
+    const attempts = [
+      { sourceKey: "frontend-worldtimeapi", run: () => this.fetchWorldTimeApiFallback() },
+      { sourceKey: "frontend-timeapiio", run: () => this.fetchTimeApiIoFallback() },
+      { sourceKey: "frontend-http-date", run: () => this.fetchHttpDateFallback() },
+    ];
+    const resolutionErrors = [];
+
+    for (const attempt of attempts) {
+      try {
+        const state = await attempt.run();
+        this.lastFrontendFallbackSyncAt = Date.now();
+        return {
+          ...state,
+          resolutionErrors,
+        };
+      } catch (error) {
+        resolutionErrors.push({
+          sourceKey: attempt.sourceKey,
+          message: error?.message || String(error),
+        });
+      }
+    }
+
+    this.lastFrontendFallbackSyncAt = Date.now();
+    return this.createBrowserLocalClockState(backendError, resolutionErrors);
   }
 
   async performSync() {
@@ -226,7 +603,10 @@
       const payload = await this.fetchJson("/time");
       this.validateRuntimePayload(payload);
       const source = this.resolveSourceSnapshot(payload);
+      const normalizedTimestamp = Number(payload.timestamp);
+      const displayParts = this.getOmanDisplayParts(normalizedTimestamp);
       nextState = this.createState({
+        success: payload.success !== false,
         backendOnline: payload.backendOnline !== false,
         receiverConfigured: payload.receiverConfigured !== false,
         receiverReachable: Boolean(payload.receiverReachable),
@@ -239,63 +619,28 @@
         authoritative: Boolean(payload.authoritative),
         traceable: Boolean(payload.traceable),
         fallback: Boolean(payload.fallback),
+        stale: Boolean(payload.stale),
         lastError: payload.lastError || null,
-        date: payload.date,
-        time: payload.time,
-        timestamp: Number(payload.timestamp),
-        isoTimestamp: payload.isoTimestamp || new Date(payload.timestamp).toISOString(),
+        date: payload.date || displayParts.date,
+        time: payload.time || displayParts.time,
+        timestamp: normalizedTimestamp,
+        isoTimestamp: payload.isoTimestamp || new Date(normalizedTimestamp).toISOString(),
+        timezone: payload.timezone || APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
         raw: payload.raw || null,
         roundTripMs: payload.roundTripMs || payload.rtt || null,
         monitoringState: payload.monitoringState || null,
         fallbackReason: payload.fallbackReason || null,
         upstream: payload.upstream || null,
         protocol: payload.protocol || null,
+        internetFallbackMode: payload.internetFallbackMode || null,
         resolutionErrors: payload.resolutionErrors || [],
       });
     } catch (error) {
-      const localResult = this.getLocalTime();
-      nextState = this.buildErrorState(error, {
-        ...localResult,
-        currentSource: "browser-local-clock",
-        sourceKey: "browser-local-clock",
-        sourceLabel: "BROWSER LOCAL CLOCK",
-        sourceTier: "browser-emergency-fallback",
-        authoritative: false,
-        traceable: false,
-        fallback: true,
-        status: "Browser emergency fallback active",
-        statusText: `Browser emergency fallback active: ${error.message}`,
-        protocol: "browser-local",
-        upstream: "browser-local-clock",
-        fallbackReason: "backend-unreachable-or-invalid",
-      });
+      nextState = await this.resolveFrontendEmergencyFallback(error);
     }
 
     if (!nextState) {
-      const localResult = this.getLocalTime();
-      nextState = this.createState({
-        ...nextState,
-        backendOnline: Boolean(nextState?.backendOnline),
-        receiverConfigured: nextState?.receiverConfigured !== false,
-        receiverReachable: Boolean(nextState?.receiverReachable),
-        loginOk: Boolean(nextState?.loginOk),
-        isLocked: false,
-        gpsLockState: nextState?.gpsLockState || "unknown",
-        currentSource: "browser-local-clock",
-        currentSourceLabel: "BROWSER LOCAL CLOCK",
-        sourceKey: "browser-local-clock",
-        sourceLabel: "BROWSER LOCAL CLOCK",
-        sourceTier: "browser-emergency-fallback",
-        authoritative: false,
-        traceable: false,
-        fallback: true,
-        status: "Browser emergency fallback active",
-        statusText: "Browser emergency fallback active",
-        lastError: nextState?.lastError || "No remote time source available",
-        ...localResult,
-        monitoringState: nextState?.monitoringState || null,
-        fallbackReason: nextState?.fallbackReason || "backend-unreachable-or-invalid",
-      });
+      nextState = this.createBrowserLocalClockState(new Error("No remote time source available"));
     }
 
     this.applyState(nextState);
@@ -487,6 +832,9 @@
         "https-worldtimeapi": ["Runtime switched to HTTPS TIME API (WorldTimeAPI) fallback.", "warning", "runtime-https-worldtimeapi"],
         "https-timeapiio": ["Runtime switched to HTTPS TIME API (TimeAPI.io) fallback.", "warning", "runtime-https-timeapiio"],
         "http-date": ["Runtime switched to INTERNET/HTTP DATE fallback.", "warning", "runtime-http-date"],
+        "frontend-worldtimeapi": ["Backend unavailable. Frontend switched to HTTPS TIME API (WorldTimeAPI).", "warning", "runtime-frontend-worldtimeapi"],
+        "frontend-timeapiio": ["Backend unavailable. Frontend switched to HTTPS TIME API (TimeAPI.io).", "warning", "runtime-frontend-timeapiio"],
+        "frontend-http-date": ["Backend unavailable. Frontend switched to INTERNET/HTTP DATE.", "warning", "runtime-frontend-http-date"],
         "local-clock": ["Runtime degraded to backend LOCAL CLOCK emergency fallback.", "critical", "runtime-local-clock"],
         "browser-local-clock": ["Runtime degraded to browser emergency fallback because the backend is unavailable or invalid.", "critical", "runtime-browser-local-clock"],
       };
@@ -610,7 +958,7 @@
       ? "success"
       : ["ntp-nist", "ntp-npl-india"].includes(currentSource)
         ? "info"
-        : ["https-worldtimeapi", "https-timeapiio", "http-date"].includes(currentSource)
+        : ["https-worldtimeapi", "https-timeapiio", "http-date", "frontend-worldtimeapi", "frontend-timeapiio", "frontend-http-date"].includes(currentSource)
           ? "warning"
           : "error";
     const backendOnline = Boolean(this.currentState.backendOnline ?? this.receiverStatus.backendOnline);
@@ -667,6 +1015,9 @@
       "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
       "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
       "http-date": "INTERNET/HTTP DATE",
+      "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+      "frontend-http-date": "INTERNET/HTTP DATE",
       "local-clock": "LOCAL CLOCK",
       "browser-local-clock": "BROWSER LOCAL CLOCK",
     }[source] || source.toUpperCase();
@@ -684,6 +1035,9 @@
       "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
       "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
       "http-date": "INTERNET/HTTP DATE",
+      "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
+      "frontend-http-date": "INTERNET/HTTP DATE",
       "local-clock": "LOCAL CLOCK",
       "browser-local-clock": "BROWSER LOCAL CLOCK",
     }[source] || source.replace(/-/g, " ");
