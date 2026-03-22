@@ -181,17 +181,15 @@
       const syncText = detail.lastSyncTimestamp
         ? `Last runtime sync at ${formatClockTime(detail.lastSyncTimestamp)}`
         : "Runtime sync pending";
-      const sourceTone = !receiverStatus.backendOnline || detail.currentSource === "local"
+      const sourceTone = !receiverStatus.backendOnline || detail.sourceTier === "emergency-fallback"
         ? "critical"
-        : detail.currentSource === "internet-fallback" || ["holdover", "unlocked"].includes(receiverStatus.gpsLockState)
+        : detail.sourceTier === "traceable-fallback" || detail.sourceTier === "non-traceable-fallback" || ["holdover", "unlocked"].includes(receiverStatus.gpsLockState)
           ? "warning"
           : "healthy";
 
       this.elements.sourceValue.textContent = sourceLabel;
-      const remoteNote = detail.currentSource === "internet-fallback" && detail.internetFallbackMode === "remote-browser" && detail.remoteSourceName
-        ? ` Remote reference: ${detail.remoteSourceName}.`
-        : "";
-      this.elements.sourceNote.textContent = `${detail.statusText}. ${freshness}. ${syncText}.${remoteNote}`;
+      const upstreamNote = detail.upstream ? ` Upstream: ${detail.upstream}.` : "";
+      this.elements.sourceNote.textContent = `${detail.statusText}. ${freshness}. ${syncText}.${upstreamNote}`;
       this.elements.sourceCard.dataset.severity = sourceTone;
     }
 

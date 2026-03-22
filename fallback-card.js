@@ -32,60 +32,41 @@
     }
 
     isFallbackSource(source) {
-      return ["internet-fallback", "local"].includes(source);
+      return ["ntp-nist", "ntp-npl-india", "http-date", "local-clock"].includes(source);
     }
 
     getSourceLabel(source, metadata = {}) {
       return {
-        "internet-fallback": metadata.internetFallbackMode === "remote-browser" || metadata.backendOnline === false
-          ? "REMOTE INTERNET FALLBACK"
-          : "BACKEND INTERNET FALLBACK",
-        local: metadata.backendOnline === false ? "LOCAL DEVICE FALLBACK" : "LOCAL EMERGENCY FALLBACK",
+        "ntp-nist": "NTP (NIST)",
+        "ntp-npl-india": "NTP (NPL India)",
+        "http-date": "INTERNET/HTTP DATE",
+        "local-clock": "LOCAL CLOCK",
       }[source] || String(source || "UNKNOWN").toUpperCase();
     }
 
     buildFallbackSnapshot(data, receiverStatus) {
-      const currentSource = data.currentSource || "local";
-      const backendOnline = Boolean(receiverStatus.backendOnline ?? data.backendOnline);
-      const receiverConfigured = receiverStatus.receiverConfigured !== false;
-      const receiverReachable = Boolean(receiverStatus.receiverReachable);
-      const loginOk = Boolean(receiverStatus.loginOk);
-      const gpsLockState = receiverStatus.gpsLockState || data.gpsLockState || "unknown";
-      const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
+      const currentSource = data.currentSource || "local-clock";
+      const sourceLabel = data.sourceLabel || this.getSourceLabel(currentSource);
+      const sourceTier = data.sourceTier || receiverStatus.sourceTier || "emergency-fallback";
       const fallbackReason = data.fallbackReason || receiverStatus.fallbackReason || "reason-unknown";
-      const internetFallbackMode = data.internetFallbackMode || receiverStatus.internetFallbackMode || null;
-      const fallbackMode = currentSource === "internet-fallback"
-        ? internetFallbackMode === "remote-browser"
-          ? "remote-browser-internet-fallback"
-          : receiverConfigured
-          ? "backend-internet-fallback"
-          : "hosted-internet-source"
-        : backendOnline
-          ? "browser-emergency-fallback"
-          : "backend-offline-browser-fallback";
-      const statusText = data.statusText || receiverStatus.statusText || "Fallback active";
-      const heading = currentSource === "internet-fallback"
-        ? internetFallbackMode === "remote-browser"
-          ? "Remote Internet fallback active"
-          : "Backend fallback active"
-        : backendOnline
-          ? "Local emergency fallback active"
-          : "Local device fallback active";
-      const subheading = currentSource === "internet-fallback"
-        ? internetFallbackMode === "remote-browser"
-          ? "The backend is offline, so the browser is maintaining continuity from a direct Internet reference source."
-          : receiverConfigured
-            ? "The backend is keeping the display live while the receiver path is degraded or unavailable."
-            : "This deployment is intentionally running on backend Internet time because no direct receiver is configured."
-        : backendOnline
-          ? "Backend fallback sources are unavailable, so the browser is maintaining continuity locally."
-          : "The backend is offline, so the browser is maintaining continuity on the local workstation clock.";
-      const severity = currentSource === "internet-fallback" ? "info" : "warning";
+      const statusText = data.statusText || receiverStatus.statusText || data.status || "Fallback active";
+      const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
+      const heading = sourceTier === "traceable-fallback"
+        ? "Traceable fallback active"
+        : sourceTier === "non-traceable-fallback"
+          ? "Internet fallback active"
+          : "Emergency local fallback active";
+      const subheading = sourceTier === "traceable-fallback"
+        ? `${sourceLabel} is maintaining continuity while the GPS Receiver (XLi) is unavailable or not locked.`
+        : sourceTier === "non-traceable-fallback"
+          ? "NTP sources are unavailable, so the backend is maintaining continuity from HTTP Date headers."
+          : "All remote sources are unavailable, so the display is running on the local workstation clock.";
+      const severity = sourceTier === "emergency-fallback" ? "warning" : sourceTier === "non-traceable-fallback" ? "warning" : "info";
 
       return {
         kind: "fallback",
         source: currentSource,
-        sourceLabel: this.getSourceLabel(currentSource, { backendOnline, internetFallbackMode }),
+        sourceLabel,
         date: data.date || "Unknown",
         time: data.time || "Unknown",
         statusText,
@@ -94,59 +75,35 @@
         severity,
         key: this.buildFallbackStateKey({
           currentSource,
-          backendOnline,
-          receiverConfigured,
-          receiverReachable,
-          loginOk,
-          gpsLockState,
-          receiverCommunicationState,
+          sourceTier,
           fallbackReason,
-          fallbackMode,
-          internetFallbackMode,
+          receiverCommunicationState,
+          sourceLabel,
         }),
         metadata: {
           category: "fallback-state",
           currentSource,
-          backendOnline,
-          receiverConfigured,
-          receiverReachable,
-          loginOk,
-          gpsLockState,
-          receiverCommunicationState,
+          sourceTier,
           fallbackReason,
-          fallbackMode,
-          internetFallbackMode,
-          silentMode: currentSource === "internet-fallback",
+          receiverCommunicationState,
+          silentMode: sourceTier === "traceable-fallback",
         },
       };
     }
 
     buildFallbackStateKey({
       currentSource = "unknown-source",
-      backendOnline = false,
-      receiverConfigured = true,
-      receiverReachable = false,
-      loginOk = false,
-      gpsLockState = "unknown",
-      receiverCommunicationState = "comm-unknown",
+      sourceTier = "unknown-tier",
       fallbackReason = "reason-unknown",
-      internetFallbackMode = null,
-      fallbackMode = currentSource === "internet-fallback" ? "backend-internet-fallback" : "browser-emergency-fallback",
+      receiverCommunicationState = "comm-unknown",
+      sourceLabel = "UNKNOWN",
     } = {}) {
-      const receiverWriteState = backendOnline && receiverConfigured ? "receiver-writable" : "receiver-readonly";
-
       return [
         currentSource,
-        fallbackMode,
-        backendOnline ? "backend-online" : "backend-offline",
-        receiverConfigured ? "receiver-enabled" : "receiver-disabled",
-        receiverReachable ? "receiver-reachable" : "receiver-unreachable",
-        loginOk ? "login-ok" : "login-failed",
-        `lock-${gpsLockState}`,
-        receiverCommunicationState,
+        sourceTier,
         fallbackReason,
-        internetFallbackMode || "no-remote-mode",
-        receiverWriteState,
+        receiverCommunicationState,
+        sourceLabel,
       ].join("|");
     }
 
@@ -173,7 +130,7 @@
     shouldSuppressPayload(payload) {
       const metadata = payload?.metadata || {};
       const currentSource = metadata.currentSource || payload?.source;
-      return metadata.silentMode === true && currentSource === "internet-fallback";
+      return metadata.silentMode === true && ["ntp-nist", "ntp-npl-india"].includes(currentSource);
     }
 
     render(payload) {

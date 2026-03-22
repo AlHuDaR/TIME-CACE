@@ -30,6 +30,8 @@ function validateConfig(config) {
     rateLimitStatusMax: validateFiniteNumber('RATE_LIMIT_STATUS_MAX', config.rateLimitStatusMax, { min: 1, max: 100000, integer: true }),
     rateLimitInternetMax: validateFiniteNumber('RATE_LIMIT_INTERNET_MAX', config.rateLimitInternetMax, { min: 1, max: 100000, integer: true }),
     rateLimitSetMax: validateFiniteNumber('RATE_LIMIT_SET_MAX', config.rateLimitSetMax, { min: 1, max: 100000, integer: true }),
+    ntpTimeoutMs: validateFiniteNumber('NTP_TIMEOUT_MS', config.ntpTimeoutMs, { min: 100, max: 300000, integer: true }),
+    httpDateTimeoutMs: validateFiniteNumber('HTTP_DATE_TIMEOUT_MS', config.httpDateTimeoutMs, { min: 100, max: 300000, integer: true }),
     receiverEnabled: Boolean(config.receiverEnabled),
   };
 
@@ -144,6 +146,17 @@ function classifyReceiverError(error) {
       loginOk: false,
       receiverCommunicationState: 'disabled',
       statusText: 'Receiver not configured',
+      lastError: message,
+    };
+  }
+
+  if (/GPS receiver reachable but not locked|holdover|GPS_UNLOCKED/i.test(message)) {
+    return {
+      receiverConfigured: true,
+      receiverReachable: true,
+      loginOk: true,
+      receiverCommunicationState: 'authenticated',
+      statusText: message,
       lastError: message,
     };
   }
