@@ -194,7 +194,7 @@ function classifyReceiverError(error) {
   };
 }
 
-function connectToGPS({ host, port, username, password, command, expectOk = false, timeoutMs = 15000 }) {
+function connectToGPS({ host, port, username, password, command, expectOk = false, timeoutMs = 3000 }) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let buffer = '';
