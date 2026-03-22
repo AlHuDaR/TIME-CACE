@@ -1,5 +1,5 @@
 (function (global) {
-  const { formatClockTime, formatRelativeAge } = global.RAFOTimeApp;
+  const { formatClockTime, formatRelativeAge, getSourceLabel } = global.RAFOTimeApp;
 
   function normalizeDataState(dataState, stale = false) {
     if (stale && dataState !== "unavailable") {
@@ -24,19 +24,7 @@
   }
 
   function humanizeSource(source) {
-    return {
-      "gps-xli": "GPS RECEIVER (XLi)",
-      "ntp-nist": "NTP (NIST)",
-      "ntp-npl-india": "NTP (NPL India)",
-      "https-worldtimeapi": "WorldTimeAPI",
-      "https-timeapiio": "TimeAPI.io",
-      "http-date": "INTERNET/HTTP DATE",
-      "frontend-worldtimeapi": "WorldTimeAPI",
-      "frontend-timeapiio": "TimeAPI.io",
-      "frontend-http-date": "INTERNET/HTTP DATE",
-      "local-clock": "LOCAL CLOCK",
-      "browser-local-clock": "BROWSER LOCAL CLOCK",
-    }[source] || source.replace(/-/g, " ");
+    return getSourceLabel(source, "humanized") || String(source || "").replace(/-/g, " ");
   }
 
   function humanizeLockState(lockState) {

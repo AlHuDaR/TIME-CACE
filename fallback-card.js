@@ -1,5 +1,5 @@
 (function (global) {
-  const { APP_CONFIG, formatClockTime, normalizeRenderedTime } = global.RAFOTimeApp;
+  const { APP_CONFIG, formatClockTime, normalizeRenderedTime, getSourceLabel: resolveSourceLabel, isFallbackSource: isFallbackSourceKey } = global.RAFOTimeApp;
   const DEFAULT_TRANSIENT_DURATION_MS = 5000;
   const DEFAULT_FALLBACK_DURATION_MS = 8000;
 
@@ -32,22 +32,11 @@
     }
 
     isFallbackSource(source) {
-      return ["ntp-nist", "ntp-npl-india", "https-worldtimeapi", "https-timeapiio", "http-date", "frontend-worldtimeapi", "frontend-timeapiio", "frontend-http-date", "local-clock", "browser-local-clock"].includes(source);
+      return isFallbackSourceKey(source);
     }
 
     getSourceLabel(source, metadata = {}) {
-      return {
-        "ntp-nist": "NTP (NIST)",
-        "ntp-npl-india": "NTP (NPL India)",
-        "https-worldtimeapi": "WorldTimeAPI",
-        "https-timeapiio": "TimeAPI.io",
-        "http-date": "INTERNET/HTTP DATE",
-        "frontend-worldtimeapi": "WorldTimeAPI",
-        "frontend-timeapiio": "TimeAPI.io",
-        "frontend-http-date": "INTERNET/HTTP DATE",
-        "local-clock": "LOCAL CLOCK",
-        "browser-local-clock": "BROWSER LOCAL CLOCK",
-      }[source] || String(source || "UNKNOWN").toUpperCase();
+      return resolveSourceLabel(source);
     }
 
     buildFallbackSnapshot(data, receiverStatus) {

@@ -7,11 +7,13 @@
     buildAppUrl,
     getOmanAnalogParts,
     syncAppLinks,
+    applyFavicon,
+    bootWhenDocumentReady,
     formatTimeParts,
     formatClockTime,
   } = global.RAFOTimeApp || {};
 
-  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks || !formatTimeParts || !formatClockTime) {
+  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatTimeParts || !formatClockTime) {
     throw new Error("Official time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -62,7 +64,7 @@
 
       syncAppLinks();
       this.buildAnalogDial();
-      this.applyFavicon();
+      applyFavicon();
       await this.gpsTimeSync.init();
       this.gpsTimeSync.addEventListener("gpstimeupdate", this.boundUpdate);
       this.applyStatus({
@@ -76,15 +78,6 @@
       this.startRenderLoop();
     }
 
-    applyFavicon() {
-      let favicon = document.querySelector("link[rel='icon']");
-      if (!favicon) {
-        favicon = document.createElement("link");
-        favicon.rel = "icon";
-        document.head.append(favicon);
-      }
-      favicon.href = "images/cal logo.png";
-    }
 
     buildAnalogDial() {
       Object.assign(this.elements, buildPtbAnalogClock(this.elements.ptbClockSvg));
@@ -227,9 +220,5 @@
     });
   };
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot, { once: true });
-  } else {
-    boot();
-  }
+  bootWhenDocumentReady(boot);
 })(window);

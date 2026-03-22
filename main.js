@@ -1,5 +1,5 @@
 (function (global) {
-  const { buildPtbAnalogClock, getOmanAnalogParts, syncAppLinks } = global.RAFOTimeApp;
+  const { buildPtbAnalogClock, getOmanAnalogParts, syncAppLinks, applyFavicon, bootWhenDocumentReady } = global.RAFOTimeApp;
 
 class PrecisionClock {
   constructor() {
@@ -104,7 +104,7 @@ class PrecisionClock {
 
   async init() {
     syncAppLinks();
-    this.applyFavicon();
+    applyFavicon();
     this.handleLogoFallback();
     this.buildAnalogDial();
     this.displayManager.initVisualPreferences();
@@ -134,15 +134,6 @@ class PrecisionClock {
     this.startRenderLoop();
   }
 
-  applyFavicon() {
-    let favicon = document.querySelector("link[rel='icon']");
-    if (!favicon) {
-      favicon = document.createElement("link");
-      favicon.rel = "icon";
-      document.head.append(favicon);
-    }
-    favicon.href = "images/cal logo.png";
-  }
 
   handleLogoFallback() {
     const logos = Array.from(document.querySelectorAll("[data-logo]"));
@@ -221,11 +212,7 @@ class PrecisionClock {
     });
   };
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bootClock, { once: true });
-  } else {
-    bootClock();
-  }
+  bootWhenDocumentReady(bootClock);
 
   global.RAFOTimeApp.PrecisionClock = PrecisionClock;
 })(window);
