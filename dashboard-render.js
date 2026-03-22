@@ -70,9 +70,6 @@
       );
     }
 
-    isOldStylePage() {
-      return document.body.classList.contains("old-style") || document.body.classList.contains("analog-only");
-    }
 
     isFrontendInternetFallback(data) {
       return data?.sourceTier === "internet-fallback" && String(data?.currentSource || "").startsWith("frontend-");
@@ -96,7 +93,7 @@
       const receiverStatus = data.receiverStatus || this.gpsTimeSync.getReceiverStatus();
       const sessionState = data.sessionState || this.gpsTimeSync.getSessionState();
 
-      if (this.hasStatusBar() && !this.isOldStylePage()) {
+      if (this.hasStatusBar()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
         this.elements.sourceIndicator.textContent = formatStandardStatusLines(data)[0];
@@ -143,7 +140,7 @@
         this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
       }
 
-      if (this.hasStatusBar() && !this.isOldStylePage()) {
+      if (this.hasStatusBar()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
         this.elements.sourceIndicator.textContent = formatStandardStatusLines(data)[0];
@@ -195,7 +192,7 @@
     }
 
     updateMonitoringDashboard(statusData) {
-      if (!this.hasMonitoringDashboard() || this.isOldStylePage()) {
+      if (!this.hasMonitoringDashboard()) {
         return;
       }
 
