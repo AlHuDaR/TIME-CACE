@@ -1,0 +1,68 @@
+const fs = require("fs/promises");
+const path = require("path");
+
+const rootDir = path.resolve(__dirname, "..");
+const distDir = path.join(rootDir, "dist");
+
+const FRONTEND_ASSET_FILES = Object.freeze([
+  "index.html",
+  "official-time.html",
+  "api-client.js",
+  "status-monitor.js",
+  "fallback-card.js",
+  "runtime-sync.js",
+  "dashboard-render.js",
+  "ui-controls.js",
+  "main.js",
+  "official-time.js",
+  "analog-clock.js",
+  "styles.css",
+]);
+
+const REDIRECTS = `\
+/ /official-time.html 301!
+/official-time /official-time.html 200
+/dashboard /index.html 200
+`;
+
+const HEADERS = `\
+/*
+  Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate
+  Pragma: no-cache
+  Expires: 0
+  Surrogate-Control: no-store
+`;
+
+async function ensureCleanDist() {
+  await fs.rm(distDir, { recursive: true, force: true });
+  await fs.mkdir(distDir, { recursive: true });
+}
+
+async function copyFrontendAssets() {
+  await Promise.all(
+    FRONTEND_ASSET_FILES.map(async (fileName) => {
+      const sourcePath = path.join(rootDir, fileName);
+      const targetPath = path.join(distDir, fileName);
+      await fs.copyFile(sourcePath, targetPath);
+    }),
+  );
+}
+
+async function writeNetlifyArtifacts() {
+  await Promise.all([
+    fs.writeFile(path.join(distDir, "_redirects"), REDIRECTS),
+    fs.writeFile(path.join(distDir, "_headers"), HEADERS),
+  ]);
+}
+
+async function main() {
+  await ensureCleanDist();
+  await copyFrontendAssets();
+  await writeNetlifyArtifacts();
+  process.stdout.write(`Built static site into ${path.relative(rootDir, distDir)}\n`);
+}
+
+main().catch((error) => {
+  console.error("Static build failed:", error);
+  process.exitCode = 1;
+});
