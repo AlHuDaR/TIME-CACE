@@ -21,8 +21,11 @@
         "gps-xli": "source-gps",
         "ntp-nist": "source-internet",
         "ntp-npl-india": "source-internet",
+        "https-worldtimeapi": "source-gps-warn",
+        "https-timeapiio": "source-gps-warn",
         "http-date": "source-gps-warn",
         "local-clock": "source-local",
+        "browser-local-clock": "source-local",
       };
       this.lastDashboardSignature = "";
       this.lastLiveRefreshSecond = -1;
@@ -302,7 +305,7 @@
     }
 
     getTimingIntegrityCard(data, receiverStatus) {
-      if (!receiverStatus.backendOnline || data.sourceTier === "emergency-fallback" || !data.lastSyncTimestamp) {
+      if (!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(data.sourceTier) || !data.lastSyncTimestamp) {
         return {
           value: "LOCAL ONLY",
           note: "No authoritative remote time is available; the display is relying on local workstation clock continuity.",
@@ -333,8 +336,8 @@
       }
 
       return {
-        value: "HTTP DATE",
-        note: "Non-traceable Internet/HTTP Date fallback is active and should be monitored until a traceable source returns.",
+        value: data.sourceLabel,
+        note: `${data.sourceLabel} is active as the backend internet fallback and should be monitored until a traceable source returns.`,
         badge: "WARNING",
         badgeTone: "warning",
         chipClass: "status-warning",
@@ -342,12 +345,12 @@
     }
 
     getSystemStatusCard(data, receiverStatus) {
-      if (!receiverStatus.backendOnline || data.sourceTier === "emergency-fallback" || !data.lastSyncTimestamp) {
+      if (!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(data.sourceTier) || !data.lastSyncTimestamp) {
         return {
-          value: !receiverStatus.backendOnline ? "BACKEND OFFLINE" : "LOCAL EMERGENCY",
-          note: !receiverStatus.backendOnline
-            ? "Backend is unavailable, so the display has fallen back to local continuity only."
-            : "No remote timing source is currently available.",
+          value: !receiverStatus.backendOnline || data.currentSource === "browser-local-clock" ? "BROWSER EMERGENCY" : "LOCAL EMERGENCY",
+          note: !receiverStatus.backendOnline || data.currentSource === "browser-local-clock"
+            ? "Backend is unavailable or invalid, so the browser local clock is maintaining continuity."
+            : "No backend remote timing source is currently available.",
           badge: "ERROR",
           badgeTone: "error",
           chipClass: "status-critical",
@@ -360,7 +363,7 @@
             ? "STALE TELEMETRY"
             : data.sourceTier === "traceable-fallback"
               ? "TRACEABLE FALLBACK"
-              : data.sourceTier === "non-traceable-fallback"
+              : data.sourceTier === "internet-fallback"
                 ? "INTERNET FALLBACK"
                 : "DEGRADED RECEIVER",
           note: receiverStatus.stale
@@ -442,10 +445,10 @@
         };
       }
 
-      if (data.sourceTier === "non-traceable-fallback") {
+      if (data.sourceTier === "internet-fallback") {
         return {
-          value: "INTERNET/HTTP DATE",
-          note: "HTTP Date fallback is active because both traceable NTP sources are unavailable.",
+          value: data.sourceLabel,
+          note: `${data.sourceLabel} is active because both traceable NTP sources are unavailable.`,
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -453,8 +456,10 @@
       }
 
       return {
-        value: "LOCAL CLOCK",
-        note: "Emergency local fallback is active because every remote source has failed.",
+        value: data.currentSource === "browser-local-clock" ? "BROWSER LOCAL CLOCK" : "LOCAL CLOCK",
+        note: data.currentSource === "browser-local-clock"
+          ? "Browser emergency fallback is active because the backend is unavailable or invalid."
+          : "Emergency local fallback is active because every backend remote source has failed.",
         badge: "ERROR",
         badgeTone: "error",
         chipClass: "status-critical",
@@ -529,10 +534,10 @@
         };
       }
 
-      if (data.sourceTier === "non-traceable-fallback") {
+      if (data.sourceTier === "internet-fallback") {
         return {
-          value: "INTERNET/HTTP DATE",
-          note: "Runtime is operating on HTTP Date fallback because both traceable NTP sources failed.",
+          value: data.sourceLabel,
+          note: `${data.sourceLabel} is active as the backend internet fallback because the traceable hierarchy is unavailable.`,
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -540,10 +545,10 @@
       }
 
       return {
-        value: receiverStatus.backendOnline ? "LOCAL CLOCK" : "BACKEND OFFLINE / LOCAL CLOCK",
-        note: receiverStatus.backendOnline
-          ? "Backend is alive, but only the local workstation clock remains available."
-          : "Backend is offline, so only local workstation time remains available.",
+        value: data.currentSource === "browser-local-clock" ? "BROWSER LOCAL CLOCK" : "LOCAL CLOCK",
+        note: data.currentSource === "browser-local-clock" || !receiverStatus.backendOnline
+          ? "Backend is unavailable or invalid, so the browser local clock is maintaining continuity."
+          : "Backend is online and has selected LOCAL CLOCK as the emergency fallback.",
         badge: "ERROR",
         badgeTone: "error",
         chipClass: "status-critical",
@@ -640,7 +645,7 @@
 
     getLockText(data, receiverStatus) {
       if (!receiverStatus.backendOnline) {
-        return "Backend offline — local clock fallback active";
+        return "Backend unavailable — browser local clock fallback active";
       }
       if (data.currentSource === "gps-xli" && receiverStatus.gpsLockState === "locked") {
         return "GPS Receiver (XLi) locked and primary";
@@ -648,10 +653,13 @@
       if (data.sourceTier === "traceable-fallback") {
         return `${data.sourceLabel} active — receiver not locked`;
       }
-      if (data.sourceTier === "non-traceable-fallback") {
-        return "Internet/HTTP Date active — NTP unavailable";
+      if (data.sourceTier === "internet-fallback") {
+        return `${data.sourceLabel} active — traceable sources unavailable`;
       }
-      return "Local clock active — all remote sources unavailable";
+      if (data.currentSource === "browser-local-clock") {
+        return "Browser local clock active — backend unavailable or invalid";
+      }
+      return "Local clock active — all backend remote sources unavailable";
     }
 
     getPrimarySourceDescription(data, receiverStatus) {
@@ -661,13 +669,15 @@
       if (data.sourceTier === "traceable-fallback") {
         return `${data.sourceLabel} is active as the traceable fallback while the GPS Receiver (XLi) is unavailable or not locked.`;
       }
-      if (data.sourceTier === "non-traceable-fallback") {
-        return "Traceable NTP sources are unavailable, so INTERNET/HTTP DATE is active as the non-traceable fallback.";
+      if (data.sourceTier === "internet-fallback") {
+        return `${data.sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`;
       }
       if (!receiverStatus.backendOnline) {
-        return "The backend is currently unavailable, so the display is using LOCAL CLOCK until API connectivity resumes.";
+        return "The backend is currently unavailable or invalid, so the display is using BROWSER LOCAL CLOCK until API connectivity resumes.";
       }
-      return "All remote timing sources are unavailable, so the display is using LOCAL CLOCK.";
+      return data.currentSource === "browser-local-clock"
+        ? "Backend data is unavailable or invalid, so the display is using BROWSER LOCAL CLOCK."
+        : "All backend remote timing sources are unavailable, so the backend selected LOCAL CLOCK.";
     }
 
     getPrimarySourceNote(data, receiverStatus, sessionState) {

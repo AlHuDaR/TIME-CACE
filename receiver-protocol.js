@@ -31,6 +31,7 @@ function validateConfig(config) {
     rateLimitInternetMax: validateFiniteNumber('RATE_LIMIT_INTERNET_MAX', config.rateLimitInternetMax, { min: 1, max: 100000, integer: true }),
     rateLimitSetMax: validateFiniteNumber('RATE_LIMIT_SET_MAX', config.rateLimitSetMax, { min: 1, max: 100000, integer: true }),
     ntpTimeoutMs: validateFiniteNumber('NTP_TIMEOUT_MS', config.ntpTimeoutMs, { min: 100, max: 300000, integer: true }),
+    httpsApiTimeoutMs: validateFiniteNumber('HTTPS_TIME_API_TIMEOUT_MS', config.httpsApiTimeoutMs, { min: 100, max: 300000, integer: true }),
     httpDateTimeoutMs: validateFiniteNumber('HTTP_DATE_TIMEOUT_MS', config.httpDateTimeoutMs, { min: 100, max: 300000, integer: true }),
     receiverEnabled: Boolean(config.receiverEnabled),
   };

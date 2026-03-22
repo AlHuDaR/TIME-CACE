@@ -28,8 +28,11 @@
       "gps-xli": "GPS RECEIVER (XLi)",
       "ntp-nist": "NTP (NIST)",
       "ntp-npl-india": "NTP (NPL India)",
+      "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
       "http-date": "INTERNET/HTTP DATE",
       "local-clock": "LOCAL CLOCK",
+      "browser-local-clock": "BROWSER LOCAL CLOCK",
     }[source] || source.replace(/-/g, " ");
   }
 
@@ -132,11 +135,13 @@
       ? "healthy"
       : runtimeState.sourceTier === "traceable-fallback"
         ? "degraded"
-        : runtimeState.sourceTier === "non-traceable-fallback"
+        : runtimeState.sourceTier === "internet-fallback"
           ? "warning"
           : runtimeState.sourceTier === "emergency-fallback"
             ? "unavailable"
-            : "unknown";
+            : runtimeState.sourceTier === "browser-emergency-fallback"
+              ? "unavailable"
+              : "unknown";
     const receiverHealthState = !receiverStatus.backendOnline
       ? "unavailable"
       : !receiverConfigured
@@ -184,9 +189,9 @@
     );
 
     const timingIntegrityState = backendMonitoringState.timingIntegrityState
-      || ((!receiverStatus.backendOnline || runtimeState.sourceTier === "emergency-fallback" || dataState === "unavailable")
+      || ((!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(runtimeState.sourceTier) || dataState === "unavailable")
         ? "low"
-        : (runtimeState.sourceTier === "non-traceable-fallback")
+        : (runtimeState.sourceTier === "internet-fallback")
           ? "degraded"
           : (!receiverConfigured || runtimeState.sourceTier === "traceable-fallback")
             ? "reduced"
@@ -197,9 +202,9 @@
                 : "high");
 
     const alarmSeverityState = backendMonitoringState.alarmSeverityState
-      || ((!receiverStatus.backendOnline || runtimeState.sourceTier === "emergency-fallback")
+      || ((!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(runtimeState.sourceTier))
         ? "critical"
-        : runtimeState.sourceTier === "non-traceable-fallback"
+        : runtimeState.sourceTier === "internet-fallback"
           ? "warning"
           : runtimeState.sourceTier === "traceable-fallback"
             ? receiverConfigured ? "warning" : "advisory"
