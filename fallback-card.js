@@ -32,15 +32,18 @@
     }
 
     isFallbackSource(source) {
-      return ["ntp-nist", "ntp-npl-india", "http-date", "local-clock"].includes(source);
+      return ["ntp-nist", "ntp-npl-india", "https-worldtimeapi", "https-timeapiio", "http-date", "local-clock", "browser-local-clock"].includes(source);
     }
 
     getSourceLabel(source, metadata = {}) {
       return {
         "ntp-nist": "NTP (NIST)",
         "ntp-npl-india": "NTP (NPL India)",
+        "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+        "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
         "http-date": "INTERNET/HTTP DATE",
         "local-clock": "LOCAL CLOCK",
+        "browser-local-clock": "BROWSER LOCAL CLOCK",
       }[source] || String(source || "UNKNOWN").toUpperCase();
     }
 
@@ -53,15 +56,19 @@
       const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
       const heading = sourceTier === "traceable-fallback"
         ? "Traceable fallback active"
-        : sourceTier === "non-traceable-fallback"
+        : sourceTier === "internet-fallback"
           ? "Internet fallback active"
-          : "Emergency local fallback active";
+          : sourceTier === "browser-emergency-fallback"
+            ? "Browser emergency fallback active"
+            : "Emergency local fallback active";
       const subheading = sourceTier === "traceable-fallback"
         ? `${sourceLabel} is maintaining continuity while the GPS Receiver (XLi) is unavailable or not locked.`
-        : sourceTier === "non-traceable-fallback"
-          ? "NTP sources are unavailable, so the backend is maintaining continuity from HTTP Date headers."
-          : "All remote sources are unavailable, so the display is running on the local workstation clock.";
-      const severity = sourceTier === "emergency-fallback" ? "warning" : sourceTier === "non-traceable-fallback" ? "warning" : "info";
+        : sourceTier === "internet-fallback"
+          ? `${sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`
+          : sourceTier === "browser-emergency-fallback"
+            ? "The backend is unreachable or invalid, so the browser is temporarily maintaining continuity from the local workstation clock."
+            : "All backend remote sources are unavailable, so the backend is using the local workstation clock.";
+      const severity = ["emergency-fallback", "browser-emergency-fallback", "internet-fallback"].includes(sourceTier) ? "warning" : "info";
 
       return {
         kind: "fallback",

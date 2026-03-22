@@ -71,9 +71,12 @@ const CONFIG = validateConfig({
   rateLimitInternetMax: readEnvNumber("RATE_LIMIT_INTERNET_MAX", 60),
   rateLimitSetMax: readEnvNumber("RATE_LIMIT_SET_MAX", 8),
   ntpTimeoutMs: readEnvNumber("NTP_TIMEOUT_MS", 1500),
+  httpsApiTimeoutMs: readEnvNumber("HTTPS_TIME_API_TIMEOUT_MS", 2000),
   httpDateTimeoutMs: readEnvNumber("HTTP_DATE_TIMEOUT_MS", 2000),
   nistHosts: Object.freeze((process.env.NTP_NIST_HOSTS || "time.nist.gov,time-a-g.nist.gov").split(",").map((value) => value.trim()).filter(Boolean)),
   nplHosts: Object.freeze((process.env.NTP_NPL_HOSTS || "time.nplindia.org,samay1.nic.in").split(",").map((value) => value.trim()).filter(Boolean)),
+  worldTimeApiUrls: Object.freeze((process.env.WORLD_TIME_API_URLS || "https://worldtimeapi.org/api/timezone/Asia/Muscat").split(",").map((value) => value.trim()).filter(Boolean)),
+  timeApiIoUrls: Object.freeze((process.env.TIMEAPI_IO_URLS || "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Muscat").split(",").map((value) => value.trim()).filter(Boolean)),
   httpDateUrls: Object.freeze((process.env.HTTP_DATE_URLS || "https://www.google.com,https://www.microsoft.com").split(",").map((value) => value.trim()).filter(Boolean)),
   receiverEnabled,
 });
@@ -129,9 +132,12 @@ let monitoringMemory = {
 
 const timingSourceService = createTimingSourceService({
   ntpTimeoutMs: CONFIG.ntpTimeoutMs,
+  httpsApiTimeoutMs: CONFIG.httpsApiTimeoutMs,
   httpTimeoutMs: CONFIG.httpDateTimeoutMs,
   nistHosts: CONFIG.nistHosts,
   nplHosts: CONFIG.nplHosts,
+  worldTimeApiUrls: CONFIG.worldTimeApiUrls,
+  timeApiIoUrls: CONFIG.timeApiIoUrls,
   httpDateUrls: CONFIG.httpDateUrls,
 });
 
@@ -425,14 +431,18 @@ function createLocalFallback(extra = {}) {
 }
 
 async function resolveNetworkFallback(baseContext = {}) {
-  const selection = await timingSourceService.resolveTraceableFallback();
+  const selection = await timingSourceService.resolveFallbackHierarchy();
   const fallbackReason = selection.sourceKey === 'ntp-nist'
     ? 'receiver-unavailable-nist-active'
     : selection.sourceKey === 'ntp-npl-india'
       ? 'receiver-unavailable-npl-active'
-      : selection.sourceKey === 'http-date'
-        ? 'receiver-and-ntp-unavailable-http-active'
-        : 'all-remote-sources-unavailable';
+      : selection.sourceKey === 'https-worldtimeapi'
+        ? 'receiver-and-ntp-unavailable-worldtimeapi-active'
+        : selection.sourceKey === 'https-timeapiio'
+          ? 'receiver-and-primary-https-api-unavailable-timeapiio-active'
+          : selection.sourceKey === 'http-date'
+            ? 'receiver-ntp-and-https-api-unavailable-http-active'
+            : 'all-remote-sources-unavailable';
   const statusText = selection.status;
 
   return selection.sourceKey === 'local-clock'
@@ -532,11 +542,13 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
     ? "healthy"
     : snapshot.sourceTier === "traceable-fallback"
       ? "degraded"
-      : snapshot.sourceTier === "non-traceable-fallback"
+      : snapshot.sourceTier === "internet-fallback"
         ? "warning"
         : snapshot.sourceTier === "emergency-fallback"
           ? "unavailable"
-          : "unknown";
+          : snapshot.sourceTier === "browser-emergency-fallback"
+            ? "unavailable"
+            : "unknown";
   const receiverHealthState = snapshot.receiverConfigured === false
     ? "standby"
     : !snapshot.receiverReachable
@@ -566,7 +578,7 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
   let timingIntegrityState = "high";
   if (snapshot.sourceTier === "emergency-fallback" || dataState === "unavailable") {
     timingIntegrityState = "low";
-  } else if (snapshot.sourceTier === "non-traceable-fallback") {
+  } else if (snapshot.sourceTier === "internet-fallback") {
     timingIntegrityState = "degraded";
   } else if (snapshot.sourceTier === "traceable-fallback") {
     timingIntegrityState = "reduced";
@@ -579,7 +591,7 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
   let alarmSeverityState = "normal";
   if (snapshot.sourceTier === "emergency-fallback") {
     alarmSeverityState = "critical";
-  } else if (snapshot.sourceTier === "non-traceable-fallback") {
+  } else if (snapshot.sourceTier === "internet-fallback") {
     alarmSeverityState = "warning";
   } else if (snapshot.sourceTier === "traceable-fallback") {
     alarmSeverityState = snapshot.receiverConfigured === false ? "advisory" : "warning";

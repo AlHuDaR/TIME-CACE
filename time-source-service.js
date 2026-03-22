@@ -29,10 +29,28 @@ const SOURCE_DEFINITIONS = Object.freeze({
     traceable: true,
     fallback: true,
   }),
+  'https-worldtimeapi': Object.freeze({
+    sourceKey: 'https-worldtimeapi',
+    sourceLabel: 'HTTPS TIME API (WorldTimeAPI)',
+    sourceTier: 'internet-fallback',
+    status: 'Internet fallback active',
+    authoritative: false,
+    traceable: false,
+    fallback: true,
+  }),
+  'https-timeapiio': Object.freeze({
+    sourceKey: 'https-timeapiio',
+    sourceLabel: 'HTTPS TIME API (TimeAPI.io)',
+    sourceTier: 'internet-fallback',
+    status: 'Internet fallback active',
+    authoritative: false,
+    traceable: false,
+    fallback: true,
+  }),
   'http-date': Object.freeze({
     sourceKey: 'http-date',
     sourceLabel: 'INTERNET/HTTP DATE',
-    sourceTier: 'non-traceable-fallback',
+    sourceTier: 'internet-fallback',
     status: 'Internet fallback active',
     authoritative: false,
     traceable: false,
@@ -47,9 +65,19 @@ const SOURCE_DEFINITIONS = Object.freeze({
     traceable: false,
     fallback: true,
   }),
+  'browser-local-clock': Object.freeze({
+    sourceKey: 'browser-local-clock',
+    sourceLabel: 'BROWSER LOCAL CLOCK',
+    sourceTier: 'browser-emergency-fallback',
+    status: 'Browser emergency fallback active',
+    authoritative: false,
+    traceable: false,
+    fallback: true,
+  }),
 });
 
 const NTP_UNIX_EPOCH_OFFSET_SECONDS = 2208988800;
+const OMAN_UTC_OFFSET_SUFFIX = '+04:00';
 
 function getSourceDefinition(sourceKey) {
   return SOURCE_DEFINITIONS[sourceKey] || SOURCE_DEFINITIONS['local-clock'];
@@ -61,6 +89,14 @@ function createNtpPacket() {
   return packet;
 }
 
+function validateTimestamp(timestamp, context) {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    throw new Error(`Invalid timestamp returned by ${context}`);
+  }
+
+  return timestamp;
+}
+
 function parseNtpTimestamp(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 48) {
     throw new Error('Invalid NTP response payload');
@@ -70,13 +106,7 @@ function parseNtpTimestamp(buffer) {
   const fraction = buffer.readUInt32BE(44);
   const unixSeconds = seconds - NTP_UNIX_EPOCH_OFFSET_SECONDS;
   const milliseconds = Math.round((fraction * 1000) / 0x100000000);
-  const timestamp = (unixSeconds * 1000) + milliseconds;
-
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    throw new Error('Invalid NTP transmit timestamp');
-  }
-
-  return timestamp;
+  return validateTimestamp((unixSeconds * 1000) + milliseconds, 'NTP response');
 }
 
 function parseHostAndPort(host) {
@@ -86,6 +116,14 @@ function parseHostAndPort(host) {
     return { host: match[1], port: Number(match[2]) };
   }
   return { host: text, port: 123 };
+}
+
+function flattenAggregateError(error) {
+  if (error?.errors && Array.isArray(error.errors)) {
+    return error.errors.map((entry) => entry?.message || String(entry)).join('; ');
+  }
+
+  return error?.message || String(error);
 }
 
 function queryNtpSource({ host, timeoutMs, sourceKey, sourceHost }) {
@@ -142,53 +180,168 @@ function queryNtpSource({ host, timeoutMs, sourceKey, sourceHost }) {
   });
 }
 
-async function queryHttpDateSource({ urls, timeoutMs }) {
-  let lastError = null;
+async function fetchJsonWithTimeout(url, timeoutMs) {
+  const response = await fetch(url, {
+    method: 'GET',
+    timeout: timeoutMs,
+    headers: {
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
 
-  for (const url of urls) {
-    const startedAt = Date.now();
-    try {
-      const response = await fetch(url, {
-        method: 'HEAD',
-        timeout: timeoutMs,
-        headers: {
-          'Cache-Control': 'no-cache',
-          Pragma: 'no-cache',
-        },
-      });
-      const finishedAt = Date.now();
-      const headerValue = response.headers.get('date');
-      if (!headerValue) {
-        throw new Error(`HTTP Date header missing from ${url}`);
-      }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} returned by ${url}`);
+  }
 
-      const serverTimestamp = Date.parse(headerValue);
-      if (!Number.isFinite(serverTimestamp)) {
-        throw new Error(`HTTP Date header invalid from ${url}`);
-      }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    throw new Error(`Malformed JSON returned by ${url}`);
+  }
 
-      const roundTripMs = Math.max(0, finishedAt - startedAt);
-      const timestamp = serverTimestamp + Math.round(roundTripMs / 2);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(`Invalid JSON payload returned by ${url}`);
+  }
 
-      return {
-        ...getSourceDefinition('http-date'),
-        timestamp,
-        isoTimestamp: new Date(timestamp).toISOString(),
-        roundTripMs,
-        upstream: url,
-        protocol: 'http-date',
-      };
-    } catch (error) {
-      lastError = error;
+  return payload;
+}
+
+function resolveTimestampFromFields(fields = [], context) {
+  for (const value of fields) {
+    if (value === null || value === undefined || value === '') {
+      continue;
+    }
+
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 1000000000) {
+      return validateTimestamp(numeric > 1000000000000 ? numeric : numeric * 1000, context);
+    }
+
+    const parsed = Date.parse(String(value));
+    if (Number.isFinite(parsed)) {
+      return validateTimestamp(parsed, context);
     }
   }
 
-  throw lastError || new Error('No HTTP Date source reachable');
+  throw new Error(`No valid timestamp field returned by ${context}`);
+}
+
+function parseWorldTimeApiPayload(payload, url) {
+  return resolveTimestampFromFields([
+    payload.datetime,
+    payload.utc_datetime,
+    payload.currentDateTime,
+    payload.dateTime,
+    payload.unixtime,
+    payload.timestamp,
+  ], `WorldTimeAPI (${url})`);
+}
+
+function parseTimeApiIoPayload(payload, url) {
+  const assembledLocalDateTime = payload.dateTime
+    || payload.currentLocalTime
+    || (payload.date && payload.time ? `${payload.date}T${payload.time}${OMAN_UTC_OFFSET_SUFFIX}` : null)
+    || (Number.isFinite(Number(payload.year))
+      && Number.isFinite(Number(payload.month))
+      && Number.isFinite(Number(payload.day))
+      && Number.isFinite(Number(payload.hour))
+      && Number.isFinite(Number(payload.minute))
+        ? `${String(payload.year).padStart(4, '0')}-${String(payload.month).padStart(2, '0')}-${String(payload.day).padStart(2, '0')}T${String(payload.hour).padStart(2, '0')}:${String(payload.minute).padStart(2, '0')}:${String(payload.seconds || 0).padStart(2, '0')}${OMAN_UTC_OFFSET_SUFFIX}`
+        : null);
+
+  return resolveTimestampFromFields([
+    assembledLocalDateTime,
+    payload.dateTime,
+    payload.currentLocalTime,
+    payload.timestamp,
+    payload.epochTime,
+  ], `TimeAPI.io (${url})`);
+}
+
+async function queryHttpsTimeApiSource({ sourceKey, urls, timeoutMs, parser, protocol }) {
+  if (!Array.isArray(urls) || urls.length === 0) {
+    throw new Error(`No ${sourceKey} endpoint configured`);
+  }
+
+  const attempts = urls.map(async (url) => {
+    const startedAt = Date.now();
+    const payload = await fetchJsonWithTimeout(url, timeoutMs);
+    const timestamp = parser(payload, url);
+    return {
+      ...getSourceDefinition(sourceKey),
+      timestamp,
+      isoTimestamp: new Date(timestamp).toISOString(),
+      roundTripMs: Math.max(0, Date.now() - startedAt),
+      upstream: url,
+      protocol,
+    };
+  });
+
+  try {
+    return await Promise.any(attempts);
+  } catch (error) {
+    throw new Error(flattenAggregateError(error));
+  }
+}
+
+async function queryHttpDateSource({ urls, timeoutMs }) {
+  if (!Array.isArray(urls) || urls.length === 0) {
+    throw new Error('No HTTP Date source configured');
+  }
+
+  const attempts = urls.map(async (url) => {
+    const startedAt = Date.now();
+    const response = await fetch(url, {
+      method: 'HEAD',
+      timeout: timeoutMs,
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} returned by ${url}`);
+    }
+
+    const finishedAt = Date.now();
+    const headerValue = response.headers.get('date');
+    if (!headerValue) {
+      throw new Error(`HTTP Date header missing from ${url}`);
+    }
+
+    const serverTimestamp = Date.parse(headerValue);
+    if (!Number.isFinite(serverTimestamp)) {
+      throw new Error(`HTTP Date header invalid from ${url}`);
+    }
+
+    const roundTripMs = Math.max(0, finishedAt - startedAt);
+    const timestamp = validateTimestamp(serverTimestamp + Math.round(roundTripMs / 2), `HTTP Date (${url})`);
+
+    return {
+      ...getSourceDefinition('http-date'),
+      timestamp,
+      isoTimestamp: new Date(timestamp).toISOString(),
+      roundTripMs,
+      upstream: url,
+      protocol: 'http-date',
+    };
+  });
+
+  try {
+    return await Promise.any(attempts);
+  } catch (error) {
+    throw new Error(flattenAggregateError(error));
+  }
 }
 
 function createTimingSourceService(options = {}) {
   const config = {
     ntpTimeoutMs: options.ntpTimeoutMs || 1500,
+    httpsApiTimeoutMs: options.httpsApiTimeoutMs || 2000,
     httpTimeoutMs: options.httpTimeoutMs || 2000,
     nistHosts: Array.isArray(options.nistHosts) && options.nistHosts.length > 0
       ? options.nistHosts
@@ -196,6 +349,12 @@ function createTimingSourceService(options = {}) {
     nplHosts: Array.isArray(options.nplHosts) && options.nplHosts.length > 0
       ? options.nplHosts
       : ['time.nplindia.org', 'samay1.nic.in'],
+    worldTimeApiUrls: Array.isArray(options.worldTimeApiUrls) && options.worldTimeApiUrls.length > 0
+      ? options.worldTimeApiUrls
+      : ['https://worldtimeapi.org/api/timezone/Asia/Muscat'],
+    timeApiIoUrls: Array.isArray(options.timeApiIoUrls) && options.timeApiIoUrls.length > 0
+      ? options.timeApiIoUrls
+      : ['https://timeapi.io/api/Time/current/zone?timeZone=Asia/Muscat'],
     httpDateUrls: Array.isArray(options.httpDateUrls) && options.httpDateUrls.length > 0
       ? options.httpDateUrls
       : ['https://www.google.com', 'https://www.microsoft.com'],
@@ -203,55 +362,75 @@ function createTimingSourceService(options = {}) {
 
   async function queryNtpGroup(sourceKey, hosts = []) {
     if (!Array.isArray(hosts) || hosts.length === 0) {
-      throw new Error(`No ${sourceKey} server reachable`);
+      throw new Error(`No ${sourceKey} server configured`);
     }
 
-    const attempts = hosts.map((host) => queryNtpSource({
-      host,
-      timeoutMs: config.ntpTimeoutMs,
-      sourceKey,
-      sourceHost: host,
-    }));
-    const results = await Promise.allSettled(attempts);
-    let lastError = null;
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        return result.value;
-      }
-      lastError = result.reason;
+    try {
+      return await Promise.any(hosts.map((host) => queryNtpSource({
+        host,
+        timeoutMs: config.ntpTimeoutMs,
+        sourceKey,
+        sourceHost: host,
+      })));
+    } catch (error) {
+      throw new Error(flattenAggregateError(error));
     }
-
-    throw lastError || new Error(`No ${sourceKey} server reachable`);
   }
 
-  async function resolveTraceableFallback() {
+  async function resolveFallbackHierarchy() {
     const attempts = [
       {
         sourceKey: 'ntp-nist',
-        task: queryNtpGroup('ntp-nist', config.nistHosts),
+        run: () => queryNtpGroup('ntp-nist', config.nistHosts),
       },
       {
         sourceKey: 'ntp-npl-india',
-        task: queryNtpGroup('ntp-npl-india', config.nplHosts),
+        run: () => queryNtpGroup('ntp-npl-india', config.nplHosts),
+      },
+      {
+        sourceKey: 'https-worldtimeapi',
+        run: () => queryHttpsTimeApiSource({
+          sourceKey: 'https-worldtimeapi',
+          urls: config.worldTimeApiUrls,
+          timeoutMs: config.httpsApiTimeoutMs,
+          parser: parseWorldTimeApiPayload,
+          protocol: 'https-json',
+        }),
+      },
+      {
+        sourceKey: 'https-timeapiio',
+        run: () => queryHttpsTimeApiSource({
+          sourceKey: 'https-timeapiio',
+          urls: config.timeApiIoUrls,
+          timeoutMs: config.httpsApiTimeoutMs,
+          parser: parseTimeApiIoPayload,
+          protocol: 'https-json',
+        }),
       },
       {
         sourceKey: 'http-date',
-        task: queryHttpDateSource({
+        run: () => queryHttpDateSource({
           urls: config.httpDateUrls,
           timeoutMs: config.httpTimeoutMs,
         }),
       },
     ];
-    const results = await Promise.allSettled(attempts.map((attempt) => attempt.task));
-    const errors = [];
 
-    for (let index = 0; index < results.length; index += 1) {
-      const result = results[index];
-      if (result.status === 'fulfilled') {
-        return result.value;
+    const resolutionErrors = [];
+
+    for (const attempt of attempts) {
+      try {
+        const result = await attempt.run();
+        return {
+          ...result,
+          resolutionErrors,
+        };
+      } catch (error) {
+        resolutionErrors.push({
+          sourceKey: attempt.sourceKey,
+          message: error?.message || String(error),
+        });
       }
-      errors.push({ sourceKey: attempts[index].sourceKey, error: result.reason });
     }
 
     return {
@@ -261,16 +440,14 @@ function createTimingSourceService(options = {}) {
       roundTripMs: null,
       upstream: 'local-system-clock',
       protocol: 'local',
-      resolutionErrors: errors.map((entry) => ({
-        sourceKey: entry.sourceKey,
-        message: entry.error?.message || String(entry.error),
-      })),
+      resolutionErrors,
     };
   }
 
   return {
     getSourceDefinition,
-    resolveTraceableFallback,
+    resolveFallbackHierarchy,
+    resolveTraceableFallback: resolveFallbackHierarchy,
   };
 }
 

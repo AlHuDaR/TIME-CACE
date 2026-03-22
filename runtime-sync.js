@@ -33,7 +33,7 @@
       this.lastStatusPollAttemptAt = null;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
-      this.currentState = this.createState({ currentSource: "local-clock", sourceKey: "local-clock" });
+      this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "BROWSER LOCAL CLOCK", sourceTier: "browser-emergency-fallback", status: "Browser emergency fallback active", statusText: "Browser emergency fallback active" });
     }
 
   createSessionState(overrides = {}) {
@@ -95,13 +95,13 @@
         loginOk: false,
         isLocked: false,
         gpsLockState: "unknown",
-        statusText: "Emergency local fallback active",
-        status: "Emergency local fallback active",
-        currentSource: "local-clock",
-        currentSourceLabel: "LOCAL CLOCK",
-        sourceKey: "local-clock",
-        sourceLabel: "LOCAL CLOCK",
-        sourceTier: "emergency-fallback",
+        statusText: "Browser emergency fallback active",
+        status: "Browser emergency fallback active",
+        currentSource: "browser-local-clock",
+        currentSourceLabel: "BROWSER LOCAL CLOCK",
+        sourceKey: "browser-local-clock",
+        sourceLabel: "BROWSER LOCAL CLOCK",
+        sourceTier: "browser-emergency-fallback",
         authoritative: false,
         traceable: false,
         fallback: true,
@@ -122,7 +122,7 @@
     }
 
     resolveSourceSnapshot(payload = {}, fallback = {}) {
-      const currentSource = payload.currentSource || payload.sourceKey || fallback.currentSource || fallback.sourceKey || "local-clock";
+      const currentSource = payload.currentSource || payload.sourceKey || fallback.currentSource || fallback.sourceKey || "browser-local-clock";
       const sourceLabel = payload.sourceLabel
         || payload.currentSourceLabel
         || fallback.sourceLabel
@@ -209,10 +209,10 @@
       authoritative: Boolean(payload.authoritative ?? fallback.authoritative),
       traceable: Boolean(payload.traceable ?? fallback.traceable),
       fallback: payload.fallback !== undefined ? Boolean(payload.fallback) : (fallback.fallback !== false),
-      status: payload.status || fallback.status || "Emergency local fallback active",
+      status: payload.status || fallback.status || "Browser emergency fallback active",
       roundTripMs: payload.roundTripMs || fallback.roundTripMs || null,
       isoTimestamp: payload.isoTimestamp || fallback.isoTimestamp || new Date().toISOString(),
-      statusText: payload.statusText || fallback.statusText || `Backend unavailable: ${error.message}`,
+      statusText: payload.statusText || fallback.statusText || `Browser emergency fallback active: ${error.message}`,
       lastError: payload.lastError || error.message,
       monitoringState: payload.monitoringState || fallback.monitoringState || null,
       fallbackReason: payload.fallbackReason || fallback.fallbackReason || null,
@@ -253,16 +253,21 @@
         resolutionErrors: payload.resolutionErrors || [],
       });
     } catch (error) {
+      const localResult = this.getLocalTime();
       nextState = this.buildErrorState(error, {
-        currentSource: "local-clock",
-        sourceKey: "local-clock",
-        sourceLabel: "LOCAL CLOCK",
-        sourceTier: "emergency-fallback",
+        ...localResult,
+        currentSource: "browser-local-clock",
+        sourceKey: "browser-local-clock",
+        sourceLabel: "BROWSER LOCAL CLOCK",
+        sourceTier: "browser-emergency-fallback",
         authoritative: false,
         traceable: false,
         fallback: true,
-        status: "Emergency local fallback active",
-        statusText: `Backend unavailable: ${error.message}`,
+        status: "Browser emergency fallback active",
+        statusText: `Browser emergency fallback active: ${error.message}`,
+        protocol: "browser-local",
+        upstream: "browser-local-clock",
+        fallbackReason: "backend-unreachable-or-invalid",
       });
     }
 
@@ -276,20 +281,20 @@
         loginOk: Boolean(nextState?.loginOk),
         isLocked: false,
         gpsLockState: nextState?.gpsLockState || "unknown",
-        currentSource: "local-clock",
-        currentSourceLabel: "LOCAL CLOCK",
-        sourceKey: "local-clock",
-        sourceLabel: "LOCAL CLOCK",
-        sourceTier: "emergency-fallback",
+        currentSource: "browser-local-clock",
+        currentSourceLabel: "BROWSER LOCAL CLOCK",
+        sourceKey: "browser-local-clock",
+        sourceLabel: "BROWSER LOCAL CLOCK",
+        sourceTier: "browser-emergency-fallback",
         authoritative: false,
         traceable: false,
         fallback: true,
-        status: "Emergency local fallback active",
-        statusText: "Emergency local fallback active",
+        status: "Browser emergency fallback active",
+        statusText: "Browser emergency fallback active",
         lastError: nextState?.lastError || "No remote time source available",
         ...localResult,
         monitoringState: nextState?.monitoringState || null,
-        fallbackReason: nextState?.fallbackReason || "backend-offline",
+        fallbackReason: nextState?.fallbackReason || "backend-unreachable-or-invalid",
       });
     }
 
@@ -479,8 +484,11 @@
         "gps-xli": ["Runtime restored GPS Receiver (XLi) as the primary reference.", "normal", "runtime-gps-xli"],
         "ntp-nist": ["Runtime switched to NTP (NIST) fallback.", "advisory", "runtime-ntp-nist"],
         "ntp-npl-india": ["Runtime switched to NTP (NPL India) fallback.", "advisory", "runtime-ntp-npl-india"],
-        "http-date": ["Runtime switched to Internet/HTTP Date fallback.", "warning", "runtime-http-date"],
-        "local-clock": ["Runtime degraded to local clock emergency fallback.", "critical", "runtime-local-clock"],
+        "https-worldtimeapi": ["Runtime switched to HTTPS TIME API (WorldTimeAPI) fallback.", "warning", "runtime-https-worldtimeapi"],
+        "https-timeapiio": ["Runtime switched to HTTPS TIME API (TimeAPI.io) fallback.", "warning", "runtime-https-timeapiio"],
+        "http-date": ["Runtime switched to INTERNET/HTTP DATE fallback.", "warning", "runtime-http-date"],
+        "local-clock": ["Runtime degraded to backend LOCAL CLOCK emergency fallback.", "critical", "runtime-local-clock"],
+        "browser-local-clock": ["Runtime degraded to browser emergency fallback because the backend is unavailable or invalid.", "critical", "runtime-browser-local-clock"],
       };
       const [message, severity, key] = sourceEventMap[nextState.currentSource]
         || [`Runtime source changed to ${humanizeSource(nextState.currentSource)}.`, "advisory", `runtime-${nextState.currentSource}`];
@@ -602,7 +610,7 @@
       ? "success"
       : ["ntp-nist", "ntp-npl-india"].includes(currentSource)
         ? "info"
-        : currentSource === "http-date"
+        : ["https-worldtimeapi", "https-timeapiio", "http-date"].includes(currentSource)
           ? "warning"
           : "error";
     const backendOnline = Boolean(this.currentState.backendOnline ?? this.receiverStatus.backendOnline);
@@ -651,13 +659,16 @@
     const state = typeof sourceOrState === "string"
       ? { currentSource: sourceOrState, backendOnline: this.currentState.backendOnline }
       : (sourceOrState || this.currentState);
-    const source = state.currentSource || "local-clock";
+    const source = state.currentSource || "browser-local-clock";
     return {
       "gps-xli": "GPS RECEIVER (XLi)",
       "ntp-nist": "NTP (NIST)",
       "ntp-npl-india": "NTP (NPL India)",
+      "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
       "http-date": "INTERNET/HTTP DATE",
       "local-clock": "LOCAL CLOCK",
+      "browser-local-clock": "BROWSER LOCAL CLOCK",
     }[source] || source.toUpperCase();
   }
 
@@ -670,8 +681,11 @@
       "gps-xli": "GPS RECEIVER (XLi)",
       "ntp-nist": "NTP (NIST)",
       "ntp-npl-india": "NTP (NPL India)",
+      "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
+      "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
       "http-date": "INTERNET/HTTP DATE",
       "local-clock": "LOCAL CLOCK",
+      "browser-local-clock": "BROWSER LOCAL CLOCK",
     }[source] || source.replace(/-/g, " ");
   }
 
