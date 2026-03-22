@@ -9,6 +9,8 @@
     formatTimestampWithAge,
     formatDurationFrom,
     buildMonitoringModel,
+    formatStandardStatusLines,
+    getStandardStatusInfo,
   } = global.RAFOTimeApp;
 
   class GPSDisplayManager {
@@ -97,8 +99,8 @@
       if (this.hasStatusBar() && !this.isOldStylePage()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
-        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data);
-        this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
+        this.elements.sourceIndicator.textContent = formatStandardStatusLines(data)[0];
+        this.elements.lockStatus.textContent = formatStandardStatusLines(data)[1];
         this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
         this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
 
@@ -113,9 +115,9 @@
       this.updateReceiverActionButtons(receiverStatus);
 
       if (this.hasPrimarySourceDetails()) {
-        this.elements.primarySourceDescription.textContent = this.getPrimarySourceDescription(data, receiverStatus);
+        this.elements.primarySourceDescription.textContent = formatStandardStatusLines(data)[0];
         this.elements.primarySourceNote.textContent = this.getPrimarySourceNote(data, receiverStatus, sessionState);
-        this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+        this.elements.syncStatus.textContent = formatStandardStatusLines(data)[1];
         this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-xli");
         this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
       }
@@ -136,7 +138,7 @@
       const sessionState = this.gpsTimeSync.getSessionState();
 
       if (this.hasPrimarySourceDetails()) {
-        this.elements.syncStatus.textContent = this.syncManager.formatStatus();
+        this.elements.syncStatus.textContent = formatStandardStatusLines(data)[1];
         this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-xli");
         this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
       }
@@ -144,8 +146,8 @@
       if (this.hasStatusBar() && !this.isOldStylePage()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
-        this.elements.sourceIndicator.textContent = this.gpsTimeSync.getSourceDisplayName(data);
-        this.elements.lockStatus.textContent = this.getLockText(data, receiverStatus);
+        this.elements.sourceIndicator.textContent = formatStandardStatusLines(data)[0];
+        this.elements.lockStatus.textContent = formatStandardStatusLines(data)[1];
         this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
         this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
         this.elements.lastSyncTime.textContent = data.lastSyncTimestamp
@@ -168,7 +170,7 @@
         button.disabled = !receiverEditable;
         button.title = receiverEditable
           ? button.title.replace(/\s*\(Unavailable\)$/u, "")
-          : "Receiver control unavailable because the receiver/backend path is not writable.";
+          : "Receiver control is unavailable.";
       });
     }
 
@@ -231,6 +233,9 @@
 
     buildMonitoringDashboardSnapshot({ data, receiverStatus, sessionState }) {
       const monitoringState = receiverStatus.monitoringState || buildMonitoringModel(data, receiverStatus, sessionState);
+      const standard = getStandardStatusInfo(data);
+      const sourceLine = formatStandardStatusLines(data)[0];
+      const statusLine = formatStandardStatusLines(data)[1];
       const activeSource = this.getActiveSourceCard(data, receiverStatus);
       const timingIntegrity = this.getTimingIntegrityCard(data, receiverStatus, monitoringState);
       const systemStatus = this.getSystemStatusCard(data, receiverStatus);
@@ -247,57 +252,26 @@
         unavailable: "UNAVAILABLE",
         waiting: "WAITING",
       }[dataState] || "WAITING";
-      const receiverSourceLabel = receiverStatus.gpsLockState === "locked"
-        ? "GPS RECEIVER (XLi)"
-        : this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus);
 
       return {
         dataState,
         dataStateLabel,
-        summaryText: [
-          `${systemStatus.value}: ${activeSource.value}.`,
-          receiverStatus.receiverConfigured === false
-            ? "Receiver connection is intentionally disabled for this deployment."
-            : receiverStatus.backendOnline
-              ? `Receiver path ${receiverStatus.receiverReachable ? "reachable" : "unreachable"}.`
-              : "Backend API offline.",
-          receiverStatus.receiverConfigured === false
-            ? "The backend fallback hierarchy remains the continuity path for this deployment."
-            : `Lock state ${humanizeLockState(receiverStatus.gpsLockState).toLowerCase()}.`,
-          receiverStatus.stale ? "Status telemetry is stale; monitor continuity mode closely." : "Status telemetry is within the freshness window.",
-        ].join(" "),
-        diagnosticsText: [
-          receiverStatus.statusText || "Status unavailable.",
-          `Receiver source reports ${receiverSourceLabel}.`,
-          `Status snapshot: ${this.getStatusFreshnessText(receiverStatus)}.`,
-          this.getConsistencyHint(data, receiverStatus),
-        ].join(" "),
-        errorLine: receiverStatus.lastError ? `Active error: ${receiverStatus.lastError}` : "No active errors reported by the backend or receiver.",
+        summaryText: `${sourceLine} | ${statusLine}`,
+        diagnosticsText: receiverStatus.checkedAt ? `Checked: ${formatClockTime(receiverStatus.checkedAt)}` : "Checked: Never",
+        errorLine: receiverStatus.lastError ? "Issue recorded for time-source monitoring." : "No active issue recorded.",
         receiverReachability: {
-          value: receiverStatus.receiverConfigured === false ? "Not configured" : receiverStatus.receiverReachable ? "Reachable" : "Unreachable",
-          note: receiverStatus.receiverConfigured === false
-            ? "This deployment is running without a direct receiver connection and will rely on backend fallbacks when needed."
-            : receiverStatus.receiverReachable
-              ? receiverStatus.loginOk ? "Receiver responded and authentication succeeded." : "Receiver responded, but authentication failed."
-              : receiverStatus.backendOnline ? "No active receiver response during the latest poll." : "Backend is unavailable, so the receiver cannot be checked.",
-          badge: receiverStatus.receiverConfigured === false ? "INFO" : receiverStatus.receiverReachable ? "OK" : "ERROR",
-          badgeTone: receiverStatus.receiverConfigured === false ? "info" : receiverStatus.receiverReachable ? "ok" : "error",
-          chipClass: receiverStatus.receiverConfigured === false ? "status-advisory" : receiverStatus.receiverReachable ? "status-normal" : "status-critical",
+          value: receiverStatus.receiverConfigured === false ? "Unavailable" : receiverStatus.receiverReachable ? "Reachable" : "Unavailable",
+          note: receiverStatus.receiverConfigured === false ? "Receiver status is not available." : receiverStatus.receiverReachable ? "Receiver communication is available." : "Receiver communication is not available.",
+          badge: receiverStatus.receiverReachable ? "OK" : "INFO",
+          badgeTone: receiverStatus.receiverReachable ? "ok" : "info",
+          chipClass: receiverStatus.receiverReachable ? "status-normal" : "status-advisory",
         },
         gpsLock: {
-          value: receiverStatus.receiverConfigured === false ? "NOT CONFIGURED" : humanizeLockState(receiverStatus.gpsLockState).toUpperCase(),
-          note: receiverStatus.receiverConfigured === false
-            ? "GPS lock telemetry is unavailable because the receiver connection is disabled for this deployment."
-            : receiverStatus.gpsLockState === "locked"
-              ? "Receiver timing is disciplined to GPS."
-              : receiverStatus.gpsLockState === "holdover"
-                ? "Receiver is in holdover; timing quality is reduced."
-                : receiverStatus.gpsLockState === "unlocked"
-                  ? "Receiver is reachable without confirmed GPS lock."
-                  : "GPS lock state has not been confirmed yet.",
-          badge: receiverStatus.receiverConfigured === false ? "INFO" : receiverStatus.gpsLockState === "locked" ? "OK" : receiverStatus.gpsLockState === "unknown" ? "INFO" : "WARNING",
-          badgeTone: receiverStatus.receiverConfigured === false ? "info" : receiverStatus.gpsLockState === "locked" ? "ok" : receiverStatus.gpsLockState === "unknown" ? "info" : "warning",
-          chipClass: receiverStatus.receiverConfigured === false ? "status-advisory" : receiverStatus.gpsLockState === "locked" ? "status-normal" : receiverStatus.gpsLockState === "unknown" ? "status-advisory" : "status-warning",
+          value: receiverStatus.gpsLockState === "locked" ? "LOCKED" : receiverStatus.gpsLockState === "holdover" ? "HOLDOVER" : receiverStatus.gpsLockState === "unlocked" ? "UNLOCKED" : "UNKNOWN",
+          note: receiverStatus.gpsLockState === "locked" ? "Receiver lock is confirmed." : receiverStatus.gpsLockState === "holdover" ? "Receiver is using holdover timing." : receiverStatus.gpsLockState === "unlocked" ? "Receiver lock is not confirmed." : "Receiver lock state is not available.",
+          badge: receiverStatus.gpsLockState === "locked" ? "OK" : "INFO",
+          badgeTone: receiverStatus.gpsLockState === "locked" ? "ok" : "info",
+          chipClass: receiverStatus.gpsLockState === "locked" ? "status-normal" : "status-advisory",
         },
         activeSource,
         timingIntegrity,
@@ -312,111 +286,44 @@
     }
 
     getTimingIntegrityCard(data, receiverStatus) {
-      if (!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(data.sourceTier) || !data.lastSyncTimestamp) {
-        return {
-          value: "LOCAL ONLY",
-          note: "No authoritative remote time is available; the display is relying on local workstation clock continuity.",
-          badge: "ERROR",
-          badgeTone: "error",
-          chipClass: "status-critical",
-        };
-      }
-
-      if (data.currentSource === "gps-xli" && receiverStatus.gpsLockState === "locked" && receiverStatus.receiverReachable) {
-        return {
-          value: "PRIMARY GPS",
-          note: "Best integrity: the XLi receiver is reachable, authenticated, and locked to GPS.",
-          badge: "OK",
-          badgeTone: "ok",
-          chipClass: "status-normal",
-        };
-      }
-
-      if (data.sourceTier === "traceable-fallback") {
-        return {
-          value: data.sourceKey === "ntp-nist" ? "TRACEABLE (NIST)" : "TRACEABLE (NPL INDIA)",
-          note: `${data.sourceLabel} is active as the traceable fallback while receiver lock is unavailable.`,
-          badge: "WARNING",
-          badgeTone: "warning",
-          chipClass: "status-warning",
-        };
-      }
-
+      const standard = getStandardStatusInfo(data);
       return {
-        value: data.sourceLabel,
-        note: this.isFrontendInternetFallback(data)
-          ? `${data.sourceLabel} is active as the frontend internet fallback while the backend is unavailable or invalid.`
-          : `${data.sourceLabel} is active as the backend internet fallback and should be monitored until a traceable source returns.`,
-        badge: "WARNING",
-        badgeTone: "warning",
-        chipClass: "status-warning",
+        value: standard.status.split(" ")[0].toUpperCase(),
+        note: formatStandardStatusLines(data).join(" | "),
+        badge: standard.severity === "healthy" ? "OK" : standard.severity === "critical" ? "ERROR" : "WARNING",
+        badgeTone: standard.severity === "healthy" ? "ok" : standard.severity === "critical" ? "error" : "warning",
+        chipClass: standard.severity === "healthy" ? "status-normal" : standard.severity === "critical" ? "status-critical" : "status-warning",
       };
     }
 
     getSystemStatusCard(data, receiverStatus) {
-      if (!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(data.sourceTier) || !data.lastSyncTimestamp) {
-        const frontendInternetFallback = this.isFrontendInternetFallback(data);
-        return {
-          value: frontendInternetFallback
-            ? "INTERNET FALLBACK"
-            : (!receiverStatus.backendOnline || data.currentSource === "browser-local-clock" ? "BROWSER EMERGENCY" : "LOCAL EMERGENCY"),
-          note: frontendInternetFallback
-            ? `${data.sourceLabel} is maintaining continuity while backend timing data is unavailable or invalid.`
-            : (!receiverStatus.backendOnline || data.currentSource === "browser-local-clock")
-              ? "Backend is unavailable or invalid, so the browser local clock is maintaining continuity."
-              : "No backend remote timing source is currently available.",
-          badge: "ERROR",
-          badgeTone: frontendInternetFallback ? "warning" : "error",
-          chipClass: frontendInternetFallback ? "status-warning" : "status-critical",
-        };
-      }
-
-      if (receiverStatus.stale || data.sourceTier !== "primary-reference" || ["holdover", "unlocked"].includes(receiverStatus.gpsLockState)) {
-        return {
-          value: receiverStatus.stale
-            ? "STALE TELEMETRY"
-            : data.sourceTier === "traceable-fallback"
-              ? "TRACEABLE FALLBACK"
-              : data.sourceTier === "internet-fallback"
-                ? "INTERNET FALLBACK"
-                : "DEGRADED RECEIVER",
-          note: receiverStatus.stale
-            ? `Latest receiver status is stale (${this.getStatusFreshnessText(receiverStatus)}).`
-            : this.isFrontendInternetFallback(data)
-              ? `${data.sourceLabel} is maintaining continuity while the backend is unavailable or invalid.`
-              : `${data.sourceLabel} is maintaining continuity while the receiver is unavailable or not locked.`,
-          badge: "WARNING",
-          badgeTone: "warning",
-          chipClass: "status-warning",
-        };
-      }
-
+      const standard = getStandardStatusInfo(data);
       return {
-        value: "NORMAL",
-        note: "Receiver is reachable, GPS is locked, and live telemetry is fresh.",
-        badge: "OK",
-        badgeTone: "ok",
-        chipClass: "status-normal",
+        value: standard.status.split(" ")[0].toUpperCase(),
+        note: formatStandardStatusLines(data).join(" | "),
+        badge: standard.severity === "healthy" ? "OK" : standard.severity === "critical" ? "ERROR" : "WARNING",
+        badgeTone: standard.severity === "healthy" ? "ok" : standard.severity === "critical" ? "error" : "warning",
+        chipClass: standard.severity === "healthy" ? "status-normal" : standard.severity === "critical" ? "status-critical" : "status-warning",
       };
     }
 
     getLastSyncCard(data, receiverStatus) {
       if (!data.lastSyncTimestamp) {
         return {
-          value: "No sync yet",
-          note: "The runtime has not recorded a successful synchronization in this session.",
-          badge: "ERROR",
-          badgeTone: "error",
-          chipClass: "status-critical",
+          value: "Unavailable",
+          note: "Last sync is not available.",
+          badge: "INFO",
+          badgeTone: "info",
+          chipClass: "status-advisory",
         };
       }
 
       const syncAgeMs = Math.max(0, Date.now() - new Date(data.lastSyncTimestamp).getTime());
       const isStale = syncAgeMs > APP_CONFIG.statusFreshnessWindowMs || receiverStatus.stale;
       return {
-        value: isStale ? `STALE • ${formatDurationFrom(data.lastSyncTimestamp)} ago` : `${formatDurationFrom(data.lastSyncTimestamp)} ago`,
-        note: `Last successful runtime sync at ${formatTimestampWithAge(data.lastSyncTimestamp)}.`,
-        badge: isStale ? "STALE" : "OK",
+        value: `${formatDurationFrom(data.lastSyncTimestamp)} ago`,
+        note: `Checked: ${formatClockTime(data.lastSyncTimestamp)}`,
+        badge: isStale ? "WARNING" : "OK",
         badgeTone: isStale ? "warning" : "ok",
         chipClass: isStale ? "status-warning" : "status-normal",
       };
@@ -424,63 +331,30 @@
 
     getCommunicationCard(receiverStatus) {
       const communicationMap = {
-        authenticated: ["Authenticated", "Receiver communication and authentication are healthy.", "OK", "ok", "status-normal"],
-        reachable: ["Reachable", "Receiver is responding, but authentication state should be confirmed.", "INFO", "info", "status-advisory"],
-        "receiver-responding": ["Reachable", "Receiver is responding, but authentication state should be confirmed.", "INFO", "info", "status-advisory"],
-        disabled: ["Receiver disabled", "This deployment is operating without a direct receiver and will use the backend fallback hierarchy when required.", "INFO", "info", "status-advisory"],
-        "login-failed": ["Authentication failed", "Receiver responded but login/authentication failed.", "ERROR", "error", "status-critical"],
-        "auth-failed": ["Authentication failed", "Receiver responded but login/authentication failed.", "ERROR", "error", "status-critical"],
-        unreachable: ["Receiver unreachable", "Receiver communication failed during the latest poll.", "ERROR", "error", "status-critical"],
-        "receiver-unreachable": ["Receiver unreachable", "Receiver communication failed during the latest poll.", "ERROR", "error", "status-critical"],
-        "backend-offline": ["Backend offline", "The backend cannot reach the receiver because the API service is unavailable.", "ERROR", "error", "status-critical"],
-        "not-started": ["Waiting", "No communication attempt has completed yet.", "INFO", "info", "status-advisory"],
+        authenticated: ["Available", "Receiver communication is available.", "OK", "ok", "status-normal"],
+        reachable: ["Available", "Receiver communication is available.", "OK", "ok", "status-normal"],
+        "receiver-responding": ["Available", "Receiver communication is available.", "OK", "ok", "status-normal"],
+        disabled: ["Unavailable", "Receiver communication is not available.", "INFO", "info", "status-advisory"],
+        "login-failed": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
+        "auth-failed": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
+        unreachable: ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
+        "receiver-unreachable": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
+        "backend-offline": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
+        "not-started": ["Unavailable", "Receiver communication is not available.", "INFO", "info", "status-advisory"],
       };
       const [value, note, badge, badgeTone, chipClass] = communicationMap[receiverStatus.receiverCommunicationState]
-        || [humanizeCommunicationState(receiverStatus.receiverCommunicationState), "Communication state is being evaluated.", "INFO", "info", "status-advisory"];
+        || ["Unavailable", "Receiver communication is not available.", "INFO", "info", "status-advisory"];
       return { value, note, badge, badgeTone, chipClass };
     }
 
     getFallbackCard(data, receiverStatus) {
-      if (data.sourceTier === "primary-reference") {
-        return {
-          value: "Standby",
-          note: "Fallback paths are armed but not in use while the GPS Receiver (XLi) remains healthy.",
-          badge: "OK",
-          badgeTone: "ok",
-          chipClass: "status-normal",
-        };
-      }
-
-      if (data.sourceTier === "traceable-fallback") {
-        return {
-          value: data.sourceLabel,
-          note: "Traceable NTP fallback is active and will be replaced automatically when the GPS Receiver (XLi) returns.",
-          badge: "WARNING",
-          badgeTone: "warning",
-          chipClass: "status-warning",
-        };
-      }
-
-      if (data.sourceTier === "internet-fallback") {
-        return {
-          value: data.sourceLabel,
-          note: this.isFrontendInternetFallback(data)
-            ? `${data.sourceLabel} is active because the backend is unavailable or invalid.`
-            : `${data.sourceLabel} is active because both traceable NTP sources are unavailable.`,
-          badge: "WARNING",
-          badgeTone: "warning",
-          chipClass: "status-warning",
-        };
-      }
-
+      const standard = getStandardStatusInfo(data);
       return {
-        value: data.currentSource === "browser-local-clock" ? "BROWSER LOCAL CLOCK" : "LOCAL CLOCK",
-        note: data.currentSource === "browser-local-clock"
-          ? "Browser emergency fallback is active because the backend is unavailable or invalid."
-          : "Emergency local fallback is active because every backend remote source has failed.",
-        badge: "ERROR",
-        badgeTone: "error",
-        chipClass: "status-critical",
+        value: standard.source,
+        note: formatStandardStatusLines(data).join(" | "),
+        badge: standard.severity === "healthy" ? "OK" : standard.severity === "critical" ? "ERROR" : "WARNING",
+        badgeTone: standard.severity === "healthy" ? "ok" : standard.severity === "critical" ? "error" : "warning",
+        chipClass: standard.severity === "healthy" ? "status-normal" : standard.severity === "critical" ? "status-critical" : "status-warning",
       };
     }
 
@@ -495,7 +369,7 @@
       if (!lastKnownGoodAt) {
         return {
           value: "Unavailable",
-          note: "No healthy receiver or authoritative timing sample has been recorded in this session.",
+          note: "Last valid sync is not available.",
           badge: "INFO",
           badgeTone: "info",
           chipClass: "status-advisory",
@@ -504,7 +378,7 @@
 
       return {
         value: formatClockTime(lastKnownGoodAt),
-        note: `${formatTimestampWithAge(lastKnownGoodAt)} • ${formatDurationFrom(lastKnownGoodAt)} ago.`,
+        note: `${formatDurationFrom(lastKnownGoodAt)} ago`,
         badge: "INFO",
         badgeTone: "info",
         chipClass: "status-advisory",
@@ -514,8 +388,8 @@
     getErrorCard(receiverStatus) {
       if (!receiverStatus.lastError) {
         return {
-          value: "No active error",
-          note: "Backend polling and receiver status are not reporting an active error string.",
+          value: "None",
+          note: "No active issue recorded.",
           badge: "INFO",
           badgeTone: "info",
           chipClass: "status-advisory",
@@ -523,55 +397,22 @@
       }
 
       return {
-        value: receiverStatus.lastError,
-        note: "Most recent backend/receiver error message retained for operator awareness.",
-        badge: "ERROR",
-        badgeTone: "error",
-        chipClass: "status-critical",
+        value: "Recorded",
+        note: "An issue is recorded for time-source monitoring.",
+        badge: "WARNING",
+        badgeTone: "warning",
+        chipClass: "status-warning",
       };
     }
 
     getActiveSourceCard(data, receiverStatus) {
-      if (data.sourceTier === "primary-reference") {
-        return {
-          value: "GPS RECEIVER (XLi)",
-          note: "Runtime is using the locked GPS receiver as the primary reference.",
-          badge: "OK",
-          badgeTone: "ok",
-          chipClass: "status-normal",
-        };
-      }
-
-      if (data.sourceTier === "traceable-fallback") {
-        return {
-          value: data.sourceLabel,
-          note: `${data.sourceLabel} is active as the traceable fallback until GPS lock returns.`,
-          badge: "WARNING",
-          badgeTone: "warning",
-          chipClass: "status-warning",
-        };
-      }
-
-      if (data.sourceTier === "internet-fallback") {
-        return {
-          value: data.sourceLabel,
-          note: this.isFrontendInternetFallback(data)
-            ? `${data.sourceLabel} is active as the frontend internet fallback because backend timing data is unavailable or invalid.`
-            : `${data.sourceLabel} is active as the backend internet fallback because the traceable hierarchy is unavailable.`,
-          badge: "WARNING",
-          badgeTone: "warning",
-          chipClass: "status-warning",
-        };
-      }
-
+      const standard = getStandardStatusInfo(data);
       return {
-        value: data.currentSource === "browser-local-clock" ? "BROWSER LOCAL CLOCK" : "LOCAL CLOCK",
-        note: data.currentSource === "browser-local-clock" || !receiverStatus.backendOnline
-          ? "Backend is unavailable or invalid, so the browser local clock is maintaining continuity."
-          : "Backend is online and has selected LOCAL CLOCK as the emergency fallback.",
-        badge: "ERROR",
-        badgeTone: "error",
-        chipClass: "status-critical",
+        value: standard.source,
+        note: formatStandardStatusLines(data).join(" | "),
+        badge: standard.severity === "healthy" ? "OK" : standard.severity === "critical" ? "ERROR" : "WARNING",
+        badgeTone: standard.severity === "healthy" ? "ok" : standard.severity === "critical" ? "error" : "warning",
+        chipClass: standard.severity === "healthy" ? "status-normal" : standard.severity === "critical" ? "status-critical" : "status-warning",
       };
     }
 
@@ -645,109 +486,36 @@
     }
 
     getStatusFreshnessText(receiverStatus) {
-      if (!APP_CONFIG.statusPollingEnabled) {
-        return "Polling disabled";
-      }
-
       if (!receiverStatus.checkedAt) {
-        return receiverStatus.backendOnline ? "Waiting for first poll" : "Backend unavailable";
+        return "Checked: Never";
       }
 
-      const timeText = formatClockTime(receiverStatus.checkedAt);
-      const ageText = receiverStatus.statusAgeMs !== null
-        ? `${Math.round(receiverStatus.statusAgeMs / 1000)}s old`
-        : "Unknown age";
-      if (receiverStatus.dataState === "cached") {
-        return `${timeText} (${ageText}, cached snapshot)`;
-      }
-      return receiverStatus.stale ? `${timeText} (${ageText}, stale telemetry)` : `${timeText} (${ageText}, fresh telemetry)`;
+      return `Checked: ${formatClockTime(receiverStatus.checkedAt)}`;
     }
 
     getLockText(data, receiverStatus) {
-      if (!receiverStatus.backendOnline) {
-        if (this.isFrontendInternetFallback(data)) {
-          return `${data.sourceLabel} active — backend unavailable`;
-        }
-        return "Backend unavailable — browser local clock fallback active";
-      }
-      if (data.currentSource === "gps-xli" && receiverStatus.gpsLockState === "locked") {
-        return "GPS Receiver (XLi) locked and primary";
-      }
-      if (data.sourceTier === "traceable-fallback") {
-        return `${data.sourceLabel} active — receiver not locked`;
-      }
-      if (data.sourceTier === "internet-fallback") {
-        return this.isFrontendInternetFallback(data)
-          ? `${data.sourceLabel} active — backend unavailable`
-          : `${data.sourceLabel} active — traceable sources unavailable`;
-      }
-      if (data.currentSource === "browser-local-clock") {
-        return "Browser local clock active — backend unavailable or invalid";
-      }
-      return "Local clock active — all backend remote sources unavailable";
+      return formatStandardStatusLines(data)[1];
     }
 
     getPrimarySourceDescription(data, receiverStatus) {
-      if (data.currentSource === "gps-xli") {
-        return "Primary source: GPS Receiver (XLi) is reachable, authenticated, and locked.";
-      }
-      if (data.sourceTier === "traceable-fallback") {
-        return `${data.sourceLabel} is active as the traceable fallback while the GPS Receiver (XLi) is unavailable or not locked.`;
-      }
-      if (data.sourceTier === "internet-fallback") {
-        return this.isFrontendInternetFallback(data)
-          ? `${data.sourceLabel} is active as the frontend internet fallback because the backend is unavailable or invalid.`
-          : `${data.sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`;
-      }
-      if (!receiverStatus.backendOnline) {
-        return "The backend is currently unavailable or invalid, so the display is using BROWSER LOCAL CLOCK until API connectivity resumes.";
-      }
-      return data.currentSource === "browser-local-clock"
-        ? "Backend data is unavailable or invalid, so the display is using BROWSER LOCAL CLOCK."
-        : "All backend remote timing sources are unavailable, so the backend selected LOCAL CLOCK.";
+      return formatStandardStatusLines(data)[0];
     }
 
     getPrimarySourceNote(data, receiverStatus, sessionState) {
-      const parts = [];
-      parts.push(`Runtime source: ${this.gpsTimeSync.getSourceDisplayName(data)}.`);
-      parts.push(`Receiver status source: ${receiverStatus.gpsLockState === "locked" ? "GPS RECEIVER (XLi)" : this.gpsTimeSync.getReceiverSourceDisplayName(receiverStatus)}.`);
-      parts.push(`System status: ${receiverStatus.statusText}.`);
       if (sessionState.lastKnownGoodGpsLockAt) {
-        parts.push(`Last known good GPS lock: ${formatRelativeAge(sessionState.lastKnownGoodGpsLockAt)}.`);
+        return `Last valid sync: ${formatRelativeAge(sessionState.lastKnownGoodGpsLockAt)}.`;
       }
-      if (sessionState.lastReceiverReachableAt) {
-        parts.push(`Last successful receiver communication: ${formatRelativeAge(sessionState.lastReceiverReachableAt)}.`);
+
+      if (data.lastSyncTimestamp) {
+        return `Last sync: ${formatRelativeAge(data.lastSyncTimestamp)}.`;
       }
-      if (receiverStatus.receiverReachable) {
-        parts.push(receiverStatus.loginOk ? "Receiver login succeeded." : "Receiver reachable but login failed.");
-      } else if (receiverStatus.backendOnline) {
-        parts.push("Receiver is not currently reachable.");
-      } else {
-        parts.push("Backend status polling is unavailable.");
-      }
-      if (receiverStatus.lastError) {
-        parts.push(`Last error: ${receiverStatus.lastError}`);
-      }
-      return parts.join(" ");
+
+      return "Last sync: Not available.";
     }
 
     getConsistencyHint(data, receiverStatus) {
-      const runtimeSource = humanizeSource(data.currentSource);
-      const statusSource = receiverStatus.currentSourceLabel || humanizeSource(receiverStatus.currentSource);
-
-      if (!receiverStatus.checkedAt) {
-        return "Waiting for status data to compare with the active time source.";
-      }
-
-      if (receiverStatus.stale) {
-        return `Status may be stale — runtime source is ${runtimeSource}, latest status snapshot says ${statusSource}.`;
-      }
-
-      if (data.currentSource === receiverStatus.currentSource || statusSource.toLowerCase().includes(runtimeSource.toLowerCase())) {
-        return `Runtime time source and status snapshot agree on ${runtimeSource}.`;
-      }
-
-      return `Runtime source is ${runtimeSource} while the latest status snapshot reports ${statusSource}.`;
+      const status = getStandardStatusInfo(data);
+      return `${formatStandardStatusLines(data)[0]} | ${formatStandardStatusLines(data)[1]}`;
     }
   }
 

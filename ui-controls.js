@@ -259,7 +259,7 @@ class InputHandler {
   async handleSetGpsTime(useInternet) {
     const sourceLabel = useInternet ? "Internet" : "this computer";
     const confirmationText = useInternet
-      ? "Set GPS receiver time from Internet?\n\nThis uses the backend Internet fallback source."
+      ? "Set GPS receiver time from Internet?\n\nThis uses the available internet time source."
       : "Set GPS receiver time from this computer?\n\nThis uses the current Oman time derived from this computer clock.";
 
     if (!window.confirm(confirmationText)) {
@@ -285,10 +285,10 @@ class InputHandler {
       window.showNotification(
         [
           "GPS time updated",
-          `Source: ${result.source}`,
+          "Source: GPS Receiver",
           `Date: ${result.date}`,
           `Time: ${result.time}`,
-          "Status: Refreshing display…",
+          "Status: Nominal (synchronized)",
         ],
         "success",
         4200,

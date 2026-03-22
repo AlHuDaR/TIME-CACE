@@ -11,9 +11,10 @@
     bootWhenDocumentReady,
     formatTimeParts,
     formatClockTime,
+    formatStandardStatusLines,
   } = global.RAFOTimeApp || {};
 
-  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatTimeParts || !formatClockTime) {
+  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatTimeParts || !formatClockTime || !formatStandardStatusLines) {
     throw new Error("Official time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -167,24 +168,15 @@
       }
 
       const receiverStatus = detail.receiverStatus || this.gpsTimeSync.getReceiverStatus();
-      const sourceLabel = this.gpsTimeSync.getSourceDisplayName(detail);
-      const freshness = receiverStatus.checkedAt
-        ? `Status snapshot at ${formatClockTime(receiverStatus.checkedAt)}`
-        : "Status snapshot pending";
-      const syncText = detail.lastSyncTimestamp
-        ? `Last runtime sync at ${formatClockTime(detail.lastSyncTimestamp)}`
-        : "Runtime sync pending";
-      const frontendInternetFallback = detail.sourceTier === "internet-fallback" && String(detail.currentSource || "").startsWith("frontend-");
-      const sourceTone = (!receiverStatus.backendOnline && !frontendInternetFallback) || detail.sourceTier === "emergency-fallback"
-        ? "critical"
-        : detail.sourceTier === "traceable-fallback" || detail.sourceTier === "non-traceable-fallback" || ["holdover", "unlocked"].includes(receiverStatus.gpsLockState)
-          || frontendInternetFallback
-          ? "warning"
-          : "healthy";
+      const [sourceLine, statusLine] = formatStandardStatusLines(detail);
+      const sourceTone = detail.currentSource === "gps-xli"
+        ? "healthy"
+        : ["local-clock", "browser-local-clock", ""].includes(String(detail.currentSource || ""))
+          ? "critical"
+          : "warning";
 
-      this.elements.sourceValue.textContent = sourceLabel;
-      const upstreamNote = detail.upstream ? ` Upstream: ${detail.upstream}.` : "";
-      this.elements.sourceNote.textContent = `${detail.statusText}. ${freshness}. ${syncText}.${upstreamNote}`;
+      this.elements.sourceValue.textContent = sourceLine;
+      this.elements.sourceNote.textContent = statusLine;
       this.elements.sourceCard.dataset.severity = sourceTone;
     }
 
