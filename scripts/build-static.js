@@ -4,7 +4,7 @@ const path = require("path");
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 
-const FRONTEND_ASSET_FILES = Object.freeze([
+const STATIC_ASSET_PATHS = Object.freeze([
   "index.html",
   "official-time.html",
   "api-client.js",
@@ -17,6 +17,8 @@ const FRONTEND_ASSET_FILES = Object.freeze([
   "official-time.js",
   "analog-clock.js",
   "styles.css",
+  "styles",
+  "images",
 ]);
 
 const REDIRECTS = `\
@@ -38,14 +40,22 @@ async function ensureCleanDist() {
   await fs.mkdir(distDir, { recursive: true });
 }
 
+async function copyStaticAsset(relativePath) {
+  const sourcePath = path.join(rootDir, relativePath);
+  const targetPath = path.join(distDir, relativePath);
+  const sourceStats = await fs.stat(sourcePath);
+
+  if (sourceStats.isDirectory()) {
+    await fs.cp(sourcePath, targetPath, { recursive: true });
+    return;
+  }
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.copyFile(sourcePath, targetPath);
+}
+
 async function copyFrontendAssets() {
-  await Promise.all(
-    FRONTEND_ASSET_FILES.map(async (fileName) => {
-      const sourcePath = path.join(rootDir, fileName);
-      const targetPath = path.join(distDir, fileName);
-      await fs.copyFile(sourcePath, targetPath);
-    }),
-  );
+  await Promise.all(STATIC_ASSET_PATHS.map((relativePath) => copyStaticAsset(relativePath)));
 }
 
 async function writeNetlifyArtifacts() {
