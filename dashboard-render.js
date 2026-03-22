@@ -24,6 +24,9 @@
         "https-worldtimeapi": "source-gps-warn",
         "https-timeapiio": "source-gps-warn",
         "http-date": "source-gps-warn",
+        "frontend-worldtimeapi": "source-gps-warn",
+        "frontend-timeapiio": "source-gps-warn",
+        "frontend-http-date": "source-gps-warn",
         "local-clock": "source-local",
         "browser-local-clock": "source-local",
       };
@@ -67,6 +70,10 @@
 
     isOldStylePage() {
       return document.body.classList.contains("old-style") || document.body.classList.contains("analog-only");
+    }
+
+    isFrontendInternetFallback(data) {
+      return data?.sourceTier === "internet-fallback" && String(data?.currentSource || "").startsWith("frontend-");
     }
 
     init() {
@@ -337,7 +344,9 @@
 
       return {
         value: data.sourceLabel,
-        note: `${data.sourceLabel} is active as the backend internet fallback and should be monitored until a traceable source returns.`,
+        note: this.isFrontendInternetFallback(data)
+          ? `${data.sourceLabel} is active as the frontend internet fallback while the backend is unavailable or invalid.`
+          : `${data.sourceLabel} is active as the backend internet fallback and should be monitored until a traceable source returns.`,
         badge: "WARNING",
         badgeTone: "warning",
         chipClass: "status-warning",
@@ -346,14 +355,19 @@
 
     getSystemStatusCard(data, receiverStatus) {
       if (!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(data.sourceTier) || !data.lastSyncTimestamp) {
+        const frontendInternetFallback = this.isFrontendInternetFallback(data);
         return {
-          value: !receiverStatus.backendOnline || data.currentSource === "browser-local-clock" ? "BROWSER EMERGENCY" : "LOCAL EMERGENCY",
-          note: !receiverStatus.backendOnline || data.currentSource === "browser-local-clock"
-            ? "Backend is unavailable or invalid, so the browser local clock is maintaining continuity."
-            : "No backend remote timing source is currently available.",
+          value: frontendInternetFallback
+            ? "INTERNET FALLBACK"
+            : (!receiverStatus.backendOnline || data.currentSource === "browser-local-clock" ? "BROWSER EMERGENCY" : "LOCAL EMERGENCY"),
+          note: frontendInternetFallback
+            ? `${data.sourceLabel} is maintaining continuity while backend timing data is unavailable or invalid.`
+            : (!receiverStatus.backendOnline || data.currentSource === "browser-local-clock")
+              ? "Backend is unavailable or invalid, so the browser local clock is maintaining continuity."
+              : "No backend remote timing source is currently available.",
           badge: "ERROR",
-          badgeTone: "error",
-          chipClass: "status-critical",
+          badgeTone: frontendInternetFallback ? "warning" : "error",
+          chipClass: frontendInternetFallback ? "status-warning" : "status-critical",
         };
       }
 
@@ -368,7 +382,9 @@
                 : "DEGRADED RECEIVER",
           note: receiverStatus.stale
             ? `Latest receiver status is stale (${this.getStatusFreshnessText(receiverStatus)}).`
-            : `${data.sourceLabel} is maintaining continuity while the receiver is unavailable or not locked.`,
+            : this.isFrontendInternetFallback(data)
+              ? `${data.sourceLabel} is maintaining continuity while the backend is unavailable or invalid.`
+              : `${data.sourceLabel} is maintaining continuity while the receiver is unavailable or not locked.`,
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -448,7 +464,9 @@
       if (data.sourceTier === "internet-fallback") {
         return {
           value: data.sourceLabel,
-          note: `${data.sourceLabel} is active because both traceable NTP sources are unavailable.`,
+          note: this.isFrontendInternetFallback(data)
+            ? `${data.sourceLabel} is active because the backend is unavailable or invalid.`
+            : `${data.sourceLabel} is active because both traceable NTP sources are unavailable.`,
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -537,7 +555,9 @@
       if (data.sourceTier === "internet-fallback") {
         return {
           value: data.sourceLabel,
-          note: `${data.sourceLabel} is active as the backend internet fallback because the traceable hierarchy is unavailable.`,
+          note: this.isFrontendInternetFallback(data)
+            ? `${data.sourceLabel} is active as the frontend internet fallback because backend timing data is unavailable or invalid.`
+            : `${data.sourceLabel} is active as the backend internet fallback because the traceable hierarchy is unavailable.`,
           badge: "WARNING",
           badgeTone: "warning",
           chipClass: "status-warning",
@@ -645,6 +665,9 @@
 
     getLockText(data, receiverStatus) {
       if (!receiverStatus.backendOnline) {
+        if (this.isFrontendInternetFallback(data)) {
+          return `${data.sourceLabel} active — backend unavailable`;
+        }
         return "Backend unavailable — browser local clock fallback active";
       }
       if (data.currentSource === "gps-xli" && receiverStatus.gpsLockState === "locked") {
@@ -654,7 +677,9 @@
         return `${data.sourceLabel} active — receiver not locked`;
       }
       if (data.sourceTier === "internet-fallback") {
-        return `${data.sourceLabel} active — traceable sources unavailable`;
+        return this.isFrontendInternetFallback(data)
+          ? `${data.sourceLabel} active — backend unavailable`
+          : `${data.sourceLabel} active — traceable sources unavailable`;
       }
       if (data.currentSource === "browser-local-clock") {
         return "Browser local clock active — backend unavailable or invalid";
@@ -670,7 +695,9 @@
         return `${data.sourceLabel} is active as the traceable fallback while the GPS Receiver (XLi) is unavailable or not locked.`;
       }
       if (data.sourceTier === "internet-fallback") {
-        return `${data.sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`;
+        return this.isFrontendInternetFallback(data)
+          ? `${data.sourceLabel} is active as the frontend internet fallback because the backend is unavailable or invalid.`
+          : `${data.sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`;
       }
       if (!receiverStatus.backendOnline) {
         return "The backend is currently unavailable or invalid, so the display is using BROWSER LOCAL CLOCK until API connectivity resumes.";

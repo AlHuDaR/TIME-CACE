@@ -22,6 +22,12 @@
     remoteTimeRequestTimeoutMs: Number(global.APP_CONFIG?.REMOTE_TIME_REQUEST_TIMEOUT_MS) > 0
       ? Number(global.APP_CONFIG.REMOTE_TIME_REQUEST_TIMEOUT_MS)
       : 5000,
+    frontendEmergencyRefreshMs: Number(global.APP_CONFIG?.FRONTEND_EMERGENCY_REFRESH_MS) > 0
+      ? Number(global.APP_CONFIG.FRONTEND_EMERGENCY_REFRESH_MS)
+      : 300000,
+    browserEmergencyRetryMs: Number(global.APP_CONFIG?.BROWSER_EMERGENCY_RETRY_MS) > 0
+      ? Number(global.APP_CONFIG.BROWSER_EMERGENCY_RETRY_MS)
+      : 60000,
     localApiPort: 3000,
     localDevPorts: Object.freeze([3000]),
     localhostNames: Object.freeze(["localhost", "127.0.0.1"]),
@@ -50,6 +56,16 @@
             name: "TimeAPI.io",
             url: "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Muscat",
             parser: "timeapiio",
+          }),
+        ],
+    ),
+    remoteHttpDateSources: Object.freeze(
+      Array.isArray(global.APP_CONFIG?.REMOTE_HTTP_DATE_SOURCES) && global.APP_CONFIG.REMOTE_HTTP_DATE_SOURCES.length > 0
+        ? global.APP_CONFIG.REMOTE_HTTP_DATE_SOURCES
+        : [
+          Object.freeze({
+            name: "HTTP Date",
+            url: "https://httpbin.org/response-headers?Access-Control-Allow-Origin=*&Access-Control-Expose-Headers=Date",
           }),
         ],
     ),

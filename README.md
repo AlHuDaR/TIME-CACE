@@ -6,7 +6,7 @@ TIME-CACE is the Royal Air Force of Oman Calibration Center (CACE) reference-tim
 
 - The **backend is the authoritative timing engine**.
 - The **frontend displays the backend-selected source, status, and monitoring metadata** whenever backend data is available.
-- A **browser emergency fallback** is used **only** when the backend is unreachable or returns invalid data.
+- A **frontend emergency fallback hierarchy** is used **only** when the backend is unreachable, times out, or returns invalid/unusable JSON.
 - The application **does not scrape HTML clock pages**.
 - Receiver logic remains backend-only and uses the configured LAN / receiver connection.
 
@@ -47,7 +47,43 @@ The backend resolves time in this exact order:
 
 7. **Local Clock**
    - Used by the backend only as the final emergency fallback if all remote backend sources fail.
-   - If the backend itself is unavailable or returns invalid data, the browser may temporarily display **BROWSER LOCAL CLOCK** as the last-resort emergency fallback.
+   - If the backend itself is unavailable or returns invalid data, the frontend uses its own emergency fallback chain described below.
+
+## Frontend Emergency Fallback Mode
+
+The frontend keeps the backend-first design intact:
+
+- If `GET /api/time` returns usable JSON, the frontend uses the backend-selected `sourceKey`, `sourceLabel`, `status`, and timing data exactly as returned.
+- If the backend is unavailable, times out, returns non-OK data that cannot be used, returns invalid JSON, or omits the required runtime timestamp, the frontend activates the emergency hierarchy below.
+- Frontend emergency sources are **continuity fallbacks only**. They are **not equivalent to GPS or traceable NTP**.
+
+When backend runtime data cannot be used, the frontend now tries:
+
+1. **HTTPS TIME API (WorldTimeAPI)**
+2. **HTTPS TIME API (TimeAPI.io)**
+3. **INTERNET/HTTP DATE**
+4. **BROWSER LOCAL CLOCK**
+
+### Frontend emergency labels
+
+- `HTTPS TIME API (WorldTimeAPI)` / `Internet fallback active`
+- `HTTPS TIME API (TimeAPI.io)` / `Internet fallback active`
+- `INTERNET/HTTP DATE` / `Internet fallback active`
+- `BROWSER LOCAL CLOCK` / `Browser emergency fallback active`
+
+### Interpretation notes
+
+- `LOCAL CLOCK` means the **backend** is still online and explicitly selected its own workstation/local emergency fallback.
+- `BROWSER LOCAL CLOCK` means the **frontend** could not get usable backend timing and also could not get usable browser-accessible internet time.
+- Browser fallbacks are intentionally labeled differently so they are never confused with GPS, NTP, or backend-selected sources.
+
+### Browser / CORS limitations
+
+- Browser access to third-party time services depends on each provider allowing cross-origin requests.
+- Browser access to HTTP `Date` headers depends on the endpoint exposing that header to JavaScript via CORS response headers such as `Access-Control-Expose-Headers: Date`.
+- If a third-party API is blocked by CORS, times out, or returns an invalid payload, the frontend catches the failure quietly and moves to the next emergency source.
+- The frontend keeps ticking locally between successful emergency refreshes to avoid excessive third-party polling.
+- No new npm dependencies were required for the frontend emergency fallback implementation.
 
 ## Source labels and status language
 
@@ -83,7 +119,7 @@ The backend resolves time in this exact order:
 - `gps-proxy.js` — Express API, receiver access, timing payload shaping, and static serving.
 - `time-source-service.js` — backend NTP, HTTPS API, HTTP Date, and local fallback resolution.
 - `receiver-protocol.js` — receiver TCP helpers, parsing, and configuration validation.
-- `runtime-sync.js` — frontend synchronization runtime and browser emergency fallback handling.
+- `runtime-sync.js` — frontend synchronization runtime, backend-first validation, and frontend emergency fallback handling.
 - `status-monitor.js` — frontend monitoring normalization and severity logic.
 - `dashboard-render.js` — dashboard cards, badges, and monitoring presentation.
 - `fallback-card.js` — controlled fallback notification card behavior.
@@ -185,7 +221,8 @@ Then open either:
 - When backend JSON is valid, the frontend trusts the backend-selected `sourceKey`, `sourceLabel`, `status`, and monitoring metadata.
 - Receiver unreachability **does not** mean the backend is offline; the backend may still select a valid fallback source.
 - `LOCAL CLOCK` appears only when the backend explicitly selects it.
-- `BROWSER LOCAL CLOCK` appears only when `/api/time` or `/api/status` cannot provide valid backend data.
+- `BROWSER LOCAL CLOCK` appears only when `/api/time` cannot provide valid backend data and the browser-accessible emergency internet hierarchy also fails.
+- Frontend emergency internet labels indicate a browser-side continuity mode, not a traceable or authoritative replacement for backend GPS/NTP selection.
 - The UI keeps the dashboard/official-time layout intact while updating source cards, lock state messaging, and fallback wording to match the backend model.
 
 ## Testing
