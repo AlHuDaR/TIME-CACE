@@ -19,6 +19,9 @@
     requestTimeoutMs: Number(global.APP_CONFIG?.API_REQUEST_TIMEOUT_MS) > 0
       ? Number(global.APP_CONFIG.API_REQUEST_TIMEOUT_MS)
       : 5000,
+    remoteTimeRequestTimeoutMs: Number(global.APP_CONFIG?.REMOTE_TIME_REQUEST_TIMEOUT_MS) > 0
+      ? Number(global.APP_CONFIG.REMOTE_TIME_REQUEST_TIMEOUT_MS)
+      : 5000,
     localApiPort: 3000,
     localDevPorts: Object.freeze([3000]),
     localhostNames: Object.freeze(["localhost", "127.0.0.1"]),
@@ -34,6 +37,22 @@
     apiAuthToken: typeof global.APP_CONFIG?.API_AUTH_TOKEN === "string"
       ? global.APP_CONFIG.API_AUTH_TOKEN.trim()
       : "",
+    remoteInternetTimeSources: Object.freeze(
+      Array.isArray(global.APP_CONFIG?.REMOTE_TIME_SOURCES) && global.APP_CONFIG.REMOTE_TIME_SOURCES.length > 0
+        ? global.APP_CONFIG.REMOTE_TIME_SOURCES
+        : [
+          Object.freeze({
+            name: "WorldTimeAPI",
+            url: "https://worldtimeapi.org/api/timezone/Asia/Muscat",
+            parser: "worldtimeapi",
+          }),
+          Object.freeze({
+            name: "TimeAPI.io",
+            url: "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Muscat",
+            parser: "timeapiio",
+          }),
+        ],
+    ),
     statusLabels: Object.freeze({
       success: "Success",
       error: "Error",
