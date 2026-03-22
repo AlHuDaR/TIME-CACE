@@ -202,46 +202,56 @@ function createTimingSourceService(options = {}) {
   };
 
   async function queryNtpGroup(sourceKey, hosts = []) {
+    if (!Array.isArray(hosts) || hosts.length === 0) {
+      throw new Error(`No ${sourceKey} server reachable`);
+    }
+
+    const attempts = hosts.map((host) => queryNtpSource({
+      host,
+      timeoutMs: config.ntpTimeoutMs,
+      sourceKey,
+      sourceHost: host,
+    }));
+    const results = await Promise.allSettled(attempts);
     let lastError = null;
 
-    for (const host of hosts) {
-      try {
-        return await queryNtpSource({
-          host,
-          timeoutMs: config.ntpTimeoutMs,
-          sourceKey,
-          sourceHost: host,
-        });
-      } catch (error) {
-        lastError = error;
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        return result.value;
       }
+      lastError = result.reason;
     }
 
     throw lastError || new Error(`No ${sourceKey} server reachable`);
   }
 
   async function resolveTraceableFallback() {
+    const attempts = [
+      {
+        sourceKey: 'ntp-nist',
+        task: queryNtpGroup('ntp-nist', config.nistHosts),
+      },
+      {
+        sourceKey: 'ntp-npl-india',
+        task: queryNtpGroup('ntp-npl-india', config.nplHosts),
+      },
+      {
+        sourceKey: 'http-date',
+        task: queryHttpDateSource({
+          urls: config.httpDateUrls,
+          timeoutMs: config.httpTimeoutMs,
+        }),
+      },
+    ];
+    const results = await Promise.allSettled(attempts.map((attempt) => attempt.task));
     const errors = [];
 
-    try {
-      return await queryNtpGroup('ntp-nist', config.nistHosts);
-    } catch (error) {
-      errors.push({ sourceKey: 'ntp-nist', error });
-    }
-
-    try {
-      return await queryNtpGroup('ntp-npl-india', config.nplHosts);
-    } catch (error) {
-      errors.push({ sourceKey: 'ntp-npl-india', error });
-    }
-
-    try {
-      return await queryHttpDateSource({
-        urls: config.httpDateUrls,
-        timeoutMs: config.httpTimeoutMs,
-      });
-    } catch (error) {
-      errors.push({ sourceKey: 'http-date', error });
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index];
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+      errors.push({ sourceKey: attempts[index].sourceKey, error: result.reason });
     }
 
     return {

@@ -112,6 +112,30 @@ async function runTests() {
     assert.equal(result.traceable, false);
   });
 
+  await withUdpServer((server) => (message, rinfo) => {
+    setTimeout(() => {
+      server.send(createNtpResponse(), rinfo.port, rinfo.address);
+    }, 120);
+  }, async (port) => {
+    const service = createTimingSourceService({
+      ntpTimeoutMs: 250,
+      httpTimeoutMs: 250,
+      nistHosts: [`127.0.0.1:${port}`],
+      nplHosts: ['203.0.113.40:123'],
+      httpDateUrls: ['http://127.0.0.1:9'],
+    });
+
+    const startedAt = Date.now();
+    const result = await service.resolveTraceableFallback();
+    const elapsed = Date.now() - startedAt;
+
+    assert.equal(result.sourceKey, 'ntp-nist');
+    assert.ok(
+      elapsed < 350,
+      `Expected fallback resolution to run in parallel and finish quickly, but took ${elapsed} ms`,
+    );
+  });
+
   const localOnly = createTimingSourceService({
     ntpTimeoutMs: 50,
     httpTimeoutMs: 50,
