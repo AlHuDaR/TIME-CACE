@@ -31,6 +31,7 @@ function readEnvNumber(name, fallback) {
 const FRONTEND_ASSET_FILES = Object.freeze([
   "index.html",
   "official-time.html",
+  "official-digital-time.html",
   "api-client.js",
   "status-monitor.js",
   "fallback-card.js",
@@ -39,6 +40,7 @@ const FRONTEND_ASSET_FILES = Object.freeze([
   "ui-controls.js",
   "main.js",
   "official-time.js",
+  "official-digital-time.js",
   "analog-clock.js",
   "styles.css",
 ]);
@@ -1092,6 +1094,11 @@ if (CONFIG.serveStatic) {
   app.get("/official-time", (req, res) => {
     setNoStore(res);
     res.sendFile(path.join(publicPath, "official-time.html"));
+  });
+
+  app.get("/official-digital-time", (req, res) => {
+    setNoStore(res);
+    res.sendFile(path.join(publicPath, "official-digital-time.html"));
   });
 
   app.get("/dashboard", (req, res) => {
