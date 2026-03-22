@@ -1071,7 +1071,18 @@
   }
 
   getCurrentState() {
-    return this.currentState;
+    const offsetMs = Number.isFinite(this.timeOffset) ? this.timeOffset : 0;
+    const lastSyncTime = this.lastSyncTime || (this.lastSyncTimestamp ? new Date(this.lastSyncTimestamp) : null);
+
+    return {
+      ...this.currentState,
+      receiverStatus: this.getReceiverStatus(),
+      sessionState: this.getSessionState(),
+      offset: offsetMs,
+      offsetMs,
+      lastSyncTime,
+      lastSyncTimestamp: this.lastSyncTimestamp,
+    };
   }
 
   getReceiverStatus() {
