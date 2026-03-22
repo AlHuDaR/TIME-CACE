@@ -33,7 +33,7 @@
       this.lastStatusPollAttemptAt = null;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
-      this.currentState = this.createState({ currentSource: "local" });
+      this.currentState = this.createState({ currentSource: "local-clock", sourceKey: "local-clock" });
     }
 
   createSessionState(overrides = {}) {
@@ -57,9 +57,15 @@
       isLocked: false,
       gpsLockState: "unknown",
       statusText: "System status not checked yet",
-      currentSource: "local",
-      currentSourceLabel: "Local fallback",
-      internetFallbackMode: null,
+      status: "Emergency local fallback active",
+      currentSource: "local-clock",
+      currentSourceLabel: "LOCAL CLOCK",
+      sourceKey: "local-clock",
+      sourceLabel: "LOCAL CLOCK",
+      sourceTier: "emergency-fallback",
+      authoritative: false,
+      traceable: false,
+      fallback: true,
       receiverCommunicationState: "not-started",
       fallbackReason: null,
       lastError: null,
@@ -89,21 +95,28 @@
       loginOk: false,
       isLocked: false,
       gpsLockState: "unknown",
-      statusText: "Using local computer time",
-      currentSource: "local",
-      currentSourceLabel: "Local computer time",
+      statusText: "Emergency local fallback active",
+      status: "Emergency local fallback active",
+      currentSource: "local-clock",
+      currentSourceLabel: "LOCAL CLOCK",
+      sourceKey: "local-clock",
+      sourceLabel: "LOCAL CLOCK",
+      sourceTier: "emergency-fallback",
+      authoritative: false,
+      traceable: false,
+      fallback: true,
       fallbackReason: null,
       lastError: null,
       date: null,
       time: null,
       timestamp: Date.now(),
+      isoTimestamp: new Date().toISOString(),
       raw: null,
-      sourceLabel: "Local computer time",
-      internetFallbackMode: null,
-      remoteSourceName: null,
-      remoteSourceUrl: null,
       roundTripMs: null,
       monitoringState: null,
+      upstream: null,
+      protocol: null,
+      resolutionErrors: [],
       ...overrides,
     };
   }
@@ -145,23 +158,29 @@
   }
 
   buildErrorState(error, fallback = {}) {
+    const payload = error?.payload || {};
     return this.createState({
-      backendOnline: Boolean(error?.payload?.backendOnline),
-      receiverConfigured: error?.payload?.receiverConfigured !== false,
-      receiverReachable: Boolean(error?.payload?.receiverReachable),
-      loginOk: Boolean(error?.payload?.loginOk),
-      isLocked: Boolean(error?.payload?.isLocked),
-      gpsLockState: error?.payload?.gpsLockState || "unknown",
-      currentSource: error?.payload?.currentSource || fallback.currentSource || "local",
-      currentSourceLabel: error?.payload?.currentSourceLabel || fallback.currentSourceLabel || "Local fallback",
-      internetFallbackMode: error?.payload?.internetFallbackMode || fallback.internetFallbackMode || null,
-      remoteSourceName: error?.payload?.remoteSourceName || fallback.remoteSourceName || null,
-      remoteSourceUrl: error?.payload?.remoteSourceUrl || fallback.remoteSourceUrl || null,
-      roundTripMs: error?.payload?.roundTripMs || fallback.roundTripMs || null,
-      statusText: error?.payload?.statusText || fallback.statusText || `Backend unavailable: ${error.message}`,
-      lastError: error?.payload?.lastError || error.message,
-      monitoringState: error?.payload?.monitoringState || fallback.monitoringState || null,
-      fallbackReason: error?.payload?.fallbackReason || fallback.fallbackReason || null,
+      backendOnline: Boolean(payload.backendOnline),
+      receiverConfigured: payload.receiverConfigured !== false,
+      receiverReachable: Boolean(payload.receiverReachable),
+      loginOk: Boolean(payload.loginOk),
+      isLocked: Boolean(payload.isLocked),
+      gpsLockState: payload.gpsLockState || "unknown",
+      currentSource: payload.currentSource || fallback.currentSource || "local-clock",
+      currentSourceLabel: payload.currentSourceLabel || fallback.currentSourceLabel || "LOCAL CLOCK",
+      sourceKey: payload.sourceKey || payload.currentSource || fallback.sourceKey || fallback.currentSource || "local-clock",
+      sourceLabel: payload.sourceLabel || payload.currentSourceLabel || fallback.sourceLabel || fallback.currentSourceLabel || "LOCAL CLOCK",
+      sourceTier: payload.sourceTier || fallback.sourceTier || "emergency-fallback",
+      authoritative: Boolean(payload.authoritative ?? fallback.authoritative),
+      traceable: Boolean(payload.traceable ?? fallback.traceable),
+      fallback: payload.fallback !== undefined ? Boolean(payload.fallback) : (fallback.fallback !== false),
+      status: payload.status || fallback.status || "Emergency local fallback active",
+      roundTripMs: payload.roundTripMs || fallback.roundTripMs || null,
+      isoTimestamp: payload.isoTimestamp || fallback.isoTimestamp || new Date().toISOString(),
+      statusText: payload.statusText || fallback.statusText || `Backend unavailable: ${error.message}`,
+      lastError: payload.lastError || error.message,
+      monitoringState: payload.monitoringState || fallback.monitoringState || null,
+      fallbackReason: payload.fallbackReason || fallback.fallbackReason || null,
       ...fallback,
     });
   }
@@ -170,116 +189,54 @@
     let nextState = null;
 
     try {
-      const gpsResult = await this.fetchJson("/time");
-      if (gpsResult.success && gpsResult.timestamp) {
+      const payload = await this.fetchJson("/time");
+      if (payload?.timestamp) {
         nextState = this.createState({
           backendOnline: true,
-          receiverConfigured: gpsResult.receiverConfigured !== false,
-          receiverReachable: Boolean(gpsResult.receiverReachable ?? true),
-          loginOk: Boolean(gpsResult.loginOk ?? true),
-          isLocked: Boolean(gpsResult.isLocked),
-          gpsLockState: gpsResult.gpsLockState || (gpsResult.isLocked ? "locked" : "unknown"),
-          statusText: gpsResult.statusText || (gpsResult.isLocked ? "GPS receiver locked" : "GPS receiver reachable but not locked"),
-          currentSource: gpsResult.currentSource || (gpsResult.isLocked ? "gps-locked" : "gps-unlocked"),
-          currentSourceLabel: gpsResult.currentSourceLabel || humanizeSource(gpsResult.currentSource || "local"),
-          lastError: gpsResult.lastError || null,
-          date: gpsResult.date,
-          time: gpsResult.time,
-          timestamp: gpsResult.timestamp,
-          raw: gpsResult.raw || null,
-          sourceLabel: gpsResult.currentSourceLabel || (gpsResult.isLocked ? "GPS receiver locked" : "GPS receiver reachable, unlock state"),
-          internetFallbackMode: null,
-          remoteSourceName: null,
-          remoteSourceUrl: null,
-          roundTripMs: null,
-          monitoringState: gpsResult.monitoringState || null,
-          fallbackReason: gpsResult.fallbackReason || null,
+          receiverConfigured: payload.receiverConfigured !== false,
+          receiverReachable: Boolean(payload.receiverReachable),
+          loginOk: Boolean(payload.loginOk),
+          isLocked: Boolean(payload.isLocked),
+          gpsLockState: payload.gpsLockState || (payload.isLocked ? "locked" : "unknown"),
+          statusText: payload.statusText || payload.status || "Timing source update received",
+          status: payload.status || payload.statusText || "Timing source update received",
+          currentSource: payload.currentSource || payload.sourceKey || "local-clock",
+          currentSourceLabel: payload.currentSourceLabel || payload.sourceLabel || humanizeSource(payload.currentSource || payload.sourceKey || "local-clock"),
+          sourceKey: payload.sourceKey || payload.currentSource || "local-clock",
+          sourceLabel: payload.sourceLabel || payload.currentSourceLabel || humanizeSource(payload.currentSource || payload.sourceKey || "local-clock"),
+          sourceTier: payload.sourceTier || "emergency-fallback",
+          authoritative: Boolean(payload.authoritative),
+          traceable: Boolean(payload.traceable),
+          fallback: Boolean(payload.fallback),
+          lastError: payload.lastError || null,
+          date: payload.date,
+          time: payload.time,
+          timestamp: payload.timestamp,
+          isoTimestamp: payload.isoTimestamp || new Date(payload.timestamp).toISOString(),
+          raw: payload.raw || null,
+          roundTripMs: payload.roundTripMs || payload.rtt || null,
+          monitoringState: payload.monitoringState || null,
+          fallbackReason: payload.fallbackReason || null,
+          upstream: payload.upstream || null,
+          protocol: payload.protocol || null,
+          resolutionErrors: payload.resolutionErrors || [],
         });
       }
     } catch (error) {
       nextState = this.buildErrorState(error, {
-        currentSource: "local",
-        statusText: `Primary receiver time unavailable: ${error.message}`,
+        currentSource: "local-clock",
+        sourceKey: "local-clock",
+        sourceLabel: "LOCAL CLOCK",
+        sourceTier: "emergency-fallback",
+        authoritative: false,
+        traceable: false,
+        fallback: true,
+        status: "Emergency local fallback active",
+        statusText: `Backend unavailable: ${error.message}`,
       });
     }
 
-    if (!nextState || nextState.currentSource === "local") {
-      try {
-        const internetResult = await this.fetchJson("/time/internet");
-        if (internetResult.success && internetResult.timestamp) {
-          nextState = this.createState({
-            backendOnline: true,
-            receiverConfigured: internetResult.receiverConfigured !== false && nextState?.receiverConfigured !== false,
-            receiverReachable: Boolean(nextState?.receiverReachable || internetResult.receiverReachable),
-            loginOk: Boolean(nextState?.loginOk || internetResult.loginOk),
-            isLocked: false,
-            gpsLockState: nextState?.gpsLockState || "unknown",
-            statusText: internetResult.statusText || "Using Internet time fallback via backend",
-            currentSource: internetResult.currentSource || "internet-fallback",
-            currentSourceLabel: internetResult.currentSourceLabel || "Backend Internet fallback",
-            lastError: nextState?.lastError || internetResult.lastError || null,
-            date: internetResult.date,
-            time: internetResult.time,
-            timestamp: internetResult.timestamp,
-            raw: null,
-            sourceLabel: internetResult.currentSourceLabel || "Backend Internet fallback",
-            internetFallbackMode: internetResult.internetFallbackMode || "backend",
-            remoteSourceName: internetResult.remoteSourceName || null,
-            remoteSourceUrl: internetResult.remoteSourceUrl || null,
-            roundTripMs: internetResult.roundTripMs || internetResult.rtt || null,
-            monitoringState: internetResult.monitoringState || null,
-            fallbackReason: internetResult.fallbackReason || nextState?.fallbackReason || null,
-          });
-        }
-      } catch (error) {
-        if (nextState) {
-          nextState.backendOnline = nextState.backendOnline || Boolean(error?.payload?.backendOnline);
-          nextState.receiverConfigured = nextState.receiverConfigured && error?.payload?.receiverConfigured !== false;
-          nextState.receiverReachable = nextState.receiverReachable || Boolean(error?.payload?.receiverReachable);
-          nextState.loginOk = nextState.loginOk || Boolean(error?.payload?.loginOk);
-          nextState.lastError = nextState.lastError || error?.payload?.lastError || error.message;
-          nextState.fallbackReason = nextState.fallbackReason || error?.payload?.fallbackReason || null;
-        }
-      }
-    }
-
-    if (!nextState || nextState.currentSource === "local") {
-      try {
-        const remoteInternetResult = await this.fetchRemoteInternetTime();
-        nextState = this.createState({
-          ...nextState,
-          backendOnline: Boolean(nextState?.backendOnline),
-          receiverConfigured: nextState?.receiverConfigured !== false,
-          receiverReachable: Boolean(nextState?.receiverReachable),
-          loginOk: Boolean(nextState?.loginOk),
-          isLocked: false,
-          gpsLockState: nextState?.gpsLockState || "unknown",
-          statusText: nextState?.backendOnline
-            ? `Using remote Internet reference time because backend Internet fallback is unavailable`
-            : "Using remote Internet reference time because backend is unavailable",
-          currentSource: "internet-fallback",
-          currentSourceLabel: "Remote Internet fallback",
-          lastError: nextState?.lastError || null,
-          date: remoteInternetResult.date,
-          time: remoteInternetResult.time,
-          timestamp: remoteInternetResult.timestamp,
-          raw: null,
-          sourceLabel: "Remote Internet fallback",
-          internetFallbackMode: "remote-browser",
-          remoteSourceName: remoteInternetResult.remoteSourceName,
-          remoteSourceUrl: remoteInternetResult.remoteSourceUrl,
-          roundTripMs: remoteInternetResult.roundTripMs,
-          monitoringState: nextState?.monitoringState || null,
-          fallbackReason: nextState?.backendOnline ? "backend-fallback-unavailable" : "backend-offline",
-        });
-      } catch (error) {
-        if (nextState) {
-          nextState.lastError = nextState.lastError || error.message;
-        }
-      }
-    }
-
-    if (!nextState || nextState.currentSource === "local") {
+    if (!nextState) {
       const localResult = this.getLocalTime();
       nextState = this.createState({
         ...nextState,
@@ -289,20 +246,20 @@
         loginOk: Boolean(nextState?.loginOk),
         isLocked: false,
         gpsLockState: nextState?.gpsLockState || "unknown",
-        statusText: nextState?.backendOnline
-          ? "Using local computer time because backend and remote Internet fallbacks are unavailable"
-          : "Using local computer time because backend and remote Internet fallbacks are unavailable",
-        currentSource: "local",
-        currentSourceLabel: nextState?.backendOnline ? "Local computer time" : "Local device time",
+        currentSource: "local-clock",
+        currentSourceLabel: "LOCAL CLOCK",
+        sourceKey: "local-clock",
+        sourceLabel: "LOCAL CLOCK",
+        sourceTier: "emergency-fallback",
+        authoritative: false,
+        traceable: false,
+        fallback: true,
+        status: "Emergency local fallback active",
+        statusText: "Emergency local fallback active",
         lastError: nextState?.lastError || "No remote time source available",
         ...localResult,
-        sourceLabel: nextState?.backendOnline ? "Local computer time" : "Local device time",
-        internetFallbackMode: null,
-        remoteSourceName: null,
-        remoteSourceUrl: null,
-        roundTripMs: null,
         monitoringState: nextState?.monitoringState || null,
-        fallbackReason: nextState?.fallbackReason || (nextState?.backendOnline ? "backend-and-remote-fallback-unavailable" : "backend-offline-and-remote-fallback-unavailable"),
+        fallbackReason: nextState?.fallbackReason || "backend-offline",
       });
     }
 
@@ -373,8 +330,8 @@
           isLocked: false,
           gpsLockState: "unknown",
           statusText: `Status polling unavailable: ${error.message}`,
-          currentSource: this.receiverStatus.currentSource || "local",
-          currentSourceLabel: this.receiverStatus.currentSourceLabel || "Status unavailable",
+          currentSource: this.receiverStatus.currentSource || "local-clock",
+          currentSourceLabel: this.receiverStatus.currentSourceLabel || "LOCAL CLOCK",
           receiverCommunicationState: "backend-offline",
           fallbackReason: "backend-offline",
           lastError: error.message,
@@ -442,10 +399,11 @@
   }
 
   updateSessionMarkersFromState(state) {
-    if (state.currentSource === "gps-locked" && state.isLocked) {
+    if (state.currentSource === "gps-xli" && state.isLocked) {
       this.sessionState.lastKnownGoodGpsLockAt = new Date().toISOString();
-      this.sessionState.lastAuthoritativeTimeSyncAt = new Date().toISOString();
-    } else if (["gps-unlocked", "holdover"].includes(state.currentSource)) {
+    }
+
+    if (state.authoritative) {
       this.sessionState.lastAuthoritativeTimeSyncAt = new Date().toISOString();
     }
   }
@@ -494,11 +452,11 @@
 
     if (previousState.currentSource !== nextState.currentSource) {
       const sourceEventMap = {
-        "gps-locked": ["Runtime switched to GPS locked source.", "normal", "runtime-gps-locked"],
-        "gps-unlocked": ["Runtime using unlocked receiver state.", "warning", "runtime-gps-unlocked"],
-        holdover: ["Runtime using receiver holdover.", "warning", "runtime-holdover"],
-        "internet-fallback": ["Runtime switched to Internet fallback.", "advisory", "runtime-internet"],
-        local: ["Runtime degraded to local fallback.", "critical", "runtime-local"],
+        "gps-xli": ["Runtime restored GPS Receiver (XLi) as the primary reference.", "normal", "runtime-gps-xli"],
+        "ntp-nist": ["Runtime switched to NTP (NIST) fallback.", "advisory", "runtime-ntp-nist"],
+        "ntp-npl-india": ["Runtime switched to NTP (NPL India) fallback.", "advisory", "runtime-ntp-npl-india"],
+        "http-date": ["Runtime switched to Internet/HTTP Date fallback.", "warning", "runtime-http-date"],
+        "local-clock": ["Runtime degraded to local clock emergency fallback.", "critical", "runtime-local-clock"],
       };
       const [message, severity, key] = sourceEventMap[nextState.currentSource]
         || [`Runtime source changed to ${humanizeSource(nextState.currentSource)}.`, "advisory", `runtime-${nextState.currentSource}`];
@@ -575,113 +533,6 @@
     throw lastFailure || new Error("Unable to reach configured API endpoint");
   }
 
-  async fetchRemoteInternetTime() {
-    const sources = Array.isArray(APP_CONFIG.remoteInternetTimeSources)
-      ? APP_CONFIG.remoteInternetTimeSources
-      : [];
-    let lastFailure = null;
-
-    for (const source of sources) {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), APP_CONFIG.remoteTimeRequestTimeoutMs);
-      const startedAt = Date.now();
-
-      try {
-        const response = await fetch(source.url, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          signal: controller.signal,
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`${source.name || "Remote time source"} responded with ${response.status}`);
-        }
-
-        const payload = await response.json();
-        const finishedAt = Date.now();
-        const roundTripMs = Math.max(0, finishedAt - startedAt);
-        const timestamp = this.parseRemoteInternetTimestamp(payload, source);
-        const adjustedTimestamp = timestamp + Math.round(roundTripMs / 2);
-        const parts = this.getOmanDisplayParts(adjustedTimestamp);
-
-        return {
-          success: true,
-          timestamp: adjustedTimestamp,
-          date: parts.date,
-          time: parts.time,
-          remoteSourceName: source.name || "Remote Internet source",
-          remoteSourceUrl: source.url,
-          roundTripMs,
-        };
-      } catch (error) {
-        lastFailure = error.name === "AbortError"
-          ? new Error(`Remote time request timeout after ${APP_CONFIG.remoteTimeRequestTimeoutMs} ms`)
-          : error;
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
-    }
-
-    throw lastFailure || new Error("No remote Internet time source is reachable");
-  }
-
-  parseRemoteInternetTimestamp(payload, source) {
-    const parser = source?.parser || "";
-
-    if (parser === "worldtimeapi") {
-      if (typeof payload?.unixtime === "number") {
-        return payload.unixtime * 1000;
-      }
-      if (payload?.utc_datetime) {
-        const parsed = Date.parse(payload.utc_datetime);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
-      }
-      if (payload?.datetime) {
-        const parsed = Date.parse(payload.datetime);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
-      }
-    }
-
-    if (parser === "timeapiio") {
-      if (payload?.dateTime) {
-        const normalized = /([zZ]|[+\-]\d{2}:\d{2})$/.test(payload.dateTime)
-          ? payload.dateTime
-          : `${payload.dateTime}+04:00`;
-        const parsed = Date.parse(normalized);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
-      }
-    }
-
-    const candidates = [
-      payload?.timestamp,
-      payload?.currentDateTime,
-      payload?.utc_datetime,
-      payload?.datetime,
-      payload?.dateTime,
-    ];
-
-    for (const value of candidates) {
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value > 1e12 ? value : value * 1000;
-      }
-      if (typeof value === "string") {
-        const parsed = Date.parse(value);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
-      }
-    }
-
-    throw new Error(`Unable to parse timestamp from ${source?.name || "remote time source"}`);
-  }
-
   getOmanDisplayParts(timestamp) {
     const parts = OMAN_DATE_TIME_FORMATTER.formatToParts(new Date(timestamp));
     const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
@@ -699,6 +550,7 @@
     return {
       success: true,
       timestamp: now.getTime(),
+      isoTimestamp: now.toISOString(),
       date: `${map.month}/${map.day}/${map.year}`,
       time: formatTimeParts(map.hour, map.minute, map.second),
     };
@@ -719,26 +571,16 @@
     }
 
     const { currentSource, date, time, statusText } = this.currentState;
-    const type = currentSource === "gps-locked"
+    const type = currentSource === "gps-xli"
       ? "success"
-      : currentSource === "gps-unlocked" || currentSource === "holdover"
-        ? "warning"
-        : currentSource === "internet-fallback"
-          ? "info"
-          : "warning";
+      : ["ntp-nist", "ntp-npl-india"].includes(currentSource)
+        ? "info"
+        : currentSource === "http-date"
+          ? "warning"
+          : "error";
     const backendOnline = Boolean(this.currentState.backendOnline ?? this.receiverStatus.backendOnline);
     const receiverConfigured = this.receiverStatus.receiverConfigured !== false && this.currentState.receiverConfigured !== false;
-    const notificationMode = currentSource === "internet-fallback"
-      ? this.currentState.internetFallbackMode === "remote-browser"
-        ? "remote-browser-internet-fallback"
-        : receiverConfigured
-        ? "backend-internet-fallback"
-        : "hosted-internet-source"
-      : currentSource === "local"
-        ? backendOnline
-          ? "browser-emergency-fallback"
-          : "backend-offline-browser-fallback"
-        : "standard-runtime-source";
+    const notificationMode = currentSource;
 
     this.notifications.show(
       [
@@ -757,7 +599,7 @@
         receiverConfigured,
         internetFallbackMode: this.currentState.internetFallbackMode,
         notificationMode,
-        silentMode: currentSource === "internet-fallback",
+        silentMode: ["ntp-nist", "ntp-npl-india"].includes(currentSource),
       },
     );
 
@@ -780,33 +622,29 @@
 
   getSourceDisplayName(sourceOrState = this.currentState) {
     const state = typeof sourceOrState === "string"
-      ? { currentSource: sourceOrState, backendOnline: this.currentState.backendOnline, internetFallbackMode: this.currentState.internetFallbackMode }
+      ? { currentSource: sourceOrState, backendOnline: this.currentState.backendOnline }
       : (sourceOrState || this.currentState);
-    const source = state.currentSource || "local";
+    const source = state.currentSource || "local-clock";
     return {
-      "gps-locked": "GPS LOCKED",
-      "gps-unlocked": "RECEIVER UNLOCKED",
-      holdover: "RECEIVER HOLDOVER",
-      "internet-fallback": state.internetFallbackMode === "remote-browser" || state.backendOnline === false
-        ? "REMOTE INTERNET FALLBACK"
-        : "BACKEND INTERNET FALLBACK",
-      local: state.backendOnline === false ? "LOCAL DEVICE FALLBACK" : "LOCAL EMERGENCY FALLBACK",
+      "gps-xli": "GPS RECEIVER (XLi)",
+      "ntp-nist": "NTP (NIST)",
+      "ntp-npl-india": "NTP (NPL India)",
+      "http-date": "INTERNET/HTTP DATE",
+      "local-clock": "LOCAL CLOCK",
     }[source] || source.toUpperCase();
   }
 
   getReceiverSourceDisplayName(statusOrSource = this.receiverStatus) {
     const status = typeof statusOrSource === "string"
-      ? { currentSource: statusOrSource, backendOnline: this.receiverStatus.backendOnline, internetFallbackMode: this.receiverStatus.internetFallbackMode }
+      ? { currentSource: statusOrSource, backendOnline: this.receiverStatus.backendOnline }
       : (statusOrSource || this.receiverStatus);
-    const source = status.currentSource || "local";
+    const source = status.currentSource || "local-clock";
     return {
-      "gps-locked": "Receiver locked",
-      "gps-unlocked": "Receiver unlocked",
-      holdover: "Receiver holdover",
-      "internet-fallback": status.internetFallbackMode === "remote-browser" || status.backendOnline === false
-        ? "Remote Internet fallback"
-        : "Backend Internet fallback",
-      local: status.backendOnline ? "Local emergency fallback" : "Local device fallback",
+      "gps-xli": "GPS RECEIVER (XLi)",
+      "ntp-nist": "NTP (NIST)",
+      "ntp-npl-india": "NTP (NPL India)",
+      "http-date": "INTERNET/HTTP DATE",
+      "local-clock": "LOCAL CLOCK",
     }[source] || source.replace(/-/g, " ");
   }
 
@@ -859,7 +697,7 @@
   }
 
   isGPSLocked() {
-    return this.currentState.currentSource === "gps-locked" && this.currentState.isLocked;
+    return this.currentState.currentSource === "gps-xli" && this.currentState.isLocked;
   }
 
   startAutoSync() {

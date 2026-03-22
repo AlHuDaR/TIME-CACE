@@ -3,7 +3,6 @@ require("dotenv").config();
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
-const fetch = require("node-fetch");
 const {
   validateConfig,
   parseReceiverAcknowledgement,
@@ -11,6 +10,7 @@ const {
   classifyReceiverError,
   connectToGPS,
 } = require("./receiver-protocol");
+const { createTimingSourceService, getSourceDefinition } = require("./time-source-service");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -70,6 +70,11 @@ const CONFIG = validateConfig({
   rateLimitStatusMax: readEnvNumber("RATE_LIMIT_STATUS_MAX", 30),
   rateLimitInternetMax: readEnvNumber("RATE_LIMIT_INTERNET_MAX", 60),
   rateLimitSetMax: readEnvNumber("RATE_LIMIT_SET_MAX", 8),
+  ntpTimeoutMs: readEnvNumber("NTP_TIMEOUT_MS", 1500),
+  httpDateTimeoutMs: readEnvNumber("HTTP_DATE_TIMEOUT_MS", 2000),
+  nistHosts: Object.freeze((process.env.NTP_NIST_HOSTS || "time.nist.gov,time-a-g.nist.gov").split(",").map((value) => value.trim()).filter(Boolean)),
+  nplHosts: Object.freeze((process.env.NTP_NPL_HOSTS || "time.nplindia.org,samay1.nic.in").split(",").map((value) => value.trim()).filter(Boolean)),
+  httpDateUrls: Object.freeze((process.env.HTTP_DATE_URLS || "https://www.google.com,https://www.microsoft.com").split(",").map((value) => value.trim()).filter(Boolean)),
   receiverEnabled,
 });
 
@@ -95,9 +100,15 @@ let lastReceiverSnapshot = {
   loginOk: false,
   isLocked: false,
   gpsLockState: "unknown",
-  statusText: "Receiver status not checked yet",
-  currentSource: "local",
-  currentSourceLabel: CONFIG.receiverEnabled ? "Local fallback" : "Backend Internet fallback",
+  statusText: getSourceDefinition('local-clock').status,
+  currentSource: 'local-clock',
+  currentSourceLabel: getSourceDefinition('local-clock').sourceLabel,
+  sourceKey: 'local-clock',
+  sourceLabel: getSourceDefinition('local-clock').sourceLabel,
+  sourceTier: getSourceDefinition('local-clock').sourceTier,
+  authoritative: false,
+  traceable: false,
+  fallback: true,
   receiverCommunicationState: CONFIG.receiverEnabled ? "not-started" : "disabled",
   fallbackReason: CONFIG.receiverEnabled ? null : "receiver-not-configured",
   lastError: null,
@@ -114,6 +125,29 @@ let monitoringMemory = {
   lastSuccessfulAuthoritativeTimeSyncAt: null,
   statusBecameStaleAt: null,
   communicationIssueCount: 0,
+};
+
+const timingSourceService = createTimingSourceService({
+  ntpTimeoutMs: CONFIG.ntpTimeoutMs,
+  httpTimeoutMs: CONFIG.httpDateTimeoutMs,
+  nistHosts: CONFIG.nistHosts,
+  nplHosts: CONFIG.nplHosts,
+  httpDateUrls: CONFIG.httpDateUrls,
+});
+
+let lastResolvedTimeSource = {
+  sourceKey: "local-clock",
+  sourceLabel: getSourceDefinition("local-clock").sourceLabel,
+  sourceTier: getSourceDefinition("local-clock").sourceTier,
+  status: getSourceDefinition("local-clock").status,
+  authoritative: false,
+  traceable: false,
+  fallback: true,
+  stale: true,
+  timestamp: Date.now(),
+  isoTimestamp: new Date().toISOString(),
+  upstream: "local-system-clock",
+  resolutionErrors: [],
 };
 
 const rateLimitStore = new Map();
@@ -286,37 +320,6 @@ async function throttleReceiverAccess() {
   lastConnectionAttempt = Date.now();
 }
 
-function createLocalFallback(extra = {}) {
-  const now = new Date();
-  const payload = {
-    success: false,
-    source: "local",
-    currentSource: "local",
-    currentSourceLabel: "Local computer time",
-    date: formatOmanDate(now),
-    time: formatOmanTime(now),
-    timezone: "GST (UTC+04:00)",
-    timestamp: now.getTime(),
-    backendOnline: true,
-    receiverConfigured: CONFIG.receiverEnabled,
-    receiverReachable: false,
-    loginOk: false,
-    isLocked: false,
-    gpsLockState: "unknown",
-    statusText: "Using local fallback",
-    fallbackReason: "backend-fallback-unavailable",
-    lastError: null,
-    ...extra,
-  };
-  payload.monitoringState = deriveMonitoringState(payload, { dataState: "unavailable", stale: true });
-  payload.lastKnownGoodGpsLockAt = monitoringMemory.lastKnownGoodGpsLockAt;
-  payload.lastSuccessfulReceiverCommunicationAt = monitoringMemory.lastSuccessfulReceiverCommunicationAt;
-  payload.lastSuccessfulAuthoritativeTimeSyncAt = monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt;
-  payload.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt;
-  payload.consecutiveCommunicationFailures = monitoringMemory.communicationIssueCount;
-  return payload;
-}
-
 function getOmanDisplayParts(timestamp) {
   const date = new Date(timestamp);
 
@@ -326,91 +329,126 @@ function getOmanDisplayParts(timestamp) {
   };
 }
 
-async function getPreciseInternetTime() {
-  const timeSources = [
-    "https://time.google.com",
-    "https://www.time.gov",
-    "https://www.microsoft.com",
-  ];
+function updateLastResolvedTimeSource(selection = {}) {
+  lastResolvedTimeSource = {
+    ...lastResolvedTimeSource,
+    ...selection,
+    stale: Boolean(selection.stale),
+    timestamp: selection.timestamp || lastResolvedTimeSource.timestamp,
+    isoTimestamp: selection.isoTimestamp || lastResolvedTimeSource.isoTimestamp,
+    resolutionErrors: Array.isArray(selection.resolutionErrors) ? selection.resolutionErrors : (lastResolvedTimeSource.resolutionErrors || []),
+  };
 
-  const measurements = await Promise.allSettled(
-    timeSources.map(async (url) => {
-      const start = Date.now();
-      const response = await fetch(url, { method: "HEAD", timeout: 5000 });
-      const end = Date.now();
-      return {
-        url,
-        rtt: end - start,
-        date: response.headers.get("date"),
-      };
-    }),
-  );
-
-  const successful = measurements
-    .filter((entry) => entry.status === "fulfilled" && entry.value.date)
-    .map((entry) => entry.value);
-
-  if (successful.length === 0) {
-    throw new Error("No Internet time sources reachable");
+  if (lastResolvedTimeSource.authoritative) {
+    monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt = lastResolvedTimeSource.isoTimestamp;
   }
 
-  const best = successful.reduce((previous, current) => (previous.rtt < current.rtt ? previous : current));
-  const serverTime = new Date(best.date);
-  const adjustedTime = new Date(serverTime.getTime() + Math.round(best.rtt / 2));
-
-  return {
-    timestamp: adjustedTime.getTime(),
-    rtt: best.rtt,
-    sourcesReached: successful.length,
-  };
+  return lastResolvedTimeSource;
 }
 
-function createInternetFallbackPayload(extra = {}) {
-  return getPreciseInternetTime().then((internetTime) => {
-    const omanDisplay = getOmanDisplayParts(internetTime.timestamp);
-    const snapshot = {
-      ...lastReceiverSnapshot,
-      receiverConfigured: lastReceiverSnapshot.receiverConfigured,
-      currentSource: "internet-fallback",
-      currentSourceLabel: "Backend Internet fallback",
-      internetFallbackMode: "backend",
-      statusText: extra.statusText || (lastReceiverSnapshot.receiverConfigured === false
-        ? "Receiver not configured; using backend Internet time"
-        : "Using Internet time fallback via backend"),
-      fallbackReason: extra.fallbackReason || (lastReceiverSnapshot.receiverConfigured === false ? "receiver-not-configured" : "receiver-unavailable"),
-      lastError: extra.lastError || lastReceiverSnapshot.lastError || null,
-    };
+function buildTimingPayload(selection, extra = {}) {
+  const effectiveTimestamp = Number(selection.timestamp || Date.now());
+  const sourceDefinition = getSourceDefinition(selection.sourceKey || extra.sourceKey || 'local-clock');
+  const display = getOmanDisplayParts(effectiveTimestamp);
+  const fallback = sourceDefinition.fallback;
+  const payload = {
+    success: true,
+    source: sourceDefinition.sourceKey,
+    sourceKey: sourceDefinition.sourceKey,
+    sourceLabel: sourceDefinition.sourceLabel,
+    sourceTier: sourceDefinition.sourceTier,
+    status: sourceDefinition.status,
+    authoritative: sourceDefinition.authoritative,
+    traceable: sourceDefinition.traceable,
+    fallback,
+    stale: Boolean(extra.stale),
+    isoTimestamp: selection.isoTimestamp || new Date(effectiveTimestamp).toISOString(),
+    currentSource: sourceDefinition.sourceKey,
+    currentSourceLabel: sourceDefinition.sourceLabel,
+    date: display.date,
+    time: display.time,
+    timezone: 'GST (UTC+04:00)',
+    timestamp: effectiveTimestamp,
+    backendOnline: true,
+    receiverConfigured: extra.receiverConfigured !== false,
+    receiverReachable: Boolean(extra.receiverReachable),
+    loginOk: Boolean(extra.loginOk),
+    isLocked: sourceDefinition.sourceKey === 'gps-xli',
+    gpsLockState: extra.gpsLockState || (sourceDefinition.sourceKey === 'gps-xli' ? 'locked' : 'unknown'),
+    receiverCommunicationState: extra.receiverCommunicationState || (extra.receiverConfigured === false ? 'disabled' : 'not-started'),
+    statusText: extra.statusText || sourceDefinition.status,
+    fallbackReason: extra.fallbackReason || null,
+    lastError: extra.lastError || null,
+    upstream: selection.upstream || null,
+    protocol: selection.protocol || null,
+    roundTripMs: selection.roundTripMs ?? null,
+    resolutionErrors: Array.isArray(selection.resolutionErrors) ? selection.resolutionErrors : [],
+    monitoringState: null,
+    lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
+    lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
+    lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
+    statusBecameStaleAt: monitoringMemory.statusBecameStaleAt,
+    consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
+    ...extra,
+  };
 
-    return {
-      success: true,
-      source: "internet-http-date",
-      currentSource: "internet-fallback",
-      currentSourceLabel: "Backend Internet fallback",
-      internetFallbackMode: "backend",
-      date: omanDisplay.date,
-      time: omanDisplay.time,
-      timezone: "GST (UTC+04:00)",
-      timestamp: internetTime.timestamp,
-      backendOnline: true,
-      receiverConfigured: snapshot.receiverConfigured !== false,
-      receiverReachable: Boolean(snapshot.receiverReachable),
-      loginOk: Boolean(snapshot.loginOk),
-      isLocked: false,
-      gpsLockState: snapshot.gpsLockState || "unknown",
-      receiverCommunicationState: snapshot.receiverConfigured === false ? "disabled" : snapshot.receiverCommunicationState,
-      statusText: snapshot.statusText,
-      fallbackReason: snapshot.fallbackReason,
-      lastError: snapshot.lastError,
-      monitoringState: deriveMonitoringState(snapshot, { dataState: "cached", stale: false }),
-      lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
-      lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
-      lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
-      consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
-      rtt: internetTime.rtt,
-      sourcesReached: internetTime.sourcesReached,
-      ...extra,
-    };
+  payload.monitoringState = deriveMonitoringState(payload, { dataState: fallback ? 'cached' : 'live', stale: payload.stale });
+  updateLastResolvedTimeSource({
+    ...selection,
+    ...sourceDefinition,
+    timestamp: effectiveTimestamp,
+    isoTimestamp: payload.isoTimestamp,
+    stale: payload.stale,
+    fallback: payload.fallback,
+    authoritative: payload.authoritative,
+    traceable: payload.traceable,
   });
+  return payload;
+}
+
+function createLocalFallback(extra = {}) {
+  return buildTimingPayload({
+    ...getSourceDefinition('local-clock'),
+    timestamp: Date.now(),
+    isoTimestamp: new Date().toISOString(),
+    upstream: 'local-system-clock',
+    protocol: 'local',
+    roundTripMs: null,
+    resolutionErrors: extra.resolutionErrors || [],
+  }, {
+    statusText: extra.statusText || 'Emergency local fallback active',
+    fallbackReason: extra.fallbackReason || 'all-remote-sources-unavailable',
+    lastError: extra.lastError || null,
+    stale: true,
+    ...extra,
+  });
+}
+
+async function resolveNetworkFallback(baseContext = {}) {
+  const selection = await timingSourceService.resolveTraceableFallback();
+  const fallbackReason = selection.sourceKey === 'ntp-nist'
+    ? 'receiver-unavailable-nist-active'
+    : selection.sourceKey === 'ntp-npl-india'
+      ? 'receiver-unavailable-npl-active'
+      : selection.sourceKey === 'http-date'
+        ? 'receiver-and-ntp-unavailable-http-active'
+        : 'all-remote-sources-unavailable';
+  const statusText = selection.status;
+
+  return selection.sourceKey === 'local-clock'
+    ? createLocalFallback({
+      ...baseContext,
+      statusText,
+      fallbackReason,
+      resolutionErrors: selection.resolutionErrors,
+      lastError: baseContext.lastError || selection.resolutionErrors?.map((entry) => entry.message).join('; ') || null,
+    })
+    : buildTimingPayload(selection, {
+      ...baseContext,
+      statusText,
+      fallbackReason,
+      lastError: baseContext.lastError || null,
+    });
 }
 
 function connectToReceiver(command, overrides = {}) {
@@ -434,7 +472,21 @@ function buildStatusPayload(snapshot, overrides = {}) {
   const statusAgeMs = checkedAtMs === null ? null : Math.max(0, Date.now() - checkedAtMs);
   const dataState = overrides.dataState || "live";
   const stale = dataState !== "unavailable" && statusAgeMs !== null && statusAgeMs > CONFIG.statusStaleMs;
-  const monitoringState = deriveMonitoringState(snapshot, { dataState, stale });
+  const activeSourceKey = snapshot.currentSource || lastResolvedTimeSource.sourceKey || "local-clock";
+  const activeSource = getSourceDefinition(activeSourceKey);
+  const monitoringSnapshot = {
+    ...snapshot,
+    currentSource: activeSource.sourceKey,
+    currentSourceLabel: activeSource.sourceLabel,
+    sourceKey: activeSource.sourceKey,
+    sourceLabel: activeSource.sourceLabel,
+    sourceTier: activeSource.sourceTier,
+    status: activeSource.status,
+    authoritative: activeSource.authoritative,
+    traceable: activeSource.traceable,
+    fallback: activeSource.fallback,
+  };
+  const monitoringState = deriveMonitoringState(monitoringSnapshot, { dataState, stale });
   return {
     success: true,
     backendOnline: true,
@@ -443,9 +495,16 @@ function buildStatusPayload(snapshot, overrides = {}) {
     loginOk: Boolean(snapshot.loginOk),
     isLocked: Boolean(snapshot.isLocked),
     gpsLockState: snapshot.gpsLockState || (snapshot.isLocked ? "locked" : "unknown"),
-    statusText: snapshot.statusText || "Receiver status unavailable",
-    currentSource: snapshot.currentSource || "local",
-    currentSourceLabel: snapshot.currentSourceLabel || "Local fallback",
+    statusText: snapshot.statusText || activeSource.status,
+    currentSource: activeSource.sourceKey,
+    currentSourceLabel: activeSource.sourceLabel,
+    sourceKey: activeSource.sourceKey,
+    sourceLabel: activeSource.sourceLabel,
+    sourceTier: activeSource.sourceTier,
+    status: activeSource.status,
+    authoritative: activeSource.authoritative,
+    traceable: activeSource.traceable,
+    fallback: activeSource.fallback,
     receiverCommunicationState: snapshot.receiverCommunicationState || "not-started",
     fallbackReason: snapshot.fallbackReason || null,
     lastError: snapshot.lastError || null,
@@ -456,6 +515,8 @@ function buildStatusPayload(snapshot, overrides = {}) {
     stale,
     fetchedFromCache: false,
     cacheAgeMs: null,
+    upstream: snapshot.upstream || lastResolvedTimeSource.upstream || null,
+    protocol: snapshot.protocol || lastResolvedTimeSource.protocol || null,
     monitoringState,
     lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
     lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
@@ -467,14 +528,14 @@ function buildStatusPayload(snapshot, overrides = {}) {
 }
 
 function deriveMonitoringState(snapshot, { dataState = "live", stale = false } = {}) {
-  const runtimeTimeSourceState = snapshot.currentSource === "gps-locked"
+  const runtimeTimeSourceState = snapshot.sourceTier === "primary-reference"
     ? "healthy"
-    : snapshot.currentSource === "internet-fallback"
+    : snapshot.sourceTier === "traceable-fallback"
       ? "degraded"
-      : snapshot.currentSource === "local"
-        ? "unavailable"
-        : ["gps-unlocked", "holdover"].includes(snapshot.currentSource)
-          ? "warning"
+      : snapshot.sourceTier === "non-traceable-fallback"
+        ? "warning"
+        : snapshot.sourceTier === "emergency-fallback"
+          ? "unavailable"
           : "unknown";
   const receiverHealthState = snapshot.receiverConfigured === false
     ? "standby"
@@ -503,9 +564,11 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
           : "unknown";
 
   let timingIntegrityState = "high";
-  if (snapshot.currentSource === "local" || dataState === "unavailable") {
+  if (snapshot.sourceTier === "emergency-fallback" || dataState === "unavailable") {
     timingIntegrityState = "low";
-  } else if (snapshot.receiverConfigured === false || snapshot.currentSource === "internet-fallback") {
+  } else if (snapshot.sourceTier === "non-traceable-fallback") {
+    timingIntegrityState = "degraded";
+  } else if (snapshot.sourceTier === "traceable-fallback") {
     timingIntegrityState = "reduced";
   } else if (!snapshot.receiverReachable || !snapshot.loginOk || snapshot.gpsLockState === "holdover" || stale) {
     timingIntegrityState = "degraded";
@@ -514,9 +577,11 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
   }
 
   let alarmSeverityState = "normal";
-  if (snapshot.currentSource === "local") {
+  if (snapshot.sourceTier === "emergency-fallback") {
     alarmSeverityState = "critical";
-  } else if (snapshot.currentSource === "internet-fallback") {
+  } else if (snapshot.sourceTier === "non-traceable-fallback") {
+    alarmSeverityState = "warning";
+  } else if (snapshot.sourceTier === "traceable-fallback") {
     alarmSeverityState = snapshot.receiverConfigured === false ? "advisory" : "warning";
   } else if (snapshot.receiverConfigured !== false && (!snapshot.receiverReachable || !snapshot.loginOk)) {
     alarmSeverityState = "critical";
@@ -576,7 +641,6 @@ async function readReceiverTime() {
 
   const connection = await connectToReceiver("F3\r\n");
   const parsed = parseGpsTimeResponse(connection.raw);
-  const omanDisplay = getOmanDisplayParts(parsed.timestamp);
 
   const snapshot = updateReceiverSnapshot({
     receiverConfigured: true,
@@ -584,43 +648,65 @@ async function readReceiverTime() {
     loginOk: connection.loginOk,
     isLocked: parsed.isLocked,
     gpsLockState: parsed.gpsLockState,
-    statusText: parsed.statusText,
-    currentSource: parsed.currentSource,
-    currentSourceLabel: parsed.currentSourceLabel,
-    receiverCommunicationState: connection.loginOk ? "authenticated" : "reachable",
+    statusText: parsed.isLocked ? getSourceDefinition('gps-xli').status : parsed.statusText,
+    currentSource: parsed.isLocked ? 'gps-xli' : (lastResolvedTimeSource.sourceKey || 'local-clock'),
+    currentSourceLabel: parsed.isLocked ? getSourceDefinition('gps-xli').sourceLabel : (lastResolvedTimeSource.sourceLabel || getSourceDefinition('local-clock').sourceLabel),
+    sourceKey: parsed.isLocked ? 'gps-xli' : (lastResolvedTimeSource.sourceKey || 'local-clock'),
+    sourceLabel: parsed.isLocked ? getSourceDefinition('gps-xli').sourceLabel : (lastResolvedTimeSource.sourceLabel || getSourceDefinition('local-clock').sourceLabel),
+    sourceTier: parsed.isLocked ? getSourceDefinition('gps-xli').sourceTier : (lastResolvedTimeSource.sourceTier || getSourceDefinition('local-clock').sourceTier),
+    authoritative: parsed.isLocked,
+    traceable: parsed.isLocked,
+    fallback: !parsed.isLocked,
+    receiverCommunicationState: connection.loginOk ? 'authenticated' : 'reachable',
     lastError: null,
   });
-  monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt = snapshot.checkedAt;
 
-  return {
-    success: true,
-    source: "gps-receiver",
-    timezone: "GST (UTC+04:00)",
+  if (!parsed.isLocked) {
+    const lockError = new Error(parsed.statusText);
+    lockError.code = 'GPS_UNLOCKED';
+    lockError.parsed = parsed;
+    lockError.connection = connection;
+    throw lockError;
+  }
+
+  const payload = buildTimingPayload({
+    ...getSourceDefinition('gps-xli'),
+    timestamp: parsed.timestamp,
+    isoTimestamp: new Date(parsed.timestamp).toISOString(),
+    upstream: CONFIG.gpsHost,
+    protocol: 'receiver',
+    roundTripMs: null,
+  }, {
     backendOnline: true,
     receiverConfigured: true,
     receiverReachable: snapshot.receiverReachable,
     loginOk: snapshot.loginOk,
-    isLocked: snapshot.isLocked,
-    statusText: snapshot.statusText,
-    currentSource: snapshot.currentSource,
-    currentSourceLabel: snapshot.currentSourceLabel,
-    internetFallbackMode: snapshot.internetFallbackMode || null,
+    isLocked: true,
     gpsLockState: snapshot.gpsLockState,
     receiverCommunicationState: snapshot.receiverCommunicationState,
-    lastError: null,
-    monitoringState: deriveMonitoringState(snapshot, { dataState: "live", stale: false }),
-    lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
-    lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
-    lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
-    consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
-    date: omanDisplay.date,
-    time: omanDisplay.time,
-    timestamp: parsed.timestamp,
+    statusText: getSourceDefinition('gps-xli').status,
+    raw: parsed.raw,
     receiverDate: parsed.receiverDate,
     receiverTime: parsed.receiverTime,
     receiverTimeMode: parsed.receiverTimeMode,
-    raw: parsed.raw,
-  };
+  });
+
+  updateReceiverSnapshot({
+    ...snapshot,
+    statusText: payload.statusText,
+    currentSource: payload.currentSource,
+    currentSourceLabel: payload.currentSourceLabel,
+    sourceKey: payload.sourceKey,
+    sourceLabel: payload.sourceLabel,
+    sourceTier: payload.sourceTier,
+    authoritative: payload.authoritative,
+    traceable: payload.traceable,
+    fallback: payload.fallback,
+    upstream: payload.upstream,
+    protocol: payload.protocol,
+  });
+
+  return payload;
 }
 
 async function readReceiverStatusCached({ force = false } = {}) {
@@ -632,10 +718,15 @@ async function readReceiverStatusCached({ force = false } = {}) {
       loginOk: false,
       isLocked: false,
       gpsLockState: "unknown",
-      statusText: "Receiver not configured; backend Internet fallback ready",
-      currentSource: "internet-fallback",
-      currentSourceLabel: "Backend Internet fallback",
-      internetFallbackMode: "backend",
+      statusText: getSourceDefinition(lastResolvedTimeSource.sourceKey || "local-clock").status,
+      currentSource: lastResolvedTimeSource.sourceKey || "local-clock",
+      currentSourceLabel: lastResolvedTimeSource.sourceLabel || getSourceDefinition("local-clock").sourceLabel,
+      sourceKey: lastResolvedTimeSource.sourceKey || "local-clock",
+      sourceLabel: lastResolvedTimeSource.sourceLabel || getSourceDefinition("local-clock").sourceLabel,
+      sourceTier: lastResolvedTimeSource.sourceTier || getSourceDefinition("local-clock").sourceTier,
+      authoritative: Boolean(lastResolvedTimeSource.authoritative),
+      traceable: Boolean(lastResolvedTimeSource.traceable),
+      fallback: lastResolvedTimeSource.fallback !== false,
       receiverCommunicationState: "disabled",
       fallbackReason: "receiver-not-configured",
       lastError: null,
@@ -668,6 +759,12 @@ async function readReceiverStatusCached({ force = false } = {}) {
         statusText: receiverTime.statusText,
         currentSource: receiverTime.currentSource,
         currentSourceLabel: receiverTime.currentSourceLabel,
+        sourceKey: receiverTime.sourceKey,
+        sourceLabel: receiverTime.sourceLabel,
+        sourceTier: receiverTime.sourceTier,
+        authoritative: receiverTime.authoritative,
+        traceable: receiverTime.traceable,
+        fallback: receiverTime.fallback,
         receiverCommunicationState: receiverTime.loginOk ? "authenticated" : "reachable",
         lastError: null,
       }, { dataState: "live" });
@@ -734,24 +831,32 @@ app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
     res.json(status);
   } catch (error) {
     const classified = classifyReceiverError(error);
+    const activeSource = getSourceDefinition(lastResolvedTimeSource.sourceKey || 'local-clock');
     const snapshot = updateReceiverSnapshot({
       receiverConfigured: classified.receiverConfigured !== false,
       receiverReachable: classified.receiverReachable,
       loginOk: classified.loginOk,
       isLocked: false,
-      gpsLockState: "unknown",
-      statusText: classified.statusText,
-      currentSource: classified.receiverConfigured === false ? "internet-fallback" : "local",
-      currentSourceLabel: classified.receiverConfigured === false ? "Backend Internet fallback" : "Local fallback",
-      internetFallbackMode: classified.receiverConfigured === false ? "backend" : null,
+      gpsLockState: error?.parsed?.gpsLockState || 'unknown',
+      statusText: activeSource.status,
+      currentSource: activeSource.sourceKey,
+      currentSourceLabel: activeSource.sourceLabel,
+      sourceKey: activeSource.sourceKey,
+      sourceLabel: activeSource.sourceLabel,
+      sourceTier: activeSource.sourceTier,
+      authoritative: activeSource.authoritative,
+      traceable: activeSource.traceable,
+      fallback: activeSource.fallback,
       receiverCommunicationState: classified.receiverCommunicationState,
-      fallbackReason: classified.receiverConfigured === false ? "receiver-not-configured" : "receiver-unavailable",
+      fallbackReason: classified.receiverConfigured === false ? 'receiver-not-configured' : 'receiver-unavailable',
       lastError: classified.lastError,
+      upstream: lastResolvedTimeSource.upstream || null,
+      protocol: lastResolvedTimeSource.protocol || null,
     });
 
     res.json(sanitizeReceiverStatus(snapshot, {
       success: false,
-      dataState: "unavailable",
+      dataState: 'unavailable',
     }));
   }
 });
@@ -767,81 +872,45 @@ app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
     res.json(receiverTime);
   } catch (error) {
     const classified = classifyReceiverError(error);
-
-    updateReceiverSnapshot({
+    const receiverContext = {
+      backendOnline: true,
       receiverConfigured: classified.receiverConfigured !== false,
       receiverReachable: classified.receiverReachable,
       loginOk: classified.loginOk,
       isLocked: false,
-      gpsLockState: "unknown",
-      statusText: classified.statusText,
-      currentSource: classified.receiverConfigured === false ? "internet-fallback" : "local",
-      currentSourceLabel: classified.receiverConfigured === false ? "Backend Internet fallback" : "Local fallback",
-      internetFallbackMode: classified.receiverConfigured === false ? "backend" : null,
+      gpsLockState: error?.parsed?.gpsLockState || 'unknown',
       receiverCommunicationState: classified.receiverCommunicationState,
-      fallbackReason: classified.receiverConfigured === false ? "receiver-not-configured" : "receiver-unavailable",
+      fallbackReason: classified.receiverConfigured === false ? 'receiver-not-configured' : 'receiver-unavailable',
       lastError: classified.lastError,
+    };
+
+    const resolvedPayload = await resolveNetworkFallback({
+      ...receiverContext,
+      statusText: classified.statusText,
     });
 
-    try {
-      const internetFallback = await createInternetFallbackPayload({
-        statusText: classified.receiverConfigured === false
-          ? "Receiver not configured; using backend Internet time"
-          : "Receiver unavailable; using backend Internet time",
-        fallbackReason: classified.receiverConfigured === false ? "receiver-not-configured" : "receiver-unavailable",
-        lastError: classified.lastError,
-      });
-      receiverStatusCache = {
-        promise: null,
-        data: sanitizeReceiverStatus({
-          ...lastReceiverSnapshot,
-          currentSource: "internet-fallback",
-          currentSourceLabel: "Backend Internet fallback",
-          internetFallbackMode: "backend",
-          statusText: internetFallback.statusText,
-          fallbackReason: internetFallback.fallbackReason,
-        }, { dataState: "cached" }),
-        expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
-      };
-      res.json(internetFallback);
-      return;
-    } catch (internetError) {
-      const fallback = createLocalFallback({
-        error: internetError.message,
-        statusText: CONFIG.receiverEnabled
-          ? "Using local computer time because receiver and backend Internet fallback are unavailable"
-          : "Using local computer time because backend Internet fallback is unavailable",
-        lastError: internetError.message,
-        receiverConfigured: classified.receiverConfigured !== false,
-        receiverReachable: classified.receiverReachable,
-        loginOk: classified.loginOk,
-        gpsLockState: "unknown",
-        receiverCommunicationState: classified.receiverCommunicationState,
-        fallbackReason: classified.receiverConfigured === false ? "internet-fallback-unavailable" : "receiver-and-internet-unavailable",
-      });
+    updateReceiverSnapshot({
+      ...receiverContext,
+      statusText: resolvedPayload.statusText,
+      currentSource: resolvedPayload.currentSource,
+      currentSourceLabel: resolvedPayload.currentSourceLabel,
+      sourceKey: resolvedPayload.sourceKey,
+      sourceLabel: resolvedPayload.sourceLabel,
+      sourceTier: resolvedPayload.sourceTier,
+      authoritative: resolvedPayload.authoritative,
+      traceable: resolvedPayload.traceable,
+      fallback: resolvedPayload.fallback,
+      upstream: resolvedPayload.upstream,
+      protocol: resolvedPayload.protocol,
+    });
 
-      updateReceiverSnapshot({
-        receiverConfigured: classified.receiverConfigured !== false,
-        receiverReachable: classified.receiverReachable,
-        loginOk: classified.loginOk,
-        isLocked: false,
-        gpsLockState: "unknown",
-        statusText: fallback.statusText,
-        currentSource: "local",
-        currentSourceLabel: "Local fallback",
-        receiverCommunicationState: classified.receiverCommunicationState,
-        fallbackReason: fallback.fallbackReason,
-        lastError: internetError.message,
-      });
+    receiverStatusCache = {
+      promise: null,
+      data: sanitizeReceiverStatus(lastReceiverSnapshot, { dataState: resolvedPayload.fallback ? 'cached' : 'live' }),
+      expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+    };
 
-      receiverStatusCache = {
-        promise: null,
-        data: sanitizeReceiverStatus(lastReceiverSnapshot, { dataState: "unavailable" }),
-        expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
-      };
-
-      res.status(503).json(fallback);
-    }
+    res.json(resolvedPayload);
   }
 });
 
@@ -852,9 +921,19 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
     let source;
 
     if (useInternet) {
-      const internetTime = await getPreciseInternetTime();
-      omanTimestamp = internetTime.timestamp;
-      source = "Internet";
+      const networkTime = await resolveNetworkFallback({
+        backendOnline: true,
+        receiverConfigured: CONFIG.receiverEnabled,
+        receiverReachable: Boolean(lastReceiverSnapshot.receiverReachable),
+        loginOk: Boolean(lastReceiverSnapshot.loginOk),
+        gpsLockState: lastReceiverSnapshot.gpsLockState || 'unknown',
+        receiverCommunicationState: lastReceiverSnapshot.receiverCommunicationState || 'not-started',
+      });
+      if (networkTime.sourceKey === 'local-clock') {
+        throw new Error('Traceable/network fallback unavailable for receiver set operation');
+      }
+      omanTimestamp = networkTime.timestamp;
+      source = networkTime.sourceLabel;
     } else {
       omanTimestamp = Date.now();
       source = "Computer";
@@ -915,8 +994,14 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
       isLocked: false,
       gpsLockState: "unknown",
       statusText: "Failed to set receiver time",
-      currentSource: "local",
-      currentSourceLabel: "Local fallback",
+      currentSource: lastResolvedTimeSource.sourceKey || 'local-clock',
+      currentSourceLabel: lastResolvedTimeSource.sourceLabel || getSourceDefinition('local-clock').sourceLabel,
+      sourceKey: lastResolvedTimeSource.sourceKey || 'local-clock',
+      sourceLabel: lastResolvedTimeSource.sourceLabel || getSourceDefinition('local-clock').sourceLabel,
+      sourceTier: lastResolvedTimeSource.sourceTier || getSourceDefinition('local-clock').sourceTier,
+      authoritative: Boolean(lastResolvedTimeSource.authoritative),
+      traceable: Boolean(lastResolvedTimeSource.traceable),
+      fallback: lastResolvedTimeSource.fallback !== false,
       receiverCommunicationState: classified.receiverCommunicationState,
       fallbackReason: "set-time-failed",
       lastError: error.message,
@@ -938,24 +1023,40 @@ app.post("/api/time/set", requireApiAuth, setTimeRateLimiter, async (req, res) =
 });
 
 app.get("/api/time/internet", requireApiAuth, internetRateLimiter, async (req, res) => {
-  try {
-    const payload = await createInternetFallbackPayload({
-      statusText: CONFIG.receiverEnabled
-        ? "Using Internet time fallback via backend"
-        : "Receiver not configured; using backend Internet time",
-      fallbackReason: CONFIG.receiverEnabled ? "receiver-unavailable" : "receiver-not-configured",
-    });
-    res.json(payload);
-  } catch (error) {
-    const fallback = createLocalFallback({
-      error: error.message,
-      statusText: "Internet time fallback unavailable",
-      lastError: error.message,
-      fallbackReason: "internet-fallback-unavailable",
-    });
+  const payload = await resolveNetworkFallback({
+    backendOnline: true,
+    receiverConfigured: CONFIG.receiverEnabled,
+    receiverReachable: Boolean(lastReceiverSnapshot.receiverReachable),
+    loginOk: Boolean(lastReceiverSnapshot.loginOk),
+    gpsLockState: lastReceiverSnapshot.gpsLockState || 'unknown',
+    receiverCommunicationState: CONFIG.receiverEnabled ? (lastReceiverSnapshot.receiverCommunicationState || 'not-started') : 'disabled',
+    fallbackReason: CONFIG.receiverEnabled ? 'receiver-unavailable' : 'receiver-not-configured',
+    lastError: lastReceiverSnapshot.lastError || null,
+  });
 
-    res.status(503).json(fallback);
-  }
+  updateReceiverSnapshot({
+    ...lastReceiverSnapshot,
+    currentSource: payload.currentSource,
+    currentSourceLabel: payload.currentSourceLabel,
+    sourceKey: payload.sourceKey,
+    sourceLabel: payload.sourceLabel,
+    sourceTier: payload.sourceTier,
+    authoritative: payload.authoritative,
+    traceable: payload.traceable,
+    fallback: payload.fallback,
+    statusText: payload.statusText,
+    fallbackReason: payload.fallbackReason,
+    upstream: payload.upstream,
+    protocol: payload.protocol,
+  });
+
+  receiverStatusCache = {
+    promise: null,
+    data: sanitizeReceiverStatus(lastReceiverSnapshot, { dataState: payload.fallback ? 'cached' : 'live' }),
+    expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+  };
+
+  res.json(payload);
 });
 
 if (CONFIG.serveStatic) {

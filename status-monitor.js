@@ -25,11 +25,11 @@
 
   function humanizeSource(source) {
     return {
-      "gps-locked": "Receiver locked",
-      "gps-unlocked": "Receiver unlocked",
-      holdover: "Receiver holdover",
-      "internet-fallback": "Backend Internet fallback",
-      local: "Local emergency fallback",
+      "gps-xli": "GPS RECEIVER (XLi)",
+      "ntp-nist": "NTP (NIST)",
+      "ntp-npl-india": "NTP (NPL India)",
+      "http-date": "INTERNET/HTTP DATE",
+      "local-clock": "LOCAL CLOCK",
     }[source] || source.replace(/-/g, " ");
   }
 
@@ -128,14 +128,14 @@
     const dataState = normalizeDataState(receiverStatus.dataState, receiverStatus.stale);
     const backendMonitoringState = receiverStatus.monitoringState || runtimeState.monitoringState || {};
     const receiverConfigured = receiverStatus.receiverConfigured !== false;
-    const runtimeTimeSourceState = runtimeState.currentSource === "gps-locked"
+    const runtimeTimeSourceState = runtimeState.sourceTier === "primary-reference"
       ? "healthy"
-      : runtimeState.currentSource === "internet-fallback"
+      : runtimeState.sourceTier === "traceable-fallback"
         ? "degraded"
-        : runtimeState.currentSource === "local"
-          ? "unavailable"
-          : ["gps-unlocked", "holdover"].includes(runtimeState.currentSource)
-            ? "warning"
+        : runtimeState.sourceTier === "non-traceable-fallback"
+          ? "warning"
+          : runtimeState.sourceTier === "emergency-fallback"
+            ? "unavailable"
             : "unknown";
     const receiverHealthState = !receiverStatus.backendOnline
       ? "unavailable"
@@ -184,34 +184,34 @@
     );
 
     const timingIntegrityState = backendMonitoringState.timingIntegrityState
-      || ((runtimeState.currentSource === "internet-fallback" && runtimeState.internetFallbackMode === "remote-browser")
-        ? "reduced"
-        : (!receiverStatus.backendOnline || runtimeState.currentSource === "local" || dataState === "unavailable"
+      || ((!receiverStatus.backendOnline || runtimeState.sourceTier === "emergency-fallback" || dataState === "unavailable")
         ? "low"
-        : (!receiverConfigured || runtimeState.currentSource === "internet-fallback")
-          ? "reduced"
-          : (!receiverStatus.receiverReachable || !receiverStatus.loginOk || receiverStatus.gpsLockState === "holdover" || dataState === "stale")
-            ? "degraded"
-            : (dataState === "cached" || receiverStatus.gpsLockState === "unlocked" || mismatchWhileFresh)
-              ? "reduced"
-              : "high"));
+        : (runtimeState.sourceTier === "non-traceable-fallback")
+          ? "degraded"
+          : (!receiverConfigured || runtimeState.sourceTier === "traceable-fallback")
+            ? "reduced"
+            : (!receiverStatus.receiverReachable || !receiverStatus.loginOk || receiverStatus.gpsLockState === "holdover" || dataState === "stale")
+              ? "degraded"
+              : (dataState === "cached" || receiverStatus.gpsLockState === "unlocked" || mismatchWhileFresh)
+                ? "reduced"
+                : "high");
 
     const alarmSeverityState = backendMonitoringState.alarmSeverityState
-      || ((runtimeState.currentSource === "internet-fallback" && runtimeState.internetFallbackMode === "remote-browser")
-        ? "warning"
-        : (!receiverStatus.backendOnline || runtimeState.currentSource === "local"
+      || ((!receiverStatus.backendOnline || runtimeState.sourceTier === "emergency-fallback")
         ? "critical"
-        : runtimeState.currentSource === "internet-fallback"
-          ? receiverConfigured ? "warning" : "advisory"
-          : (!receiverConfigured || (dataState === "cached" && runtimeState.currentSource !== "gps-locked"))
-            ? "advisory"
-            : (!receiverStatus.receiverReachable || !receiverStatus.loginOk)
-              ? "critical"
-              : (dataState === "stale" || receiverStatus.gpsLockState === "holdover" || receiverStatus.gpsLockState === "unlocked" || sessionState.communicationIssueCount >= 2)
-                ? "warning"
-                : mismatchWhileFresh
-                  ? "advisory"
-                  : "normal"));
+        : runtimeState.sourceTier === "non-traceable-fallback"
+          ? "warning"
+          : runtimeState.sourceTier === "traceable-fallback"
+            ? receiverConfigured ? "warning" : "advisory"
+            : (!receiverConfigured || (dataState === "cached" && runtimeState.sourceTier !== "primary-reference"))
+              ? "advisory"
+              : (!receiverStatus.receiverReachable || !receiverStatus.loginOk)
+                ? "critical"
+                : (dataState === "stale" || receiverStatus.gpsLockState === "holdover" || receiverStatus.gpsLockState === "unlocked" || sessionState.communicationIssueCount >= 2)
+                  ? "warning"
+                  : mismatchWhileFresh
+                    ? "advisory"
+                    : "normal");
 
     return {
       runtimeTimeSourceState,
