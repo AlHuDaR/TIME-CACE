@@ -59,8 +59,8 @@ const CONFIG = validateConfig({
     ? process.env.SERVE_STATIC === "true"
     : process.env.NODE_ENV !== "production",
   nodeEnv: process.env.NODE_ENV || "development",
-  minConnectionIntervalMs: readEnvNumber("MIN_CONNECTION_INTERVAL_MS", 5000),
-  requestTimeoutMs: readEnvNumber("REQUEST_TIMEOUT_MS", 15000),
+  minConnectionIntervalMs: readEnvNumber("MIN_CONNECTION_INTERVAL_MS", 1000),
+  requestTimeoutMs: readEnvNumber("REQUEST_TIMEOUT_MS", 3000),
   receiverStatusCacheMs: readEnvNumber("RECEIVER_STATUS_CACHE_MS", 4000),
   statusStaleMs: readEnvNumber("STATUS_STALE_MS", 45000),
   authEnabled: process.env.API_AUTH_ENABLED === "true",
