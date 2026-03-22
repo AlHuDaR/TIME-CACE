@@ -38,7 +38,6 @@
   --control-gap: clamp(0.5rem, 1vw, 0.75rem);
   --touch-target: 42px;
   --clock-panel-size: clamp(280px, min(62vw, 70vh), 560px);
-  --clock-panel-size-analog-only: clamp(280px, min(88vw, calc(100dvh - 11rem)), 760px);
   --official-clock-size: clamp(280px, min(32vw, 64vh), 520px);
   --content-readable: 72ch;
   --panel-surface: linear-gradient(180deg, color-mix(in srgb, var(--panel) 94%, #ffffff 6%), var(--panel));
@@ -196,8 +195,7 @@ h2 {
   font-size: 0.72rem;
 }
 
-.mode-btn,
-.nav-pill {
+.mode-btn {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: color-mix(in srgb, var(--panel) 92%, #ffffff 8%);
@@ -225,9 +223,7 @@ h2 {
 }
 
 .mode-btn:hover,
-.nav-pill:hover,
-.mode-btn:focus-visible,
-.nav-pill:focus-visible {
+.mode-btn:focus-visible {
   transform: translateY(-1px);
   border-color: var(--border-strong);
   box-shadow: 0 8px 18px rgba(15, 45, 64, 0.08);

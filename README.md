@@ -12,8 +12,8 @@ TIME-CACE is the Royal Air Force of Oman Calibration Center (CACE) reference-tim
 
 ## Pages and routes
 
-- `/official-time` — presentation-focused official time page.
-- `/dashboard` — operational dashboard with receiver status, source cards, and controls.
+- `/official-time` — the single supported watch/presentation page.
+- `/dashboard` — operational dashboard with receiver status, source cards, controls, and monitoring.
 - `/` — redirects to `/official-time` when served by Express and to `/official-time.html` in Netlify.
 
 ## Time Source Priority and Fallback Logic
@@ -123,7 +123,7 @@ When backend runtime data cannot be used, the frontend now tries:
 - `status-monitor.js` — frontend monitoring normalization and severity logic.
 - `dashboard-render.js` — dashboard cards, badges, and monitoring presentation.
 - `fallback-card.js` — controlled fallback notification card behavior.
-- `official-time.js` — official time page source/status presentation.
+- `official-time.js` — official time page source/status presentation and analog clock updates.
 - `.env.example` — backend configuration example.
 
 ## Requirements
@@ -223,7 +223,8 @@ Then open either:
 - `LOCAL CLOCK` appears only when the backend explicitly selects it.
 - `BROWSER LOCAL CLOCK` appears only when `/api/time` cannot provide valid backend data and the browser-accessible emergency internet hierarchy also fails.
 - Frontend emergency internet labels indicate a browser-side continuity mode, not a traceable or authoritative replacement for backend GPS/NTP selection.
-- The UI keeps the dashboard/official-time layout intact while updating source cards, lock state messaging, and fallback wording to match the backend model.
+- The UI keeps the dashboard and official-time pages aligned with the backend model while updating source cards, lock state messaging, fallback wording, and the official analog clock.
+- Legacy dashboard watch modes have been removed; `/official-time` is the only maintained watch view.
 
 ## Testing
 

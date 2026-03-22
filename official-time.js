@@ -4,7 +4,6 @@
     APP_CONFIG,
     OMAN_DATE_TIME_FORMATTER,
     buildPtbAnalogClock,
-    buildAppUrl,
     getOmanAnalogParts,
     syncAppLinks,
     applyFavicon,
@@ -14,7 +13,7 @@
     formatStandardStatusLines,
   } = global.RAFOTimeApp || {};
 
-  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !buildAppUrl || !getOmanAnalogParts || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatTimeParts || !formatClockTime || !formatStandardStatusLines) {
+  if (!GPSTimeSync || !APP_CONFIG || !OMAN_DATE_TIME_FORMATTER || !buildPtbAnalogClock || !getOmanAnalogParts || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatTimeParts || !formatClockTime || !formatStandardStatusLines) {
     throw new Error("Official time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -57,9 +56,10 @@
     }
 
     async init() {
-      const mode = new URLSearchParams(window.location.search).get("mode");
-      if (["digital", "analog", "analog-only"].includes(mode)) {
-        window.location.replace(buildAppUrl("/dashboard", { mode }).toString());
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("mode")) {
+        url.searchParams.delete("mode");
+        window.location.replace(url.toString());
         return;
       }
 
