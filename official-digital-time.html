@@ -23,43 +23,49 @@
           aria-hidden="true"
         />
 
-        <header class="digital-hero__header">
-          <div class="digital-hero__brand-block">
-            <p class="digital-hero__eyebrow">Royal Air Force of Oman</p>
-            <h1 id="digitalHeroHeading">Official Digital Time Reference</h1>
-            <p class="digital-hero__subheading">Calibration Center (CACE) synchronized Oman time display</p>
-          </div>
-          <nav class="digital-hero__actions" aria-label="Official digital time navigation">
+        <div class="digital-hero__frame">
+          <nav class="digital-page-nav" aria-label="Application navigation">
             <a class="mode-btn mode-link-btn" href="/dashboard" data-app-link="/dashboard">Dashboard</a>
             <a class="mode-btn mode-link-btn" href="/official-time" data-app-link="/official-time">Official Time</a>
+            <a class="mode-btn mode-link-btn is-active" href="/official-digital-time" data-app-link="/official-digital-time" aria-current="page">Official Digital Time</a>
           </nav>
-        </header>
 
-        <div class="digital-hero__status" aria-live="polite">
-          <p id="digitalOffsetLine" class="digital-hero__offset">Your clock is synchronized</p>
-          <p id="digitalAccuracyLine" class="digital-hero__accuracy">Accuracy of synchronization was ±0.000 seconds</p>
-          <p id="digitalLocationLine" class="digital-hero__location">Time in Seeb, Oman now:</p>
-        </div>
+          <header class="digital-hero__header">
+            <div class="digital-hero__brand-block">
+              <p class="digital-hero__eyebrow">Royal Air Force of Oman · Calibration Center (CACE)</p>
+              <h1 id="digitalHeroHeading">Official Digital Time Reference</h1>
+              <p class="digital-hero__subheading">Operational synchronized Oman time display with live reference status and world clocks.</p>
+            </div>
+          </header>
 
-        <div class="digital-hero__main">
-          <div class="digital-hero__clock-wrap">
-            <p id="digitalHeroClock" class="digital-hero__clock" aria-live="polite">--:--:--</p>
-            <p id="digitalHeroSource" class="digital-hero__source">Source: Unavailable · Status: Lost (no valid time source)</p>
+          <div class="digital-hero__topline" aria-live="polite">
+            <p id="digitalOffsetLine" class="digital-hero__offset">Your clock is synchronized</p>
+            <p id="digitalAccuracyLine" class="digital-hero__accuracy">Accuracy of synchronization was ±0.000 seconds</p>
           </div>
 
-          <aside class="digital-hero__meta" aria-label="Current Oman date and observances">
-            <p id="digitalHeroDate" class="digital-hero__date">--</p>
-            <p id="digitalHeroObservance" class="digital-hero__observance">Operational observances: none scheduled</p>
-          </aside>
-        </div>
+          <div class="digital-hero__main">
+            <div class="digital-hero__clock-panel">
+              <p id="digitalLocationLine" class="digital-hero__location">Time in Seeb, Oman now:</p>
+              <div class="digital-hero__clock-wrap">
+                <p id="digitalHeroClock" class="digital-hero__clock" aria-live="polite">--:--:--</p>
+                <p id="digitalHeroSource" class="digital-hero__source">Source: Unavailable · Status: Lost (no valid time source)</p>
+              </div>
+            </div>
 
-        <section class="digital-world-strip" aria-labelledby="digitalWorldStripHeading">
-          <div class="digital-world-strip__header">
-            <p class="digital-world-strip__eyebrow">Key world clocks</p>
-            <h2 id="digitalWorldStripHeading">Reference cities</h2>
+            <aside class="digital-hero__meta" aria-label="Current Oman date and observances">
+              <p id="digitalHeroDate" class="digital-hero__date">--</p>
+              <p id="digitalHeroObservance" class="digital-hero__observance">Operational observances: none scheduled</p>
+            </aside>
           </div>
-          <div id="keyWorldClocks" class="digital-world-strip__grid"></div>
-        </section>
+
+          <section class="digital-world-strip" aria-labelledby="digitalWorldStripHeading">
+            <div class="digital-world-strip__header">
+              <p class="digital-world-strip__eyebrow">Key world clocks</p>
+              <h2 id="digitalWorldStripHeading">Reference cities</h2>
+            </div>
+            <div id="keyWorldClocks" class="digital-world-strip__grid"></div>
+          </section>
+        </div>
       </section>
 
       <section class="world-reference" aria-labelledby="worldReferenceHeading">
