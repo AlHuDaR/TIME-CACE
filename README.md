@@ -159,6 +159,7 @@ The frontend remains Netlify/static-host friendly.
 
 - When a backend API is configured and reachable, the frontend uses backend timing data and monitoring metadata.
 - When the backend is unavailable, the frontend remains stable and degrades to local continuity display behavior instead of attempting browser-side time scraping.
+- The browser-side API timeout should stay longer than the backend's worst-case receiver/fallback path. By default the frontend now waits 35 seconds, and you can override that with `window.APP_CONFIG.API_REQUEST_TIMEOUT_MS` before `api-client.js` loads.
 
 ## Testing
 
