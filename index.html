@@ -34,20 +34,20 @@
           <div id="lockPulse" class="lock-pulse"></div>
           <div class="gps-info">
             <div class="gps-info-badge-row">
-              <span id="sourceIndicator" class="source-badge source-local">LOCAL CLOCK</span>
+              <span id="sourceIndicator" class="source-badge source-local">Source: Internal Clock</span>
             </div>
             <div class="gps-info-message-row">
-              <span id="lockStatus" class="lock-text">Initializing receiver status…</span>
+              <span id="lockStatus" class="lock-text">Status: Lost (no valid time source)</span>
             </div>
           </div>
         </div>
         <div class="gps-details">
           <span id="lastSyncTime">Last sync: Never</span>
           <span id="offsetDisplay">Offset: 0 ms</span>
-          <span id="statusFreshness">System status: Waiting for first poll</span>
+          <span id="statusFreshness">Checked: Never</span>
           <span id="digitalOnlyControls" class="digital-controls">
             <button id="setTimeComputerBtn" class="mode-btn digital-controls-btn" title="Set GPS time from this computer">Set GPS (PC)</button>
-            <button id="setTimeInternetBtn" class="mode-btn digital-controls-btn" title="Set GPS time from backend fallback hierarchy">Set GPS (Internet)</button>
+            <button id="setTimeInternetBtn" class="mode-btn digital-controls-btn" title="Set GPS time from internet source">Set GPS (Internet)</button>
           </span>
         </div>
       </section>
@@ -72,9 +72,9 @@
           <div class="fallback-info-card-title-wrap">
             <div class="fallback-info-card-title">
               <span class="fallback-info-card-icon" aria-hidden="true">ℹ</span>
-              <span id="fallbackInfoHeading">Source update</span>
+              <span id="fallbackInfoHeading">Source status update</span>
             </div>
-            <p id="fallbackInfoSubheading" class="fallback-info-card-subtitle">Timing source information will appear here when the source changes.</p>
+            <p id="fallbackInfoSubheading" class="fallback-info-card-subtitle">Source and status will appear here when the source changes.</p>
           </div>
           <button
             id="fallbackInfoCloseBtn"
@@ -88,7 +88,7 @@
         <div class="fallback-info-card-body">
           <div class="fallback-info-metric">
             <span class="fallback-info-label">Source</span>
-            <strong id="fallbackInfoSource">INTERNET/HTTP DATE</strong>
+            <strong id="fallbackInfoSource">Source: Internet (HTTP Date)</strong>
           </div>
           <div class="fallback-info-details">
             <div class="fallback-info-metric">
@@ -102,7 +102,7 @@
           </div>
           <div class="fallback-info-metric fallback-info-status-block">
             <span class="fallback-info-label">Status</span>
-            <strong id="fallbackInfoStatus">Waiting for fallback state.</strong>
+            <strong id="fallbackInfoStatus">Status: Lost (no valid time source)</strong>
           </div>
         </div>
       </aside>
@@ -149,13 +149,13 @@
         <article class="card">
           <h2>Primary time source</h2>
           <p id="primarySourceDescription" class="meta-value">
-            Runtime source will update automatically based on receiver lock state and available fallbacks.
+            Source: Unavailable
           </p>
           <p id="primarySourceNote" class="meta-note">
-            Preferred source: Symmetricom XLi receiver disciplined to Oman time when available. Display updates apply synchronization offset to reduce network-delay error during remote polls.
+            Last sync: Not available.
           </p>
-          <p id="syncStatus" class="status">Status: Initializing…</p>
-          <p id="statusConsistencyHint" class="meta-note">Status and runtime source information will be cross-checked here.</p>
+          <p id="syncStatus" class="status">Status: Lost (no valid time source)</p>
+          <p id="statusConsistencyHint" class="meta-note">Source status will update here.</p>
         </article>
       </section>
 
@@ -164,12 +164,12 @@
           <div>
             <p class="dashboard-kicker">Monitoring dashboard</p>
             <h2 id="gpsSystemStatusHeading" class="dashboard-title">GPS SYSTEM STATUS</h2>
-            <p id="dashboardSummaryText" class="dashboard-summary-text">Waiting for the first receiver status snapshot.</p>
+            <p id="dashboardSummaryText" class="dashboard-summary-text">Source: Unavailable | Status: Lost (no valid time source)</p>
           </div>
           <div class="dashboard-header-badges">
             <span id="dashboardSeverityBadge" class="dashboard-severity status-neutral">Waiting</span>
             <span id="dashboardIntegrityBadge" class="dashboard-severity status-neutral">Integrity unknown</span>
-            <span id="dashboardDataStateBadge" class="dashboard-data-state data-waiting">Waiting for data</span>
+            <span id="dashboardDataStateBadge" class="dashboard-data-state data-waiting">Awaiting data</span>
           </div>
         </div>
 
@@ -225,7 +225,7 @@
               <span id="monitorLastSyncBadge" class="monitoring-card-badge badge-info">INFO</span>
             </div>
             <p id="monitorLastSyncValue" class="monitoring-card-value">Unknown</p>
-            <p id="monitorLastSyncNote" class="monitoring-card-note">Last runtime synchronization has not been recorded yet.</p>
+            <p id="monitorLastSyncNote" class="monitoring-card-note">Last sync is not available.</p>
           </article>
 
           <article class="monitoring-card">
@@ -234,7 +234,7 @@
               <span id="monitorCommunicationBadge" class="monitoring-card-badge badge-info">INFO</span>
             </div>
             <p id="monitorCommunicationValue" class="monitoring-card-value">Unknown</p>
-            <p id="monitorCommunicationNote" class="monitoring-card-note">Backend and receiver link state pending.</p>
+            <p id="monitorCommunicationNote" class="monitoring-card-note">Receiver communication status will update here.</p>
           </article>
 
           <article class="monitoring-card">
@@ -252,7 +252,7 @@
               <span id="monitorLastKnownGoodBadge" class="monitoring-card-badge badge-info">INFO</span>
             </div>
             <p id="monitorLastKnownGoodValue" class="monitoring-card-value">Unknown</p>
-            <p id="monitorLastKnownGoodNote" class="monitoring-card-note">Awaiting first authoritative timing record.</p>
+            <p id="monitorLastKnownGoodNote" class="monitoring-card-note">Last valid sync is not available.</p>
           </article>
 
           <article class="monitoring-card">
@@ -261,7 +261,7 @@
               <span id="monitorErrorBadge" class="monitoring-card-badge badge-info">INFO</span>
             </div>
             <p id="monitorErrorValue" class="monitoring-card-value">No active error</p>
-            <p id="monitorErrorNote" class="monitoring-card-note">Receiver and backend errors will appear here.</p>
+            <p id="monitorErrorNote" class="monitoring-card-note">Time-source issues will appear here.</p>
           </article>
         </div>
 
@@ -271,8 +271,8 @@
               <p class="monitoring-card-title">System Diagnostics</p>
               <span id="dashboardSummaryBadge" class="monitoring-card-badge badge-info">INFO</span>
             </div>
-            <p id="dashboardStatusText" class="dashboard-diagnostic-text">System status not checked yet.</p>
-            <p id="dashboardErrorText" class="dashboard-diagnostic-text dashboard-diagnostic-error">No errors reported.</p>
+            <p id="dashboardStatusText" class="dashboard-diagnostic-text">Checked: Never</p>
+            <p id="dashboardErrorText" class="dashboard-diagnostic-text dashboard-diagnostic-error">No active issue recorded.</p>
           </article>
 
           <article class="dashboard-events-card">

@@ -108,25 +108,21 @@
   });
 
   const DEFAULT_SOURCE_LABELS = Object.freeze({
-    "gps-xli": "GPS RECEIVER (XLi)",
-    "ntp-nist": "NTP (NIST)",
-    "ntp-npl-india": "NTP (NPL India)",
-    "https-worldtimeapi": "WorldTimeAPI",
-    "https-timeapiio": "TimeAPI.io",
-    "http-date": "INTERNET/HTTP DATE",
-    "frontend-worldtimeapi": "WorldTimeAPI",
-    "frontend-timeapiio": "TimeAPI.io",
-    "frontend-http-date": "INTERNET/HTTP DATE",
-    "local-clock": "LOCAL CLOCK",
-    "browser-local-clock": "BROWSER LOCAL CLOCK",
+    "gps-xli": "GPS Receiver",
+    "ntp-nist": "Internet (NIST)",
+    "ntp-npl-india": "Internet (NPL India)",
+    "https-worldtimeapi": "Internet (WorldTimeAPI)",
+    "https-timeapiio": "Internet (timeapi.io)",
+    "http-date": "Internet (HTTP Date)",
+    "frontend-worldtimeapi": "Internet (WorldTimeAPI)",
+    "frontend-timeapiio": "Internet (timeapi.io)",
+    "frontend-http-date": "Internet (HTTP Date)",
+    "local-clock": "Internal Clock",
+    "browser-local-clock": "Internal Clock",
   });
 
   const RECEIVER_SOURCE_LABELS = Object.freeze({
     ...DEFAULT_SOURCE_LABELS,
-    "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
-    "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
-    "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
-    "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
   });
 
   const FALLBACK_SOURCES = Object.freeze([
@@ -267,6 +263,50 @@
     return FALLBACK_SOURCES.includes(source);
   }
 
+  function getStandardStatusInfo(state = {}) {
+    const currentSource = String(state.currentSource || state.sourceKey || "").trim();
+    const sourceTier = String(state.sourceTier || "").trim();
+    const gpsLockState = String(state.gpsLockState || "").trim();
+
+    if (currentSource === "gps-xli" || gpsLockState === "locked") {
+      return {
+        source: "GPS Receiver",
+        status: "Nominal (synchronized)",
+        severity: "healthy",
+      };
+    }
+
+    if (["ntp-nist", "ntp-npl-india", "https-worldtimeapi", "https-timeapiio", "http-date", "frontend-worldtimeapi", "frontend-timeapiio", "frontend-http-date"].includes(currentSource) || sourceTier === "internet-fallback" || sourceTier === "traceable-fallback" || sourceTier === "non-traceable-fallback") {
+      return {
+        source: getSourceLabel(currentSource || "https-timeapiio"),
+        status: "Degraded (primary source unavailable)",
+        severity: "warning",
+      };
+    }
+
+    if (["local-clock", "browser-local-clock"].includes(currentSource) || sourceTier === "emergency-fallback" || sourceTier === "browser-emergency-fallback" || gpsLockState === "holdover") {
+      return {
+        source: "Internal Clock",
+        status: "Holdover (using last valid sync)",
+        severity: "warning",
+      };
+    }
+
+    return {
+      source: "Unavailable",
+      status: "Lost (no valid time source)",
+      severity: "critical",
+    };
+  }
+
+  function formatStandardStatusLines(state = {}) {
+    const standard = getStandardStatusInfo(state);
+    return [
+      `Source: ${standard.source}`,
+      `Status: ${standard.status}`,
+    ];
+  }
+
   function formatTimeSegment(value) {
     return String(value).padStart(2, "0");
   }
@@ -349,6 +389,8 @@
     applyFavicon,
     bootWhenDocumentReady,
     getSourceLabel,
+    getStandardStatusInfo,
+    formatStandardStatusLines,
     isFallbackSource,
     formatTimeSegment,
     formatTimeParts,

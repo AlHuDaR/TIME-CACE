@@ -8,6 +8,8 @@
     buildMonitoringModel,
     humanizeSource,
     getSourceLabel,
+    getStandardStatusInfo,
+    formatStandardStatusLines,
     formatClockTime,
     formatTimeParts,
   } = global.RAFOTimeApp;
@@ -23,17 +25,17 @@
 
     const key = String(source || "").trim();
     const labels = {
-      "gps-xli": "GPS RECEIVER (XLi)",
-      "ntp-nist": "NTP (NIST)",
-      "ntp-npl-india": "NTP (NPL India)",
-      "https-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
-      "https-timeapiio": "HTTPS TIME API (TimeAPI.io)",
-      "http-date": "INTERNET/HTTP DATE",
-      "frontend-worldtimeapi": "HTTPS TIME API (WorldTimeAPI)",
-      "frontend-timeapiio": "HTTPS TIME API (TimeAPI.io)",
-      "frontend-http-date": "INTERNET/HTTP DATE",
-      "local-clock": "LOCAL CLOCK",
-      "browser-local-clock": "BROWSER LOCAL CLOCK",
+      "gps-xli": "GPS Receiver",
+      "ntp-nist": "Internet (NIST)",
+      "ntp-npl-india": "Internet (NPL India)",
+      "https-worldtimeapi": "Internet (WorldTimeAPI)",
+      "https-timeapiio": "Internet (timeapi.io)",
+      "http-date": "Internet (HTTP Date)",
+      "frontend-worldtimeapi": "Internet (WorldTimeAPI)",
+      "frontend-timeapiio": "Internet (timeapi.io)",
+      "frontend-http-date": "Internet (HTTP Date)",
+      "local-clock": "Internal Clock",
+      "browser-local-clock": "Internal Clock",
     };
 
     if (labels[key]) {
@@ -64,7 +66,7 @@
       this.lastFrontendFallbackSyncAt = 0;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
-      this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "BROWSER LOCAL CLOCK", sourceTier: "browser-emergency-fallback", status: "Browser emergency fallback active", statusText: "Browser emergency fallback active" });
+      this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "Internal Clock", sourceTier: "browser-emergency-fallback", status: "Holdover (using last valid sync)", statusText: "Holdover (using last valid sync)" });
     }
 
   createSessionState(overrides = {}) {
@@ -87,12 +89,12 @@
       loginOk: false,
       isLocked: false,
       gpsLockState: "unknown",
-      statusText: "System status not checked yet",
-      status: "Emergency local fallback active",
+      statusText: "Lost (no valid time source)",
+      status: "Lost (no valid time source)",
       currentSource: "local-clock",
-      currentSourceLabel: "LOCAL CLOCK",
+      currentSourceLabel: "Internal Clock",
       sourceKey: "local-clock",
-      sourceLabel: "LOCAL CLOCK",
+      sourceLabel: "Internal Clock",
       sourceTier: "emergency-fallback",
       authoritative: false,
       traceable: false,
@@ -127,12 +129,12 @@
         loginOk: false,
         isLocked: false,
         gpsLockState: "unknown",
-        statusText: "Browser emergency fallback active",
-        status: "Browser emergency fallback active",
+        statusText: "Holdover (using last valid sync)",
+        status: "Holdover (using last valid sync)",
         currentSource: "browser-local-clock",
-        currentSourceLabel: "BROWSER LOCAL CLOCK",
+        currentSourceLabel: "Internal Clock",
         sourceKey: "browser-local-clock",
-        sourceLabel: "BROWSER LOCAL CLOCK",
+        sourceLabel: "Internal Clock",
         sourceTier: "browser-emergency-fallback",
         authoritative: false,
         traceable: false,
@@ -245,10 +247,10 @@
       authoritative: Boolean(payload.authoritative ?? fallback.authoritative),
       traceable: Boolean(payload.traceable ?? fallback.traceable),
       fallback: payload.fallback !== undefined ? Boolean(payload.fallback) : (fallback.fallback !== false),
-      status: payload.status || fallback.status || "Browser emergency fallback active",
+      status: payload.status || fallback.status || getStandardStatusInfo({ ...payload, ...source, ...fallback }).status,
       roundTripMs: payload.roundTripMs || fallback.roundTripMs || null,
       isoTimestamp: payload.isoTimestamp || fallback.isoTimestamp || new Date().toISOString(),
-      statusText: payload.statusText || fallback.statusText || `Browser emergency fallback active: ${error.message}`,
+      statusText: payload.statusText || fallback.statusText || getStandardStatusInfo({ ...payload, ...source, ...fallback }).status,
       lastError: payload.lastError || error.message,
       monitoringState: payload.monitoringState || fallback.monitoringState || null,
       fallbackReason: payload.fallbackReason || fallback.fallbackReason || null,
@@ -316,10 +318,10 @@
     return this.createFallbackStateFromTimestamp({
       timestamp: Date.now(),
       sourceKey: "browser-local-clock",
-      sourceLabel: "BROWSER LOCAL CLOCK",
+      sourceLabel: "Internal Clock",
       sourceTier: "browser-emergency-fallback",
-      status: "Browser emergency fallback active",
-      statusText: "Backend unavailable. Browser emergency fallback active.",
+      status: "Holdover (using last valid sync)",
+      statusText: "Holdover (using last valid sync)",
       upstream: "browser-local-clock",
       protocol: "local",
       fallbackReason: "backend-unreachable-or-invalid",
@@ -352,8 +354,8 @@
       sourceTier: this.currentState.sourceTier,
       status: this.currentState.status,
       statusText: isBrowserFallback
-        ? "Backend unavailable. Browser emergency fallback active."
-        : "Backend unavailable. Frontend internet fallback active.",
+        ? "Holdover (using last valid sync)"
+        : "Degraded (primary source unavailable)",
       upstream: this.currentState.upstream,
       protocol: this.currentState.protocol,
       fallbackReason: this.currentState.fallbackReason || "backend-unreachable-or-invalid",
@@ -377,10 +379,10 @@
     return this.createFallbackStateFromTimestamp({
       timestamp,
       sourceKey: "frontend-worldtimeapi",
-      sourceLabel: "HTTPS TIME API (WorldTimeAPI)",
+      sourceLabel: "Internet (WorldTimeAPI)",
       sourceTier: "internet-fallback",
-      status: "Internet fallback active",
-      statusText: "Backend unavailable. Frontend internet fallback active.",
+      status: "Degraded (primary source unavailable)",
+      statusText: "Degraded (primary source unavailable)",
       upstream: "worldtimeapi",
       protocol: "https",
       fallbackReason: "backend-unreachable-or-invalid",
@@ -411,10 +413,10 @@
     return this.createFallbackStateFromTimestamp({
       timestamp,
       sourceKey: "frontend-timeapiio",
-      sourceLabel: "HTTPS TIME API (TimeAPI.io)",
+      sourceLabel: "Internet (timeapi.io)",
       sourceTier: "internet-fallback",
-      status: "Internet fallback active",
-      statusText: "Backend unavailable. Frontend internet fallback active.",
+      status: "Degraded (primary source unavailable)",
+      statusText: "Degraded (primary source unavailable)",
       upstream: "timeapi.io",
       protocol: "https",
       fallbackReason: "backend-unreachable-or-invalid",
@@ -571,10 +573,10 @@
         return this.createFallbackStateFromTimestamp({
           timestamp: parsedTimestamp + Math.round(roundTripMs / 2),
           sourceKey: "frontend-http-date",
-          sourceLabel: "INTERNET/HTTP DATE",
+          sourceLabel: "Internet (HTTP Date)",
           sourceTier: "internet-fallback",
-          status: "Internet fallback active",
-          statusText: "Backend unavailable. Frontend internet fallback active.",
+          status: "Degraded (primary source unavailable)",
+          statusText: "Degraded (primary source unavailable)",
           upstream: "http-date",
           protocol: "https",
           fallbackReason: "backend-unreachable-or-invalid",
@@ -643,8 +645,8 @@
         loginOk: Boolean(payload.loginOk),
         isLocked: Boolean(payload.isLocked),
         gpsLockState: payload.gpsLockState || (payload.isLocked ? "locked" : "unknown"),
-        statusText: payload.statusText || payload.status || "Timing source update received",
-        status: payload.status || payload.statusText || "Timing source update received",
+        statusText: payload.statusText || payload.status || getStandardStatusInfo({ ...payload, ...source }).status,
+        status: payload.status || payload.statusText || getStandardStatusInfo({ ...payload, ...source }).status,
         ...source,
         authoritative: Boolean(payload.authoritative),
         traceable: Boolean(payload.traceable),
@@ -733,9 +735,9 @@
           loginOk: false,
           isLocked: false,
           gpsLockState: "unknown",
-          statusText: `Status polling unavailable: ${error.message}`,
+          statusText: "Lost (no valid time source)",
           currentSource: this.receiverStatus.currentSource || "local-clock",
-          currentSourceLabel: this.receiverStatus.currentSourceLabel || "LOCAL CLOCK",
+          currentSourceLabel: this.receiverStatus.currentSourceLabel || "Internal Clock",
           receiverCommunicationState: "backend-offline",
           fallbackReason: "backend-offline",
           lastError: error.message,
@@ -855,21 +857,14 @@
     }
 
     if (previousState.currentSource !== nextState.currentSource) {
-      const sourceEventMap = {
-        "gps-xli": ["Runtime restored GPS Receiver (XLi) as the primary reference.", "normal", "runtime-gps-xli"],
-        "ntp-nist": ["Runtime switched to NTP (NIST) fallback.", "advisory", "runtime-ntp-nist"],
-        "ntp-npl-india": ["Runtime switched to NTP (NPL India) fallback.", "advisory", "runtime-ntp-npl-india"],
-        "https-worldtimeapi": ["Runtime switched to HTTPS TIME API (WorldTimeAPI) fallback.", "warning", "runtime-https-worldtimeapi"],
-        "https-timeapiio": ["Runtime switched to HTTPS TIME API (TimeAPI.io) fallback.", "warning", "runtime-https-timeapiio"],
-        "http-date": ["Runtime switched to INTERNET/HTTP DATE fallback.", "warning", "runtime-http-date"],
-        "frontend-worldtimeapi": ["Backend unavailable. Frontend switched to HTTPS TIME API (WorldTimeAPI).", "warning", "runtime-frontend-worldtimeapi"],
-        "frontend-timeapiio": ["Backend unavailable. Frontend switched to HTTPS TIME API (TimeAPI.io).", "warning", "runtime-frontend-timeapiio"],
-        "frontend-http-date": ["Backend unavailable. Frontend switched to INTERNET/HTTP DATE.", "warning", "runtime-frontend-http-date"],
-        "local-clock": ["Runtime degraded to backend LOCAL CLOCK emergency fallback.", "critical", "runtime-local-clock"],
-        "browser-local-clock": ["Runtime degraded to browser emergency fallback because the backend is unavailable or invalid.", "critical", "runtime-browser-local-clock"],
-      };
-      const [message, severity, key] = sourceEventMap[nextState.currentSource]
-        || [`Runtime source changed to ${humanizeSource(nextState.currentSource)}.`, "advisory", `runtime-${nextState.currentSource}`];
+      const standardized = getStandardStatusInfo(nextState);
+      const severity = standardized.severity === "healthy"
+        ? "normal"
+        : standardized.severity === "critical"
+          ? "critical"
+          : "warning";
+      const message = formatStandardStatusLines(nextState).join(" | ");
+      const key = `runtime-${nextState.currentSource || "unknown"}`;
       this.pushEvent(message, severity, key);
     }
 
@@ -983,7 +978,7 @@
       return;
     }
 
-    const { currentSource, date, time, statusText } = this.currentState;
+    const { currentSource, date, time } = this.currentState;
     const type = currentSource === "gps-xli"
       ? "success"
       : ["ntp-nist", "ntp-npl-india"].includes(currentSource)
@@ -997,10 +992,9 @@
 
     this.notifications.show(
       [
-        `Source: ${this.getSourceDisplayName(this.currentState)}`,
+        ...formatStandardStatusLines(this.currentState),
         date ? `Date: ${date}` : null,
         time ? `Time: ${time}` : null,
-        `Status: ${statusText}`,
       ],
       type,
       6000,
@@ -1061,7 +1055,7 @@
       "auth-failed": "Authentication failed",
       unreachable: "Receiver unreachable",
       "receiver-unreachable": "Receiver unreachable",
-      "backend-offline": "Backend offline",
+      "backend-offline": "Unavailable",
       "not-started": "Not started",
     }[state] || state.replace(/-/g, " ");
   }
@@ -1186,7 +1180,8 @@ class SyncManager {
   formatStatus() {
     const state = this.gpsTimeSync.getCurrentState();
     const source = this.gpsTimeSync.getSourceDisplayName(state);
-    return `Status: ${state.statusText} | Source: ${source} | Last sync: ${this.getRelativeLastSync()}`;
+    const [sourceLine, statusLine] = formatStandardStatusLines(state);
+    return `${sourceLine} | ${statusLine} | Last sync: ${this.getRelativeLastSync()}`;
   }
 
   markSuccessfulSync() {

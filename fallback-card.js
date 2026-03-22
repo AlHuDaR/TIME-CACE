@@ -1,5 +1,5 @@
 (function (global) {
-  const { APP_CONFIG, formatClockTime, normalizeRenderedTime, getSourceLabel: resolveSourceLabel, isFallbackSource: isFallbackSourceKey } = global.RAFOTimeApp;
+  const { APP_CONFIG, formatClockTime, normalizeRenderedTime, getSourceLabel: resolveSourceLabel, formatStandardStatusLines, getStandardStatusInfo, isFallbackSource: isFallbackSourceKey } = global.RAFOTimeApp;
   const DEFAULT_TRANSIENT_DURATION_MS = 5000;
   const DEFAULT_FALLBACK_DURATION_MS = 8000;
 
@@ -41,36 +41,26 @@
 
     buildFallbackSnapshot(data, receiverStatus) {
       const currentSource = data.currentSource || "local-clock";
-      const sourceLabel = data.sourceLabel || this.getSourceLabel(currentSource);
       const sourceTier = data.sourceTier || receiverStatus.sourceTier || "emergency-fallback";
       const fallbackReason = data.fallbackReason || receiverStatus.fallbackReason || "reason-unknown";
-      const statusText = data.statusText || receiverStatus.statusText || data.status || "Fallback active";
       const receiverCommunicationState = receiverStatus.receiverCommunicationState || "comm-unknown";
-      const heading = sourceTier === "traceable-fallback"
-        ? "Traceable fallback active"
-        : sourceTier === "internet-fallback"
-          ? "Internet fallback active"
-          : sourceTier === "browser-emergency-fallback"
-            ? "Browser emergency fallback active"
-            : "Emergency local fallback active";
-      const subheading = sourceTier === "traceable-fallback"
-        ? `${sourceLabel} is maintaining continuity while the GPS Receiver (XLi) is unavailable or not locked.`
-        : sourceTier === "internet-fallback"
-          ? (String(currentSource).startsWith("frontend-")
-            ? `${sourceLabel} is active as the frontend internet fallback because the backend is unavailable or invalid.`
-            : `${sourceLabel} is active as the backend internet fallback because traceable sources are unavailable.`)
-          : sourceTier === "browser-emergency-fallback"
-            ? "The backend is unreachable or invalid, so the browser is temporarily maintaining continuity from the local workstation clock."
-            : "All backend remote sources are unavailable, so the backend is using the local workstation clock.";
-      const severity = ["emergency-fallback", "browser-emergency-fallback", "internet-fallback"].includes(sourceTier) ? "warning" : "info";
+      const standardized = getStandardStatusInfo(data);
+      const [sourceLine, statusLine] = formatStandardStatusLines(data);
+      const sourceLabel = standardized.source;
+      const statusText = standardized.status;
+      const heading = "Source status update";
+      const subheading = [sourceLine, statusLine].join(" ");
+      const severity = standardized.severity === "healthy" ? "success" : standardized.severity === "critical" ? "error" : "warning";
 
       return {
         kind: "fallback",
         source: currentSource,
         sourceLabel,
+        sourceLine,
         date: data.date || "Unknown",
         time: data.time || "Unknown",
         statusText,
+        statusLine,
         heading,
         subheading,
         severity,
@@ -119,9 +109,11 @@
         heading: APP_CONFIG.statusLabels[type] || "Information",
         subheading: summary,
         sourceLabel: lines.find((line) => line.startsWith("Source:"))?.replace(/^Source:\s*/, "") || APP_CONFIG.statusLabels[type] || "Information",
+        sourceLine: lines.find((line) => line.startsWith("Source:")) || `Source: ${APP_CONFIG.statusLabels[type] || "Information"}`,
         date: lines.find((line) => line.startsWith("Date:"))?.replace(/^Date:\s*/, "") || "--/--/----",
         time: normalizeRenderedTime(lines.find((line) => line.startsWith("Time:"))?.replace(/^Time:\s*/, "")) || formatClockTime(new Date()),
         statusText: lines.find((line) => line.startsWith("Status:"))?.replace(/^Status:\s*/, "") || lines.join(" • "),
+        statusLine: lines.find((line) => line.startsWith("Status:")) || `Status: ${lines.join(" • ")}`,
         severity: type,
         key: key || `transient:${type}:${lines.join("|")}`,
         metadata,
@@ -149,15 +141,15 @@
       }
 
       if (fallbackInfoHeading) {
-        fallbackInfoHeading.textContent = payload.heading || "Source update";
+        fallbackInfoHeading.textContent = payload.heading || "Source status update";
       }
       if (fallbackInfoSubheading) {
-        fallbackInfoSubheading.textContent = payload.subheading || "Timing source information is available below.";
+        fallbackInfoSubheading.textContent = payload.subheading || "Source and status are shown below.";
       }
-      fallbackInfoSource.textContent = payload.sourceLabel;
+      fallbackInfoSource.textContent = payload.sourceLine || payload.sourceLabel;
       fallbackInfoDate.textContent = payload.date;
       fallbackInfoTime.textContent = normalizeRenderedTime(payload.time) || payload.time;
-      fallbackInfoStatus.textContent = payload.statusText;
+      fallbackInfoStatus.textContent = payload.statusLine || payload.statusText;
       fallbackInfoCard.classList.toggle("is-advisory", payload.severity === "info" || payload.severity === "success");
       fallbackInfoCard.classList.toggle("is-critical", payload.severity === "warning" || payload.severity === "error");
       fallbackInfoCard.classList.remove("hidden");
