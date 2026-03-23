@@ -201,40 +201,47 @@ function createEmptyGpsReceiverDetails(overrides = {}) {
   };
 }
 
-function sanitizeGpsReceiverDetails(details = {}) {
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeGpsReceiverDetails(details) {
+  const safeDetails = isRecord(details) ? details : {};
+  const safeMetadata = isRecord(safeDetails.metadata) ? safeDetails.metadata : {};
+  const safePosition = isRecord(safeDetails.position) ? safeDetails.position : {};
+  const safeSatellites = Array.isArray(safeDetails.satellites) ? safeDetails.satellites : [];
+
   const metadata = {
-    acquisitionState: details.metadata?.acquisitionState ?? null,
-    antennaStatus: details.metadata?.antennaStatus ?? null,
-    boardPartNumber: details.metadata?.boardPartNumber ?? null,
-    softwareVersion: details.metadata?.softwareVersion ?? null,
-    fpgaVersion: details.metadata?.fpgaVersion ?? null,
+    acquisitionState: safeMetadata.acquisitionState ?? null,
+    antennaStatus: safeMetadata.antennaStatus ?? null,
+    boardPartNumber: safeMetadata.boardPartNumber ?? null,
+    softwareVersion: safeMetadata.softwareVersion ?? null,
+    fpgaVersion: safeMetadata.fpgaVersion ?? null,
   };
   const position = {
-    latitude: details.position?.latitude ?? null,
-    longitude: details.position?.longitude ?? null,
-    altitudeMeters: Number.isFinite(details.position?.altitudeMeters) ? details.position.altitudeMeters : null,
-    xMeters: Number.isFinite(details.position?.xMeters) ? details.position.xMeters : null,
-    yMeters: Number.isFinite(details.position?.yMeters) ? details.position.yMeters : null,
-    zMeters: Number.isFinite(details.position?.zMeters) ? details.position.zMeters : null,
+    latitude: safePosition.latitude ?? null,
+    longitude: safePosition.longitude ?? null,
+    altitudeMeters: Number.isFinite(safePosition.altitudeMeters) ? safePosition.altitudeMeters : null,
+    xMeters: Number.isFinite(safePosition.xMeters) ? safePosition.xMeters : null,
+    yMeters: Number.isFinite(safePosition.yMeters) ? safePosition.yMeters : null,
+    zMeters: Number.isFinite(safePosition.zMeters) ? safePosition.zMeters : null,
   };
-  const satellites = Array.isArray(details.satellites)
-    ? details.satellites
-      .map((satellite) => ({
-        prn: Number.isFinite(Number(satellite?.prn)) ? Number(satellite.prn) : null,
-        status: satellite?.status ? String(satellite.status) : null,
-        utilization: satellite?.utilization ? String(satellite.utilization) : null,
-        levelDbw: Number.isFinite(Number(satellite?.levelDbw)) ? Number(satellite.levelDbw) : null,
-      }))
-      .filter((satellite) => satellite.prn !== null)
-    : [];
+  const satellites = safeSatellites
+    .map((satellite) => ({
+      prn: Number.isFinite(Number(satellite?.prn)) ? Number(satellite.prn) : null,
+      status: satellite?.status ? String(satellite.status) : null,
+      utilization: satellite?.utilization ? String(satellite.utilization) : null,
+      levelDbw: Number.isFinite(Number(satellite?.levelDbw)) ? Number(satellite.levelDbw) : null,
+    }))
+    .filter((satellite) => satellite.prn !== null);
   const hasMetadata = Object.values(metadata).some(Boolean);
   const hasPosition = Object.values(position).some((value) => value !== null);
-  const available = Boolean(details.available) || hasMetadata || hasPosition || satellites.length > 0;
+  const available = Boolean(safeDetails.available) || hasMetadata || hasPosition || satellites.length > 0;
 
   return createEmptyGpsReceiverDetails({
     available,
-    fetchedAt: details.fetchedAt || null,
-    error: details.error || null,
+    fetchedAt: typeof safeDetails.fetchedAt === 'string' && safeDetails.fetchedAt ? safeDetails.fetchedAt : null,
+    error: typeof safeDetails.error === 'string' && safeDetails.error ? safeDetails.error : null,
     metadata,
     position,
     satellites,
@@ -480,7 +487,7 @@ function buildTimingPayload(selection, extra = {}) {
     lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
     statusBecameStaleAt: monitoringMemory.statusBecameStaleAt,
     consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
-    gpsReceiverDetails: sanitizeGpsReceiverDetails(extra.gpsReceiverDetails || lastReceiverSnapshot.gpsReceiverDetails),
+    gpsReceiverDetails: sanitizeGpsReceiverDetails(extra.gpsReceiverDetails ?? lastReceiverSnapshot.gpsReceiverDetails),
     ...extra,
   };
 
@@ -624,7 +631,7 @@ function buildStatusPayload(snapshot, overrides = {}) {
     lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
     statusBecameStaleAt: stale ? (monitoringMemory.statusBecameStaleAt || snapshot.checkedAt) : null,
     consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
-    gpsReceiverDetails: sanitizeGpsReceiverDetails(snapshot.gpsReceiverDetails || lastReceiverSnapshot.gpsReceiverDetails),
+    gpsReceiverDetails: sanitizeGpsReceiverDetails(snapshot.gpsReceiverDetails ?? lastReceiverSnapshot.gpsReceiverDetails),
     ...overrides,
   };
 }
@@ -717,7 +724,7 @@ function updateReceiverSnapshot(snapshot) {
     nextSnapshot.gpsReceiverDetails = createEmptyGpsReceiverDetails();
     gpsDetailCache = { expiresAt: 0, promise: null, data: null };
   } else {
-    nextSnapshot.gpsReceiverDetails = sanitizeGpsReceiverDetails(nextSnapshot.gpsReceiverDetails || lastReceiverSnapshot.gpsReceiverDetails);
+    nextSnapshot.gpsReceiverDetails = sanitizeGpsReceiverDetails(nextSnapshot.gpsReceiverDetails ?? lastReceiverSnapshot.gpsReceiverDetails);
   }
 
   lastReceiverSnapshot = nextSnapshot;
