@@ -7,6 +7,9 @@ const {
   validateConfig,
   parseReceiverAcknowledgement,
   parseGpsTimeResponse,
+  parseGpsReceiverInfo,
+  parseGpsPosition,
+  parseGpsSatelliteList,
   classifyReceiverError,
   connectToGPS,
 } = require("./receiver-protocol");
@@ -83,6 +86,14 @@ const CONFIG = validateConfig({
   receiverEnabled,
 });
 
+const GPS_DETAIL_CACHE_MS = 30000;
+const GPS_DETAIL_COMMANDS = Object.freeze({
+  receiverInfo: Object.freeze(["F119 B1 S\r\n", "F119 S\r\n", "F119\r\n"]),
+  positionLla: Object.freeze(["F50 B1 LLA\r\n", "F50 LLA\r\n"]),
+  positionXyz: Object.freeze(["F50 B1 XYZ\r\n", "F50 XYZ\r\n"]),
+  satellites: Object.freeze(["F60 B1 ALL\r\n", "F60 ALL\r\n"]),
+});
+
 const publicPath = path.resolve(__dirname);
 const isProduction = CONFIG.nodeEnv === "production";
 const devOrigins = [
@@ -118,8 +129,14 @@ let lastReceiverSnapshot = {
   fallbackReason: CONFIG.receiverEnabled ? null : "receiver-not-configured",
   lastError: null,
   checkedAt: null,
+  gpsReceiverDetails: null,
 };
 let receiverStatusCache = {
+  expiresAt: 0,
+  promise: null,
+  data: null,
+};
+let gpsDetailCache = {
   expiresAt: 0,
   promise: null,
   data: null,
@@ -157,6 +174,72 @@ let lastResolvedTimeSource = {
   upstream: "local-system-clock",
   resolutionErrors: [],
 };
+
+
+function createEmptyGpsReceiverDetails(overrides = {}) {
+  return {
+    available: false,
+    fetchedAt: null,
+    error: null,
+    metadata: {
+      acquisitionState: null,
+      antennaStatus: null,
+      boardPartNumber: null,
+      softwareVersion: null,
+      fpgaVersion: null,
+    },
+    position: {
+      latitude: null,
+      longitude: null,
+      altitudeMeters: null,
+      xMeters: null,
+      yMeters: null,
+      zMeters: null,
+    },
+    satellites: [],
+    ...overrides,
+  };
+}
+
+function sanitizeGpsReceiverDetails(details = {}) {
+  const metadata = {
+    acquisitionState: details.metadata?.acquisitionState ?? null,
+    antennaStatus: details.metadata?.antennaStatus ?? null,
+    boardPartNumber: details.metadata?.boardPartNumber ?? null,
+    softwareVersion: details.metadata?.softwareVersion ?? null,
+    fpgaVersion: details.metadata?.fpgaVersion ?? null,
+  };
+  const position = {
+    latitude: details.position?.latitude ?? null,
+    longitude: details.position?.longitude ?? null,
+    altitudeMeters: Number.isFinite(details.position?.altitudeMeters) ? details.position.altitudeMeters : null,
+    xMeters: Number.isFinite(details.position?.xMeters) ? details.position.xMeters : null,
+    yMeters: Number.isFinite(details.position?.yMeters) ? details.position.yMeters : null,
+    zMeters: Number.isFinite(details.position?.zMeters) ? details.position.zMeters : null,
+  };
+  const satellites = Array.isArray(details.satellites)
+    ? details.satellites
+      .map((satellite) => ({
+        prn: Number.isFinite(Number(satellite?.prn)) ? Number(satellite.prn) : null,
+        status: satellite?.status ? String(satellite.status) : null,
+        utilization: satellite?.utilization ? String(satellite.utilization) : null,
+        levelDbw: Number.isFinite(Number(satellite?.levelDbw)) ? Number(satellite.levelDbw) : null,
+      }))
+      .filter((satellite) => satellite.prn !== null)
+    : [];
+  const hasMetadata = Object.values(metadata).some(Boolean);
+  const hasPosition = Object.values(position).some((value) => value !== null);
+  const available = Boolean(details.available) || hasMetadata || hasPosition || satellites.length > 0;
+
+  return createEmptyGpsReceiverDetails({
+    available,
+    fetchedAt: details.fetchedAt || null,
+    error: details.error || null,
+    metadata,
+    position,
+    satellites,
+  });
+}
 
 const rateLimitStore = new Map();
 
@@ -397,8 +480,11 @@ function buildTimingPayload(selection, extra = {}) {
     lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
     statusBecameStaleAt: monitoringMemory.statusBecameStaleAt,
     consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
+    gpsReceiverDetails: sanitizeGpsReceiverDetails(extra.gpsReceiverDetails || lastReceiverSnapshot.gpsReceiverDetails),
     ...extra,
   };
+
+  payload.gpsReceiverDetails = sanitizeGpsReceiverDetails(payload.gpsReceiverDetails);
 
   payload.monitoringState = deriveMonitoringState(payload, { dataState: fallback ? 'cached' : 'live', stale: payload.stale });
   updateLastResolvedTimeSource({
@@ -476,6 +562,9 @@ function connectToReceiver(command, overrides = {}) {
     command,
     timeoutMs: overrides.timeoutMs ?? CONFIG.requestTimeoutMs,
     expectOk: Boolean(overrides.expectOk),
+    completionPattern: overrides.completionPattern,
+    responseMode: overrides.responseMode,
+    idleGraceMs: overrides.idleGraceMs,
   });
 }
 
@@ -535,6 +624,7 @@ function buildStatusPayload(snapshot, overrides = {}) {
     lastSuccessfulAuthoritativeTimeSyncAt: monitoringMemory.lastSuccessfulAuthoritativeTimeSyncAt,
     statusBecameStaleAt: stale ? (monitoringMemory.statusBecameStaleAt || snapshot.checkedAt) : null,
     consecutiveCommunicationFailures: monitoringMemory.communicationIssueCount,
+    gpsReceiverDetails: sanitizeGpsReceiverDetails(snapshot.gpsReceiverDetails || lastReceiverSnapshot.gpsReceiverDetails),
     ...overrides,
   };
 }
@@ -617,11 +707,20 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
 }
 
 function updateReceiverSnapshot(snapshot) {
-  lastReceiverSnapshot = {
+  const nextSnapshot = {
     backendOnline: true,
     checkedAt: new Date().toISOString(),
     ...snapshot,
   };
+
+  if (nextSnapshot.receiverConfigured === false || !nextSnapshot.receiverReachable || !nextSnapshot.loginOk) {
+    nextSnapshot.gpsReceiverDetails = createEmptyGpsReceiverDetails();
+    gpsDetailCache = { expiresAt: 0, promise: null, data: null };
+  } else {
+    nextSnapshot.gpsReceiverDetails = sanitizeGpsReceiverDetails(nextSnapshot.gpsReceiverDetails || lastReceiverSnapshot.gpsReceiverDetails);
+  }
+
+  lastReceiverSnapshot = nextSnapshot;
 
   if (lastReceiverSnapshot.receiverConfigured === false) {
     monitoringMemory.communicationIssueCount = 0;
@@ -637,6 +736,115 @@ function updateReceiverSnapshot(snapshot) {
   }
 
   return lastReceiverSnapshot;
+}
+
+
+async function executeReceiverCommandVariants(commands, parser, { timeoutMs = CONFIG.requestTimeoutMs + 1500 } = {}) {
+  let lastError = null;
+
+  for (const command of commands) {
+    try {
+      await throttleReceiverAccess();
+      const response = await connectToReceiver(command, {
+        timeoutMs,
+        responseMode: 'idle',
+        idleGraceMs: 160,
+      });
+      return parser(response.raw);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Unable to read GPS receiver details');
+}
+
+async function readGpsReceiverDetails() {
+  const details = createEmptyGpsReceiverDetails({
+    fetchedAt: new Date().toISOString(),
+  });
+  const errors = [];
+
+  const readTask = async (key, runner) => {
+    try {
+      return await runner();
+    } catch (error) {
+      errors.push(error?.message || String(error));
+      return null;
+    }
+  };
+
+  const receiverInfo = await readTask('receiverInfo', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.receiverInfo, parseGpsReceiverInfo));
+  if (receiverInfo) {
+    details.metadata = {
+      acquisitionState: receiverInfo.acquisitionState || null,
+      antennaStatus: receiverInfo.antennaStatus || null,
+      boardPartNumber: receiverInfo.boardPartNumber || null,
+      softwareVersion: receiverInfo.softwareVersion || null,
+      fpgaVersion: receiverInfo.fpgaVersion || null,
+    };
+  }
+
+  const llaPosition = await readTask('positionLla', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.positionLla, parseGpsPosition));
+  if (llaPosition?.mode === 'lla') {
+    details.position.latitude = llaPosition.latitude || null;
+    details.position.longitude = llaPosition.longitude || null;
+    details.position.altitudeMeters = Number.isFinite(llaPosition.altitudeMeters) ? llaPosition.altitudeMeters : null;
+  }
+
+  const xyzPosition = await readTask('positionXyz', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.positionXyz, parseGpsPosition));
+  if (xyzPosition?.mode === 'xyz') {
+    details.position.xMeters = Number.isFinite(xyzPosition.xMeters) ? xyzPosition.xMeters : null;
+    details.position.yMeters = Number.isFinite(xyzPosition.yMeters) ? xyzPosition.yMeters : null;
+    details.position.zMeters = Number.isFinite(xyzPosition.zMeters) ? xyzPosition.zMeters : null;
+  }
+
+  const satelliteList = await readTask('satellites', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.satellites, parseGpsSatelliteList, { timeoutMs: CONFIG.requestTimeoutMs + 2500 }));
+  if (satelliteList) {
+    details.satellites = satelliteList.satellites || [];
+  }
+
+  if (errors.length > 0 && !details.satellites.length && !Object.values(details.metadata).some(Boolean) && !Object.values(details.position).some((value) => value !== null)) {
+    details.error = errors[0];
+  }
+
+  return sanitizeGpsReceiverDetails(details);
+}
+
+async function readGpsReceiverDetailsCached(snapshot = lastReceiverSnapshot, { force = false } = {}) {
+  if (snapshot.receiverConfigured === false || !snapshot.receiverReachable || !snapshot.loginOk) {
+    return createEmptyGpsReceiverDetails();
+  }
+
+  const now = Date.now();
+  if (!force && gpsDetailCache.data && gpsDetailCache.expiresAt > now) {
+    return sanitizeGpsReceiverDetails(gpsDetailCache.data);
+  }
+
+  if (!force && gpsDetailCache.promise) {
+    return gpsDetailCache.promise;
+  }
+
+  gpsDetailCache.promise = readGpsReceiverDetails()
+    .catch((error) => createEmptyGpsReceiverDetails({
+      fetchedAt: new Date().toISOString(),
+      error: error?.message || 'GPS receiver details unavailable',
+    }))
+    .then((details) => {
+      const sanitized = sanitizeGpsReceiverDetails(details);
+      gpsDetailCache = {
+        expiresAt: Date.now() + GPS_DETAIL_CACHE_MS,
+        promise: null,
+        data: sanitized,
+      };
+      return sanitized;
+    })
+    .catch((error) => {
+      gpsDetailCache = { expiresAt: 0, promise: null, data: null };
+      throw error;
+    });
+
+  return gpsDetailCache.promise;
 }
 
 function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {}) {
@@ -763,7 +971,8 @@ async function readReceiverStatusCached({ force = false } = {}) {
   }
 
   receiverStatusCache.promise = readReceiverTime()
-    .then((receiverTime) => {
+    .then(async (receiverTime) => {
+      const gpsReceiverDetails = await readGpsReceiverDetailsCached(lastReceiverSnapshot, { force });
       const status = sanitizeReceiverStatus({
         ...lastReceiverSnapshot,
         receiverReachable: receiverTime.receiverReachable,
@@ -781,7 +990,12 @@ async function readReceiverStatusCached({ force = false } = {}) {
         fallback: receiverTime.fallback,
         receiverCommunicationState: receiverTime.loginOk ? "authenticated" : "reachable",
         lastError: null,
+        gpsReceiverDetails,
       }, { dataState: "live" });
+      updateReceiverSnapshot({
+        ...lastReceiverSnapshot,
+        gpsReceiverDetails,
+      });
       receiverStatusCache = {
         promise: null,
         data: status,
@@ -839,14 +1053,14 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
+  const forceRefresh = parseBoolean(req.query.refresh);
   try {
-    const forceRefresh = parseBoolean(req.query.refresh);
     const status = await readReceiverStatusCached({ force: forceRefresh });
     res.json(status);
   } catch (error) {
     const classified = classifyReceiverError(error);
     const activeSource = getSourceDefinition(lastResolvedTimeSource.sourceKey || 'local-clock');
-    const snapshot = updateReceiverSnapshot({
+    const baseSnapshot = {
       receiverConfigured: classified.receiverConfigured !== false,
       receiverReachable: classified.receiverReachable,
       loginOk: classified.loginOk,
@@ -866,6 +1080,13 @@ app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
       lastError: classified.lastError,
       upstream: lastResolvedTimeSource.upstream || null,
       protocol: lastResolvedTimeSource.protocol || null,
+    };
+    const gpsReceiverDetails = baseSnapshot.receiverConfigured !== false && baseSnapshot.receiverReachable && baseSnapshot.loginOk
+      ? await readGpsReceiverDetailsCached({ ...lastReceiverSnapshot, ...baseSnapshot }, { force: forceRefresh })
+      : createEmptyGpsReceiverDetails();
+    const snapshot = updateReceiverSnapshot({
+      ...baseSnapshot,
+      gpsReceiverDetails,
     });
 
     res.json(sanitizeReceiverStatus(snapshot, {

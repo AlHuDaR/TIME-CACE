@@ -69,6 +69,10 @@ function normalizeReceiverRaw(raw) {
   return String(raw || '').replace(/\0/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function normalizeReceiverLine(raw) {
+  return String(raw || '').replace(/\0/g, ' ').trim();
+}
+
 function parseReceiverAcknowledgement(raw) {
   const normalized = normalizeReceiverRaw(raw);
   return {
@@ -137,6 +141,170 @@ function parseGpsTimeResponse(raw) {
   };
 }
 
+function parseVersionToken(raw, pattern) {
+  const match = normalizeReceiverRaw(raw).match(pattern);
+  return match ? match[1].trim() : null;
+}
+
+function parseGpsReceiverInfo(raw) {
+  const normalized = normalizeReceiverRaw(raw);
+  if (!normalized) {
+    return {
+      raw: normalized,
+      boardPartNumber: null,
+      softwareVersion: null,
+      fpgaVersion: null,
+      gpsStatus: null,
+      antennaStatus: null,
+      acquisitionState: null,
+    };
+  }
+
+  const captureField = (fieldName, nextFields = []) => {
+    const lookahead = nextFields.length > 0
+      ? `(?=\\s+(?:${nextFields.join('|')})\\b|$)`
+      : '$';
+    const expression = new RegExp(`\\b${fieldName}\\b[:#\\s]+(.+?)${lookahead}`, 'i');
+    const match = normalized.match(expression);
+    return match ? match[1].trim() : null;
+  };
+
+  return {
+    raw: normalized,
+    boardPartNumber: captureField('GPS\\s+PART\\s+NUMBER', ['SOFTWARE', 'FPGA', 'GPS\\s+STATUS', 'GPS\\s+ANTENNA', 'GPS\\s+ACQUISITION']) || null,
+    softwareVersion: parseVersionToken(normalized, /\bSOFTWARE\s+([^\s]+)(?=\s+(?:FPGA|GPS\s+STATUS|GPS\s+ANTENNA|GPS\s+ACQUISITION)|$)/i),
+    fpgaVersion: parseVersionToken(normalized, /\bFPGA\s*#?\s+([^\s]+)(?=\s+(?:GPS\s+STATUS|GPS\s+ANTENNA|GPS\s+ACQUISITION)|$)/i),
+    gpsStatus: captureField('GPS\\s+STATUS', ['GPS\\s+ANTENNA', 'GPS\\s+ACQUISITION']) || null,
+    antennaStatus: captureField('GPS\\s+ANTENNA', ['GPS\\s+ACQUISITION']) || null,
+    acquisitionState: captureField('GPS\\s+ACQUISITION\\s+STATE', []) || null,
+  };
+}
+
+function parseCoordinateDms(raw) {
+  const match = String(raw || '').match(/^([NSEW])\s*(\d+(?:\.\d+)?)d\s*(\d+(?:\.\d+)?)'?\s*(\d+(?:\.\d+)?)?"?$/i);
+  if (!match) {
+    return null;
+  }
+
+  const hemisphere = match[1].toUpperCase();
+  const degrees = Number(match[2]);
+  const minutes = Number(match[3]);
+  const seconds = Number(match[4] || 0);
+  const sign = ['S', 'W'].includes(hemisphere) ? -1 : 1;
+  return sign * (degrees + (minutes / 60) + (seconds / 3600));
+}
+
+function parseGpsPosition(raw) {
+  const normalized = normalizeReceiverRaw(raw);
+  if (!normalized) {
+    return {
+      raw: normalized,
+      mode: null,
+      latitude: null,
+      longitude: null,
+      altitudeMeters: null,
+      xMeters: null,
+      yMeters: null,
+      zMeters: null,
+    };
+  }
+
+  const llaMatch = normalized.match(/\b(?:F50(?:\s+\w+)?)?\s*(?:LLA\s+)?([NS][^EW+-]+?)\s+([EW][^+-]+?)\s+([+-]?\d+(?:\.\d+)?)\s*m\b/i);
+  if (llaMatch) {
+    const latitudeText = llaMatch[1].trim();
+    const longitudeText = llaMatch[2].trim();
+    return {
+      raw: normalized,
+      mode: 'lla',
+      latitude: {
+        text: latitudeText,
+        decimalDegrees: parseCoordinateDms(latitudeText),
+      },
+      longitude: {
+        text: longitudeText,
+        decimalDegrees: parseCoordinateDms(longitudeText),
+      },
+      altitudeMeters: Number(llaMatch[3]),
+      xMeters: null,
+      yMeters: null,
+      zMeters: null,
+    };
+  }
+
+  const xyzMatch = normalized.match(/\b(?:F50(?:\s+\w+)?)?\s*(?:XYZ\s+)?([+-]?\d+(?:\.\d+)?)\s*m?\s+([+-]?\d+(?:\.\d+)?)\s*m?\s+([+-]?\d+(?:\.\d+)?)\s*m?\b/i);
+  if (xyzMatch) {
+    return {
+      raw: normalized,
+      mode: 'xyz',
+      latitude: null,
+      longitude: null,
+      altitudeMeters: null,
+      xMeters: Number(xyzMatch[1]),
+      yMeters: Number(xyzMatch[2]),
+      zMeters: Number(xyzMatch[3]),
+    };
+  }
+
+  throw new Error('Could not parse GPS position response');
+}
+
+function titleCaseWords(tokens = []) {
+  return tokens
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function parseGpsSatelliteList(raw) {
+  const lines = String(raw || '')
+    .replace(/\0/g, ' ')
+    .split(/\r?\n/)
+    .map((line) => normalizeReceiverLine(line))
+    .filter(Boolean);
+
+  const satellites = [];
+  const utilizationWords = new Set(['CURRENT', 'TRACKED', 'TRACKING', 'USED', 'UTILIZED']);
+
+  for (const line of lines) {
+    const match = line.match(/(?:PRN\s*)?(\d{1,2})\b\s+(.+?)\s+(-?\d+(?:\.\d+)?)\s*dBW\b/i);
+    if (!match) {
+      continue;
+    }
+
+    const prn = Number(match[1]);
+    const middleTokens = match[2]
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.toUpperCase())
+      .filter(Boolean);
+    const statusTokens = middleTokens.filter((token) => !utilizationWords.has(token));
+    const utilization = [];
+
+    if (middleTokens.includes('CURRENT')) {
+      utilization.push('Current');
+    }
+    if (middleTokens.includes('TRACKED') || middleTokens.includes('TRACKING')) {
+      utilization.push('Tracked');
+    }
+    if (middleTokens.includes('USED') || middleTokens.includes('UTILIZED')) {
+      utilization.push('Used');
+    }
+
+    satellites.push({
+      prn,
+      status: titleCaseWords(statusTokens) || 'Unknown',
+      utilization: utilization.join(' + ') || 'Available',
+      levelDbw: Number(match[3]),
+      raw: normalizeReceiverRaw(line),
+    });
+  }
+
+  return {
+    raw: normalizeReceiverRaw(raw),
+    satellites: satellites.sort((left, right) => left.prn - right.prn),
+  };
+}
+
 function classifyReceiverError(error) {
   const message = error?.message || 'Receiver error';
 
@@ -194,7 +362,18 @@ function classifyReceiverError(error) {
   };
 }
 
-function connectToGPS({ host, port, username, password, command, expectOk = false, timeoutMs = 3000 }) {
+function connectToGPS({
+  host,
+  port,
+  username,
+  password,
+  command,
+  expectOk = false,
+  timeoutMs = 3000,
+  completionPattern = /F3|\d{2}\/\d{2}\/\d{4}/,
+  responseMode = 'pattern',
+  idleGraceMs = 120,
+}) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let buffer = '';
@@ -202,6 +381,20 @@ function connectToGPS({ host, port, username, password, command, expectOk = fals
     let receiverReachable = false;
     let state = 'connecting';
     let settled = false;
+    let idleTimer = null;
+
+    const clearIdleTimer = () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+    };
+
+    const buildResult = () => ({
+      receiverReachable,
+      loginOk,
+      raw: buffer,
+    });
 
     const finish = (handler, value) => {
       if (settled) {
@@ -209,8 +402,29 @@ function connectToGPS({ host, port, username, password, command, expectOk = fals
       }
       settled = true;
       clearTimeout(timeout);
+      clearIdleTimer();
       socket.destroy();
       handler(value);
+    };
+
+    const completeIfReady = () => {
+      if (responseMode === 'idle') {
+        const hasAnyResponse = normalizeReceiverRaw(buffer).length > 0;
+        if (hasAnyResponse) {
+          clearIdleTimer();
+          idleTimer = setTimeout(() => {
+            finish(resolve, buildResult());
+          }, idleGraceMs);
+        }
+        return;
+      }
+
+      const complete = expectOk
+        ? parseReceiverAcknowledgement(buffer).acknowledged
+        : completionPattern.test(buffer);
+      if (complete) {
+        finish(resolve, buildResult());
+      }
     };
 
     const timeout = setTimeout(() => {
@@ -254,16 +468,7 @@ function connectToGPS({ host, port, username, password, command, expectOk = fals
       }
 
       if (state === 'command') {
-        const complete = expectOk
-          ? parseReceiverAcknowledgement(buffer).acknowledged
-          : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer);
-        if (complete) {
-          finish(resolve, {
-            receiverReachable,
-            loginOk,
-            raw: buffer,
-          });
-        }
+        completeIfReady();
       }
     });
 
@@ -275,14 +480,15 @@ function connectToGPS({ host, port, username, password, command, expectOk = fals
       if (settled) {
         return;
       }
-      if (buffer && (expectOk ? parseReceiverAcknowledgement(buffer).acknowledged : /F3|\d{2}\/\d{2}\/\d{4}/.test(buffer))) {
-        finish(resolve, {
-          receiverReachable,
-          loginOk,
-          raw: buffer,
-        });
+
+      const hasAck = expectOk && parseReceiverAcknowledgement(buffer).acknowledged;
+      const hasPattern = !expectOk && completionPattern.test(buffer);
+      const hasIdleResponse = responseMode === 'idle' && normalizeReceiverRaw(buffer).length > 0;
+      if (hasAck || hasPattern || hasIdleResponse) {
+        finish(resolve, buildResult());
         return;
       }
+
       finish(reject, new Error(loginOk ? 'Socket closed unexpectedly' : 'Receiver login failed or socket closed unexpectedly'));
     });
   });
@@ -293,6 +499,9 @@ module.exports = {
   normalizeReceiverRaw,
   parseReceiverAcknowledgement,
   parseGpsTimeResponse,
+  parseGpsReceiverInfo,
+  parseGpsPosition,
+  parseGpsSatelliteList,
   classifyReceiverError,
   connectToGPS,
 };

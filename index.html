@@ -273,6 +273,102 @@
         </div>
       </section>
 
+      <section id="gpsReceiverDetailsPanel" class="card dashboard-card gps-extra-panel" aria-labelledby="gpsReceiverDetailsHeading">
+        <div class="dashboard-header gps-extra-header">
+          <div>
+            <p class="dashboard-kicker">Receiver details</p>
+            <h2 id="gpsReceiverDetailsHeading" class="dashboard-title">GPS RECEIVER DETAILS</h2>
+            <p class="dashboard-summary-text">Additional XLi GPS telemetry that is not already shown in the main status cards.</p>
+          </div>
+        </div>
+
+        <div class="gps-extra-grid">
+          <article class="monitoring-card gps-extra-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Receiver telemetry</p>
+            </div>
+            <dl class="gps-detail-list">
+              <div class="gps-detail-item">
+                <dt>Acquisition state</dt>
+                <dd id="gpsDetailAcquisitionState">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>Antenna status</dt>
+                <dd id="gpsDetailAntennaStatus">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>GPS board part number</dt>
+                <dd id="gpsDetailBoardPartNumber">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>Software version</dt>
+                <dd id="gpsDetailSoftwareVersion">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>FPGA version</dt>
+                <dd id="gpsDetailFpgaVersion">Unavailable</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article class="monitoring-card gps-extra-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Receiver position</p>
+            </div>
+            <dl class="gps-detail-list gps-position-list">
+              <div class="gps-detail-item">
+                <dt>Latitude</dt>
+                <dd id="gpsDetailLatitude">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>Longitude</dt>
+                <dd id="gpsDetailLongitude">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>Altitude</dt>
+                <dd id="gpsDetailAltitude">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>X position</dt>
+                <dd id="gpsDetailX">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>Y position</dt>
+                <dd id="gpsDetailY">Unavailable</dd>
+              </div>
+              <div class="gps-detail-item">
+                <dt>Z position</dt>
+                <dd id="gpsDetailZ">Unavailable</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article class="monitoring-card gps-extra-card gps-satellite-card">
+            <div class="monitoring-card-header">
+              <p class="monitoring-card-title">Satellite tracking</p>
+              <span id="gpsSatelliteCount" class="monitoring-card-badge badge-info">0 SAT</span>
+            </div>
+            <div class="gps-satellite-table-wrap">
+              <table class="gps-satellite-table">
+                <thead>
+                  <tr>
+                    <th scope="col">PRN</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Utilization</th>
+                    <th scope="col">Level</th>
+                  </tr>
+                </thead>
+                <tbody id="gpsSatelliteTableBody">
+                  <tr>
+                    <td colspan="4" class="gps-satellite-empty">Satellite tracking data is unavailable.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <p class="coder-credit">Coded by <a href="https://github.com/AlHuDaR/TIME-CACE/tree/main" target="_blank" rel="noreferrer">AlHuDaR</a></p>
     </main>
 

@@ -116,6 +116,27 @@
       lastSuccessfulAuthoritativeTimeSyncAt: null,
       statusBecameStaleAt: null,
       consecutiveCommunicationFailures: 0,
+      gpsReceiverDetails: {
+        available: false,
+        fetchedAt: null,
+        error: null,
+        metadata: {
+          acquisitionState: null,
+          antennaStatus: null,
+          boardPartNumber: null,
+          softwareVersion: null,
+          fpgaVersion: null,
+        },
+        position: {
+          latitude: null,
+          longitude: null,
+          altitudeMeters: null,
+          xMeters: null,
+          yMeters: null,
+          zMeters: null,
+        },
+        satellites: [],
+      },
       ...overrides,
     };
   }
