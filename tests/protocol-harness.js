@@ -14,6 +14,7 @@ const {
   parseGpsPosition,
   parseGpsSatelliteList,
   classifyReceiverError,
+  createReceiverConnectionManager,
   connectToGPS,
   validateConfig,
 } = require('../receiver-protocol');
@@ -147,6 +148,65 @@ async function runTests() {
     });
     assert.match(result.raw, /PRN 01/i);
     assert.match(result.raw, /PRN 12/i);
+  });
+
+  await withTcpServer((socket) => {
+    socket.write('USER NAME:');
+    let stage = 'username';
+    let commandsSeen = 0;
+    let buffer = '';
+
+    socket.on('data', (chunk) => {
+      const text = chunk.toString();
+      if (stage === 'username') {
+        stage = 'password';
+        socket.write('PASSWORD:');
+        return;
+      }
+
+      if (stage === 'password') {
+        stage = 'command';
+        socket.write('LOGIN SUCCESSFUL!');
+        return;
+      }
+
+      buffer += text;
+      if (buffer.includes('\r\n')) {
+        const command = buffer;
+        buffer = '';
+        commandsSeen += 1;
+        socket.write(commandsSeen === 1
+          ? 'F3 UTC 03/20/2026 06:28:56 LOCKED\r\n'
+          : 'F50 B1 XYZ -2401231.0m 5388121.5m 2579210.2m\r\n');
+      }
+    });
+  }, async (port) => {
+    const logs = [];
+    const manager = createReceiverConnectionManager({
+      host: '127.0.0.1',
+      port,
+      username: 'admin',
+      password: 'password',
+      commandTimeoutMs: 600,
+      reconnectInitialMs: 10,
+      reconnectMaxMs: 20,
+      logger: {
+        info(message) { logs.push(message); },
+        warn(message) { logs.push(message); },
+        log(message) { logs.push(message); },
+      },
+    });
+
+    try {
+      const first = await manager.sendCommand('F3\r\n', { responseMode: 'pattern', completionPattern: /LOCKED/ });
+      const second = await manager.sendCommand('F50\r\n', { responseMode: 'idle', idleGraceMs: 40 });
+      assert.match(first.raw, /LOCKED/);
+      assert.match(second.raw, /XYZ/);
+      assert.equal(manager.getStateSnapshot().connected, true);
+      assert.ok(logs.some((entry) => /authentication succeeded/i.test(entry)));
+    } finally {
+      manager.close();
+    }
   });
 
   await expectReject('receiver unreachable behavior', () => connectToGPS({ host: '127.0.0.1', port: 9, username: 'admin', password: 'password', command: 'F3\r\n', timeoutMs: 200 }), /(ECONNREFUSED|timeout|socket)/i);

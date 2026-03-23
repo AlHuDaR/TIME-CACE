@@ -42,16 +42,16 @@ function createHarness(fetchImpl) {
     getSourceLabel(sourceKey) {
       return {
         'gps-xli': 'GPS RECEIVER (XLi)',
-        'ntp-nist': 'NTP (NIST)',
-        'ntp-npl-india': 'NTP (NPL India)',
-        'https-worldtimeapi': 'HTTPS TIME API (WorldTimeAPI)',
-        'https-timeapiio': 'HTTPS TIME API (TimeAPI.io)',
-        'http-date': 'INTERNET/HTTP DATE',
-        'frontend-worldtimeapi': 'HTTPS TIME API (WorldTimeAPI)',
-        'frontend-timeapiio': 'HTTPS TIME API (TimeAPI.io)',
-        'frontend-http-date': 'INTERNET/HTTP DATE',
-        'local-clock': 'LOCAL CLOCK',
-        'browser-local-clock': 'BROWSER LOCAL CLOCK',
+        'ntp-nist': 'Internet (NIST)',
+        'ntp-npl-india': 'Internet (NPL India)',
+        'https-worldtimeapi': 'Internet (WorldTimeAPI)',
+        'https-timeapiio': 'Internet (timeapi.io)',
+        'http-date': 'Internet (HTTP Date)',
+        'frontend-worldtimeapi': 'Internet (WorldTimeAPI)',
+        'frontend-timeapiio': 'Internet (timeapi.io)',
+        'frontend-http-date': 'Internet (HTTP Date)',
+        'local-clock': 'Internal Clock',
+        'browser-local-clock': 'Internal Clock',
       }[sourceKey] || String(sourceKey || 'UNKNOWN').toUpperCase();
     }
     updateFallbackInfo() {}
@@ -91,17 +91,26 @@ function createHarness(fetchImpl) {
     }),
     humanizeSource: (sourceKey) => ({
       'gps-xli': 'GPS RECEIVER (XLi)',
-      'ntp-nist': 'NTP (NIST)',
-      'ntp-npl-india': 'NTP (NPL India)',
-      'https-worldtimeapi': 'HTTPS TIME API (WorldTimeAPI)',
-      'https-timeapiio': 'HTTPS TIME API (TimeAPI.io)',
-      'http-date': 'INTERNET/HTTP DATE',
-      'frontend-worldtimeapi': 'HTTPS TIME API (WorldTimeAPI)',
-      'frontend-timeapiio': 'HTTPS TIME API (TimeAPI.io)',
-      'frontend-http-date': 'INTERNET/HTTP DATE',
-      'local-clock': 'LOCAL CLOCK',
-      'browser-local-clock': 'BROWSER LOCAL CLOCK',
+      'ntp-nist': 'Internet (NIST)',
+      'ntp-npl-india': 'Internet (NPL India)',
+      'https-worldtimeapi': 'Internet (WorldTimeAPI)',
+      'https-timeapiio': 'Internet (timeapi.io)',
+      'http-date': 'Internet (HTTP Date)',
+      'frontend-worldtimeapi': 'Internet (WorldTimeAPI)',
+      'frontend-timeapiio': 'Internet (timeapi.io)',
+      'frontend-http-date': 'Internet (HTTP Date)',
+      'local-clock': 'Internal Clock',
+      'browser-local-clock': 'Internal Clock',
     }[sourceKey] || String(sourceKey || '').replace(/-/g, ' ')),
+    getStandardStatusInfo: (state = {}) => ({
+      source: state.sourceLabel || state.currentSourceLabel || state.currentSource || 'Unknown',
+      status: state.status || state.statusText || 'Status unavailable',
+      severity: state.currentSource === 'gps-xli' ? 'healthy' : ['browser-local-clock', 'local-clock'].includes(state.currentSource) ? 'critical' : 'warning',
+    }),
+    formatStandardStatusLines: (state = {}) => [
+      state.sourceLabel || state.currentSourceLabel || state.currentSource || 'Unknown',
+      state.status || state.statusText || 'Status unavailable',
+    ],
     formatClockTime: () => '00:00:00',
     formatTimeParts: (hour, minute, second) => `${hour}:${minute}:${second}`,
     MessageCenter,
@@ -179,9 +188,9 @@ async function testTraceableFallbackRemainsVisible() {
     statusText: 'Traceable fallback active',
     status: 'Traceable fallback active',
     currentSource: 'ntp-nist',
-    currentSourceLabel: 'NTP (NIST)',
+    currentSourceLabel: 'Internet (NIST)',
     sourceKey: 'ntp-nist',
-    sourceLabel: 'NTP (NIST)',
+    sourceLabel: 'Internet (NIST)',
     sourceTier: 'traceable-fallback',
     fallback: true,
     traceable: true,
@@ -198,8 +207,8 @@ async function testTraceableFallbackRemainsVisible() {
 
   assert.equal(state.backendOnline, true);
   assert.equal(state.currentSource, 'ntp-nist');
-  assert.equal(state.sourceLabel, 'NTP (NIST)');
-  assert.equal(sync.getSourceDisplayName(state), 'NTP (NIST)');
+  assert.equal(state.sourceLabel, 'Internet (NIST)');
+  assert.equal(sync.getSourceDisplayName(state), 'Internet (NIST)');
 }
 
 async function testInternetFallbackRemainsBackendAuthoritative() {
@@ -213,9 +222,9 @@ async function testInternetFallbackRemainsBackendAuthoritative() {
     statusText: 'Internet fallback active',
     status: 'Internet fallback active',
     currentSource: 'https-worldtimeapi',
-    currentSourceLabel: 'HTTPS TIME API (WorldTimeAPI)',
+    currentSourceLabel: 'Internet (WorldTimeAPI)',
     sourceKey: 'https-worldtimeapi',
-    sourceLabel: 'HTTPS TIME API (WorldTimeAPI)',
+    sourceLabel: 'Internet (WorldTimeAPI)',
     sourceTier: 'internet-fallback',
     fallback: true,
     traceable: false,
@@ -232,7 +241,7 @@ async function testInternetFallbackRemainsBackendAuthoritative() {
 
   assert.equal(state.backendOnline, true);
   assert.equal(state.currentSource, 'https-worldtimeapi');
-  assert.equal(sync.getSourceDisplayName(state), 'HTTPS TIME API (WorldTimeAPI)');
+  assert.equal(sync.getSourceDisplayName(state), 'Internet (WorldTimeAPI)');
 }
 
 async function testStatusSuccessFalseDoesNotMeanBackendOffline() {
@@ -247,9 +256,9 @@ async function testStatusSuccessFalseDoesNotMeanBackendOffline() {
     statusText: 'Traceable fallback active',
     status: 'Traceable fallback active',
     currentSource: 'ntp-nist',
-    currentSourceLabel: 'NTP (NIST)',
+    currentSourceLabel: 'Internet (NIST)',
     sourceKey: 'ntp-nist',
-    sourceLabel: 'NTP (NIST)',
+    sourceLabel: 'Internet (NIST)',
     sourceTier: 'traceable-fallback',
     fallback: true,
     traceable: true,
@@ -265,7 +274,7 @@ async function testStatusSuccessFalseDoesNotMeanBackendOffline() {
 
   assert.equal(status.backendOnline, true);
   assert.equal(status.currentSource, 'ntp-nist');
-  assert.equal(status.sourceLabel, 'NTP (NIST)');
+  assert.equal(status.sourceLabel, 'Internet (NIST)');
   assert.equal(status.dataState, 'unavailable');
 }
 
@@ -275,7 +284,7 @@ async function testInvalidStatusJsonMarksBackendUnavailable() {
   const status = await sync.pollStatus();
 
   assert.equal(status.backendOnline, false);
-  assert.match(status.statusText, /Status polling unavailable: Invalid JSON returned by \/status/);
+  assert.equal(status.statusText, 'Lost (no valid time source)');
 }
 
 async function testBackendFailureFallsBackToFrontendWorldTimeApi() {
@@ -293,9 +302,9 @@ async function testBackendFailureFallsBackToFrontendWorldTimeApi() {
 
   assert.equal(state.backendOnline, false);
   assert.equal(state.currentSource, 'frontend-worldtimeapi');
-  assert.equal(state.sourceLabel, 'HTTPS TIME API (WorldTimeAPI)');
-  assert.equal(state.status, 'Internet fallback active');
-  assert.equal(state.statusText, 'Backend unavailable. Frontend internet fallback active.');
+  assert.equal(state.sourceLabel, 'Internet (WorldTimeAPI)');
+  assert.equal(state.status, 'Degraded (primary source unavailable)');
+  assert.equal(state.statusText, 'Degraded (primary source unavailable)');
 }
 
 async function testBackendFailureFallsBackToFrontendTimeApiIo() {
@@ -315,8 +324,8 @@ async function testBackendFailureFallsBackToFrontendTimeApiIo() {
   const state = await sync.syncTime();
 
   assert.equal(state.currentSource, 'frontend-timeapiio');
-  assert.equal(state.sourceLabel, 'HTTPS TIME API (TimeAPI.io)');
-  assert.equal(state.status, 'Internet fallback active');
+  assert.equal(state.sourceLabel, 'Internet (timeapi.io)');
+  assert.equal(state.status, 'Degraded (primary source unavailable)');
 }
 
 async function testBackendFailureFallsBackToHttpDate() {
@@ -340,7 +349,7 @@ async function testBackendFailureFallsBackToHttpDate() {
   const state = await sync.syncTime();
 
   assert.equal(state.currentSource, 'frontend-http-date');
-  assert.equal(state.sourceLabel, 'INTERNET/HTTP DATE');
+  assert.equal(state.sourceLabel, 'Internet (HTTP Date)');
   assert.equal(state.protocol, 'https');
 }
 
@@ -356,7 +365,7 @@ async function testTimeFetchFailureFallsBackToBrowserLocalClock() {
 
   assert.equal(state.backendOnline, false);
   assert.equal(state.currentSource, 'browser-local-clock');
-  assert.equal(state.statusText, 'Backend unavailable. Browser emergency fallback active.');
+  assert.equal(state.statusText, 'Holdover (using last valid sync)');
 }
 
 (async () => {

@@ -41,6 +41,7 @@
       authenticated: "Authenticated",
       reachable: "Reachable",
       "receiver-responding": "Reachable",
+      reconnecting: "Reconnecting",
       disabled: "Receiver disabled",
       "login-failed": "Authentication failed",
       "auth-failed": "Authentication failed",

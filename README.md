@@ -9,6 +9,8 @@ TIME-CACE is the Royal Air Force of Oman Calibration Center (CACE) reference-tim
 - A **frontend emergency fallback hierarchy** is used **only** when the backend is unreachable, times out, or returns invalid/unusable JSON.
 - The application **does not scrape HTML clock pages**.
 - Receiver logic remains backend-only and uses the configured LAN / receiver connection.
+- The backend keeps a **persistent receiver session** whenever possible and serializes receiver commands through one queue.
+- Receiver telemetry uses a **last-known-good cache** so brief receiver/network churn does not immediately blank valid dashboard data.
 
 ## Pages and routes
 
@@ -118,7 +120,7 @@ When backend runtime data cannot be used, the frontend now tries:
 
 - `gps-proxy.js` — Express API, receiver access, timing payload shaping, and static serving.
 - `time-source-service.js` — backend NTP, HTTPS API, HTTP Date, and local fallback resolution.
-- `receiver-protocol.js` — receiver TCP helpers, parsing, and configuration validation.
+- `receiver-protocol.js` — receiver TCP helpers, persistent session management, parsing, and configuration validation.
 - `runtime-sync.js` — frontend synchronization runtime, backend-first validation, and frontend emergency fallback handling.
 - `status-monitor.js` — frontend monitoring normalization and severity logic.
 - `dashboard-render.js` — dashboard cards, badges, and monitoring presentation.
@@ -191,10 +193,13 @@ Then open either:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `MIN_CONNECTION_INTERVAL_MS` | No | Minimum gap between receiver TCP connections |
-| `REQUEST_TIMEOUT_MS` | No | Receiver socket timeout |
-| `RECEIVER_STATUS_CACHE_MS` | No | Status cache duration |
-| `STATUS_STALE_MS` | No | Backend stale-status threshold |
+| `MIN_CONNECTION_INTERVAL_MS` | No | Minimum gap between queued receiver commands |
+| `REQUEST_TIMEOUT_MS` | No | Receiver command timeout on the persistent session |
+| `RECEIVER_STATUS_CACHE_MS` | No | Short cache duration for `/api/status` |
+| `STATUS_STALE_MS` | No | Threshold before cached receiver telemetry is treated as truly unavailable |
+| `RECEIVER_RECONNECT_INITIAL_MS` | No | Initial reconnect delay after a receiver drop/error |
+| `RECEIVER_RECONNECT_MAX_MS` | No | Maximum reconnect backoff delay |
+| `GPS_DETAIL_CACHE_MS` | No | Cache duration for receiver metadata/position/satellite detail polling |
 | `NTP_TIMEOUT_MS` | No | Per-NTP-source timeout in milliseconds |
 | `HTTPS_TIME_API_TIMEOUT_MS` | No | Per-HTTPS-time-API timeout in milliseconds |
 | `HTTP_DATE_TIMEOUT_MS` | No | Per-HTTP-Date-source timeout in milliseconds |
@@ -220,11 +225,29 @@ Then open either:
 
 - When backend JSON is valid, the frontend trusts the backend-selected `sourceKey`, `sourceLabel`, `status`, and monitoring metadata.
 - Receiver unreachability **does not** mean the backend is offline; the backend may still select a valid fallback source.
+- Receiver telemetry can now be surfaced as `Normal`, `Cached`, `Reconnecting`, or `Unavailable` without wiping the last valid telemetry immediately.
+- Brief receiver churn keeps the last-known-good acquisition state, antenna state, version data, position, and satellite data until the stale threshold is exceeded.
 - `LOCAL CLOCK` appears only when the backend explicitly selects it.
 - `BROWSER LOCAL CLOCK` appears only when `/api/time` cannot provide valid backend data and the browser-accessible emergency internet hierarchy also fails.
 - Frontend emergency internet labels indicate a browser-side continuity mode, not a traceable or authoritative replacement for backend GPS/NTP selection.
 - The UI keeps the dashboard and official-time pages aligned with the backend model while updating source cards, lock state messaging, fallback wording, and the official analog clock.
 - Legacy dashboard watch modes have been removed; `/official-time` is the only maintained watch view.
+
+## Receiver session and cache behavior
+
+- The XLi session is now kept open and reused instead of opening a new Telnet/TCP login for each status/detail request.
+- Receiver commands are serialized so overlapping frontend/API activity cannot create parallel receiver sessions or interleave command output.
+- If the receiver drops, times out, or desynchronizes, the backend marks the receiver state as degraded/reconnecting, schedules an automatic reconnect with capped backoff, and keeps serving recent trusted telemetry when available.
+- Receiver detail polling is cached separately from the fast status polling path to reduce receiver load.
+
+## Recommended receiver tuning
+
+- `REQUEST_TIMEOUT_MS=3000`
+- `RECEIVER_STATUS_CACHE_MS=4000`
+- `STATUS_STALE_MS=45000`
+- `RECEIVER_RECONNECT_INITIAL_MS=1000`
+- `RECEIVER_RECONNECT_MAX_MS=15000`
+- `GPS_DETAIL_CACHE_MS=30000`
 
 ## Testing
 
