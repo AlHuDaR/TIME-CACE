@@ -73,6 +73,20 @@
         dashboardStatusText: document.getElementById("dashboardStatusText"),
         dashboardErrorText: document.getElementById("dashboardErrorText"),
         dashboardEventList: document.getElementById("dashboardEventList"),
+        gpsReceiverDetailsPanel: document.getElementById("gpsReceiverDetailsPanel"),
+        gpsDetailAcquisitionState: document.getElementById("gpsDetailAcquisitionState"),
+        gpsDetailAntennaStatus: document.getElementById("gpsDetailAntennaStatus"),
+        gpsDetailBoardPartNumber: document.getElementById("gpsDetailBoardPartNumber"),
+        gpsDetailSoftwareVersion: document.getElementById("gpsDetailSoftwareVersion"),
+        gpsDetailFpgaVersion: document.getElementById("gpsDetailFpgaVersion"),
+        gpsDetailLatitude: document.getElementById("gpsDetailLatitude"),
+        gpsDetailLongitude: document.getElementById("gpsDetailLongitude"),
+        gpsDetailAltitude: document.getElementById("gpsDetailAltitude"),
+        gpsDetailX: document.getElementById("gpsDetailX"),
+        gpsDetailY: document.getElementById("gpsDetailY"),
+        gpsDetailZ: document.getElementById("gpsDetailZ"),
+        gpsSatelliteCount: document.getElementById("gpsSatelliteCount"),
+        gpsSatelliteTableBody: document.getElementById("gpsSatelliteTableBody"),
       };
 
       this.gpsTimeSync = new global.RAFOTimeApp.GPSTimeSync();

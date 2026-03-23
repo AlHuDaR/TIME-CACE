@@ -33,6 +33,7 @@
         "browser-local-clock": "source-local",
       };
       this.lastDashboardSignature = "";
+      this.lastGpsDetailsSignature = "";
       this.lastLiveRefreshSecond = -1;
     }
 
@@ -70,6 +71,24 @@
       );
     }
 
+    hasGpsReceiverDetailsPanel() {
+      return Boolean(
+        this.elements.gpsReceiverDetailsPanel
+        && this.elements.gpsDetailAcquisitionState
+        && this.elements.gpsDetailAntennaStatus
+        && this.elements.gpsDetailBoardPartNumber
+        && this.elements.gpsDetailSoftwareVersion
+        && this.elements.gpsDetailFpgaVersion
+        && this.elements.gpsDetailLatitude
+        && this.elements.gpsDetailLongitude
+        && this.elements.gpsDetailAltitude
+        && this.elements.gpsDetailX
+        && this.elements.gpsDetailY
+        && this.elements.gpsDetailZ
+        && this.elements.gpsSatelliteCount
+        && this.elements.gpsSatelliteTableBody
+      );
+    }
 
     isFrontendInternetFallback(data) {
       return data?.sourceTier === "internet-fallback" && String(data?.currentSource || "").startsWith("frontend-");
@@ -121,6 +140,7 @@
 
       this.updateFallbackInfoCard(data, receiverStatus);
       this.updateMonitoringDashboard({ data, receiverStatus, sessionState });
+      this.updateGpsReceiverDetails(receiverStatus);
     }
 
     refreshLiveStatus(force = false) {
@@ -155,6 +175,7 @@
       }
 
       this.updateMonitoringDashboard({ data, receiverStatus, sessionState });
+      this.updateGpsReceiverDetails(receiverStatus);
     }
 
 
@@ -411,6 +432,103 @@
         badgeTone: standard.severity === "healthy" ? "ok" : standard.severity === "critical" ? "error" : "warning",
         chipClass: standard.severity === "healthy" ? "status-normal" : standard.severity === "critical" ? "status-critical" : "status-warning",
       };
+    }
+
+    updateGpsReceiverDetails(receiverStatus) {
+      if (!this.hasGpsReceiverDetailsPanel()) {
+        return;
+      }
+
+      const details = receiverStatus?.gpsReceiverDetails || {};
+      const signature = JSON.stringify(details);
+      if (signature === this.lastGpsDetailsSignature) {
+        return;
+      }
+
+      this.lastGpsDetailsSignature = signature;
+      const metadata = details.metadata || {};
+      const position = details.position || {};
+      const satellites = Array.isArray(details.satellites) ? details.satellites : [];
+
+      this.setText(this.elements.gpsDetailAcquisitionState, this.formatDetailValue(metadata.acquisitionState));
+      this.setText(this.elements.gpsDetailAntennaStatus, this.formatDetailValue(metadata.antennaStatus));
+      this.setText(this.elements.gpsDetailBoardPartNumber, this.formatDetailValue(metadata.boardPartNumber));
+      this.setText(this.elements.gpsDetailSoftwareVersion, this.formatDetailValue(metadata.softwareVersion));
+      this.setText(this.elements.gpsDetailFpgaVersion, this.formatDetailValue(metadata.fpgaVersion));
+      this.setText(this.elements.gpsDetailLatitude, this.formatCoordinateDetail(position.latitude));
+      this.setText(this.elements.gpsDetailLongitude, this.formatCoordinateDetail(position.longitude));
+      this.setText(this.elements.gpsDetailAltitude, this.formatMeterValue(position.altitudeMeters));
+      this.setText(this.elements.gpsDetailX, this.formatMeterValue(position.xMeters));
+      this.setText(this.elements.gpsDetailY, this.formatMeterValue(position.yMeters));
+      this.setText(this.elements.gpsDetailZ, this.formatMeterValue(position.zMeters));
+      this.setBadge(this.elements.gpsSatelliteCount, satellites.length > 0 ? "ok" : "info", `${satellites.length} SAT`);
+      this.renderSatelliteTable(satellites);
+    }
+
+    formatDetailValue(value) {
+      return value ? String(value) : "Unavailable";
+    }
+
+    formatCoordinateDetail(value) {
+      if (!value) {
+        return "Unavailable";
+      }
+
+      if (typeof value === "object" && value.text) {
+        return value.text;
+      }
+
+      return String(value);
+    }
+
+    formatMeterValue(value) {
+      if (!Number.isFinite(Number(value))) {
+        return "Unavailable";
+      }
+
+      return `${Number(value).toFixed(1)} m`;
+    }
+
+    formatLevelDbw(value) {
+      if (!Number.isFinite(Number(value))) {
+        return "Unavailable";
+      }
+
+      return `${Number(value).toFixed(1)} dBW`;
+    }
+
+    renderSatelliteTable(satellites) {
+      if (!this.elements.gpsSatelliteTableBody) {
+        return;
+      }
+
+      if (!satellites || satellites.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 4;
+        cell.className = "gps-satellite-empty";
+        cell.textContent = "Satellite tracking data is unavailable.";
+        row.append(cell);
+        this.elements.gpsSatelliteTableBody.replaceChildren(row);
+        return;
+      }
+
+      this.elements.gpsSatelliteTableBody.replaceChildren(
+        ...satellites.map((satellite) => {
+          const row = document.createElement("tr");
+          [
+            satellite.prn,
+            this.formatDetailValue(satellite.status),
+            this.formatDetailValue(satellite.utilization),
+            this.formatLevelDbw(satellite.levelDbw),
+          ].forEach((value) => {
+            const cell = document.createElement("td");
+            cell.textContent = String(value);
+            row.append(cell);
+          });
+          return row;
+        }),
+      );
     }
 
     setMetricCard(name, metric) {
