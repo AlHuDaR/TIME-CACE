@@ -194,6 +194,17 @@ body.dark-mode .official-status-card {
   overflow-wrap: anywhere;
 }
 
+#officialDifferenceCard {
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#officialDifferenceValue {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
 .official-status-card__value--source {
   color: #c8751b;
   font-size: clamp(1.05rem, 1.5vw, 1.45rem);
@@ -220,12 +231,68 @@ body.dark-mode .official-status-card {
   background: #ffd7d2;
 }
 
+#officialDifferenceCard[data-severity="green"] {
+  border-color: rgba(18, 124, 56, 0.2);
+  background: linear-gradient(180deg, rgba(236, 248, 240, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(18, 124, 56, 0.08);
+}
+
+#officialDifferenceCard[data-severity="green"] #officialDifferenceValue {
+  color: #127c38;
+}
+
+#officialDifferenceCard[data-severity="yellow"] {
+  border-color: rgba(192, 108, 0, 0.26);
+  background: linear-gradient(180deg, rgba(255, 246, 223, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(192, 108, 0, 0.08);
+}
+
+#officialDifferenceCard[data-severity="yellow"] #officialDifferenceValue {
+  color: #9f650d;
+}
+
+#officialDifferenceCard[data-severity="red"] {
+  border-color: rgba(179, 90, 31, 0.28);
+  background: linear-gradient(180deg, rgba(255, 231, 224, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(179, 90, 31, 0.08);
+}
+
+#officialDifferenceCard[data-severity="red"] #officialDifferenceValue {
+  color: #a94d1c;
+}
+
+#officialDifferenceCard[data-severity="critical"] {
+  border-color: rgba(223, 45, 45, 0.32);
+  background: linear-gradient(180deg, rgba(255, 219, 219, 0.98), rgba(255, 245, 245, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(223, 45, 45, 0.1);
+}
+
+#officialDifferenceCard[data-severity="critical"] #officialDifferenceValue {
+  color: #b61c1c;
+}
+
 body.dark-mode .official-status-card[data-severity="warning"] {
   background: linear-gradient(180deg, rgba(78, 53, 24, 0.55), rgba(16, 42, 56, 0.94));
 }
 
 body.dark-mode .official-status-card[data-severity="critical"] {
   background: linear-gradient(180deg, rgba(91, 40, 32, 0.55), rgba(16, 42, 56, 0.94));
+}
+
+body.dark-mode #officialDifferenceCard[data-severity="green"] {
+  background: linear-gradient(180deg, rgba(17, 78, 44, 0.5), rgba(16, 42, 56, 0.94));
+}
+
+body.dark-mode #officialDifferenceCard[data-severity="yellow"] {
+  background: linear-gradient(180deg, rgba(98, 76, 23, 0.55), rgba(16, 42, 56, 0.94));
+}
+
+body.dark-mode #officialDifferenceCard[data-severity="red"] {
+  background: linear-gradient(180deg, rgba(110, 50, 28, 0.58), rgba(16, 42, 56, 0.94));
+}
+
+body.dark-mode #officialDifferenceCard[data-severity="critical"] {
+  background: linear-gradient(180deg, rgba(116, 28, 28, 0.62), rgba(16, 42, 56, 0.94));
 }
 
 /* Bottom navigation and credit spacing */
