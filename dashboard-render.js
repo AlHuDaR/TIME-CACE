@@ -111,12 +111,13 @@
     updateDisplay(data) {
       const receiverStatus = data.receiverStatus || this.gpsTimeSync.getReceiverStatus();
       const sessionState = data.sessionState || this.gpsTimeSync.getSessionState();
+      const telemetryLabel = this.getTelemetryStateLabel(receiverStatus);
 
       if (this.hasStatusBar()) {
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
         this.elements.sourceIndicator.textContent = formatStandardStatusLines(data)[0];
-        this.elements.lockStatus.textContent = formatStandardStatusLines(data)[1];
+        this.elements.lockStatus.textContent = `${formatStandardStatusLines(data)[1]} · ${telemetryLabel}`;
         this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
         this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
 
@@ -133,7 +134,7 @@
       if (this.hasPrimarySourceDetails()) {
         this.elements.primarySourceDescription.textContent = formatStandardStatusLines(data)[0];
         this.elements.primarySourceNote.textContent = this.getPrimarySourceNote(data, receiverStatus, sessionState);
-        this.elements.syncStatus.textContent = formatStandardStatusLines(data)[1];
+        this.elements.syncStatus.textContent = `${formatStandardStatusLines(data)[1]} · ${telemetryLabel}`;
         this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-xli");
         this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
       }
@@ -153,9 +154,10 @@
       const data = this.gpsTimeSync.getCurrentState();
       const receiverStatus = this.gpsTimeSync.getReceiverStatus();
       const sessionState = this.gpsTimeSync.getSessionState();
+      const telemetryLabel = this.getTelemetryStateLabel(receiverStatus);
 
       if (this.hasPrimarySourceDetails()) {
-        this.elements.syncStatus.textContent = formatStandardStatusLines(data)[1];
+        this.elements.syncStatus.textContent = `${formatStandardStatusLines(data)[1]} · ${telemetryLabel}`;
         this.elements.syncStatus.classList.toggle("warn", data.currentSource !== "gps-xli");
         this.elements.statusConsistencyHint.textContent = this.getConsistencyHint(data, receiverStatus);
       }
@@ -164,7 +166,7 @@
         const sourceClass = this.sourceClasses[data.currentSource] || "source-local";
         this.elements.sourceIndicator.className = `source-badge ${sourceClass}`;
         this.elements.sourceIndicator.textContent = formatStandardStatusLines(data)[0];
-        this.elements.lockStatus.textContent = formatStandardStatusLines(data)[1];
+        this.elements.lockStatus.textContent = `${formatStandardStatusLines(data)[1]} · ${telemetryLabel}`;
         this.elements.lockPulse.classList.toggle("locked", receiverStatus.backendOnline && receiverStatus.gpsLockState === "locked");
         this.elements.lockPulse.classList.toggle("warning", receiverStatus.backendOnline && ["unlocked", "holdover"].includes(receiverStatus.gpsLockState));
         this.elements.lastSyncTime.textContent = data.lastSyncTimestamp
@@ -278,11 +280,11 @@
         diagnosticsText: receiverStatus.checkedAt ? `Checked: ${formatClockTime(receiverStatus.checkedAt)}` : "Checked: Never",
         errorLine: receiverStatus.lastError ? "Issue recorded for time-source monitoring." : "No active issue recorded.",
         receiverReachability: {
-          value: receiverStatus.receiverConfigured === false ? "Unavailable" : receiverStatus.receiverReachable ? "Reachable" : "Unavailable",
-          note: receiverStatus.receiverConfigured === false ? "Receiver status is not available." : receiverStatus.receiverReachable ? "Receiver communication is available." : "Receiver communication is not available.",
-          badge: receiverStatus.receiverReachable ? "OK" : "INFO",
-          badgeTone: receiverStatus.receiverReachable ? "ok" : "info",
-          chipClass: receiverStatus.receiverReachable ? "status-normal" : "status-advisory",
+          value: this.getTelemetryStateLabel(receiverStatus),
+          note: this.getTelemetryStateNote(receiverStatus),
+          badge: receiverStatus.telemetryState === "normal" ? "OK" : receiverStatus.telemetryState === "unavailable" ? "WARNING" : "INFO",
+          badgeTone: receiverStatus.telemetryState === "normal" ? "ok" : receiverStatus.telemetryState === "unavailable" ? "warning" : "info",
+          chipClass: receiverStatus.telemetryState === "normal" ? "status-normal" : receiverStatus.telemetryState === "unavailable" ? "status-warning" : "status-advisory",
         },
         gpsLock: {
           value: receiverStatus.gpsLockState === "locked" ? "LOCKED" : receiverStatus.gpsLockState === "holdover" ? "HOLDOVER" : receiverStatus.gpsLockState === "unlocked" ? "UNLOCKED" : "UNKNOWN",
@@ -349,16 +351,17 @@
 
     getCommunicationCard(receiverStatus) {
       const communicationMap = {
-        authenticated: ["Available", "Receiver communication is available.", "OK", "ok", "status-normal"],
-        reachable: ["Available", "Receiver communication is available.", "OK", "ok", "status-normal"],
-        "receiver-responding": ["Available", "Receiver communication is available.", "OK", "ok", "status-normal"],
-        disabled: ["Unavailable", "Receiver communication is not available.", "INFO", "info", "status-advisory"],
-        "login-failed": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
-        "auth-failed": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
-        unreachable: ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
-        "receiver-unreachable": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
-        "backend-offline": ["Unavailable", "Receiver communication is not available.", "WARNING", "warning", "status-warning"],
-        "not-started": ["Unavailable", "Receiver communication is not available.", "INFO", "info", "status-advisory"],
+        authenticated: ["Normal", "Receiver communication is healthy.", "OK", "ok", "status-normal"],
+        reachable: ["Normal", "Receiver communication is healthy.", "OK", "ok", "status-normal"],
+        "receiver-responding": ["Normal", "Receiver communication is healthy.", "OK", "ok", "status-normal"],
+        reconnecting: ["Reconnecting", "Receiver communication is reconnecting; recent telemetry is retained.", "INFO", "info", "status-advisory"],
+        disabled: ["Unavailable", "Receiver communication is disabled.", "INFO", "info", "status-advisory"],
+        "login-failed": ["Unavailable", "Receiver authentication failed.", "WARNING", "warning", "status-warning"],
+        "auth-failed": ["Unavailable", "Receiver authentication failed.", "WARNING", "warning", "status-warning"],
+        unreachable: ["Unavailable", "Receiver communication is unavailable.", "WARNING", "warning", "status-warning"],
+        "receiver-unreachable": ["Unavailable", "Receiver communication is unavailable.", "WARNING", "warning", "status-warning"],
+        "backend-offline": ["Unavailable", "Receiver communication is unavailable.", "WARNING", "warning", "status-warning"],
+        "not-started": ["Unavailable", "Receiver communication has not started yet.", "INFO", "info", "status-advisory"],
       };
       const [value, note, badge, badgeTone, chipClass] = communicationMap[receiverStatus.receiverCommunicationState]
         || ["Unavailable", "Receiver communication is not available.", "INFO", "info", "status-advisory"];
@@ -440,7 +443,10 @@
       }
 
       const details = receiverStatus?.gpsReceiverDetails || {};
-      const signature = JSON.stringify(details);
+      const signature = JSON.stringify({
+        telemetryState: receiverStatus?.telemetryState || "unavailable",
+        details,
+      });
       if (signature === this.lastGpsDetailsSignature) {
         return;
       }
@@ -450,28 +456,34 @@
       const position = details.position || {};
       const satellites = Array.isArray(details.satellites) ? details.satellites : [];
 
-      this.setText(this.elements.gpsDetailAcquisitionState, this.formatDetailValue(metadata.acquisitionState));
-      this.setText(this.elements.gpsDetailAntennaStatus, this.formatDetailValue(metadata.antennaStatus));
-      this.setText(this.elements.gpsDetailBoardPartNumber, this.formatDetailValue(metadata.boardPartNumber));
-      this.setText(this.elements.gpsDetailSoftwareVersion, this.formatDetailValue(metadata.softwareVersion));
-      this.setText(this.elements.gpsDetailFpgaVersion, this.formatDetailValue(metadata.fpgaVersion));
-      this.setText(this.elements.gpsDetailLatitude, this.formatCoordinateDetail(position.latitude));
-      this.setText(this.elements.gpsDetailLongitude, this.formatCoordinateDetail(position.longitude));
-      this.setText(this.elements.gpsDetailAltitude, this.formatMeterValue(position.altitudeMeters));
-      this.setText(this.elements.gpsDetailX, this.formatMeterValue(position.xMeters));
-      this.setText(this.elements.gpsDetailY, this.formatMeterValue(position.yMeters));
-      this.setText(this.elements.gpsDetailZ, this.formatMeterValue(position.zMeters));
-      this.setBadge(this.elements.gpsSatelliteCount, satellites.length > 0 ? "ok" : "info", `${satellites.length} SAT`);
-      this.renderSatelliteTable(satellites);
+      const telemetryState = receiverStatus?.telemetryState || "unavailable";
+
+      this.setText(this.elements.gpsDetailAcquisitionState, this.formatDetailValue(metadata.acquisitionState, telemetryState));
+      this.setText(this.elements.gpsDetailAntennaStatus, this.formatDetailValue(metadata.antennaStatus, telemetryState));
+      this.setText(this.elements.gpsDetailBoardPartNumber, this.formatDetailValue(metadata.boardPartNumber, telemetryState));
+      this.setText(this.elements.gpsDetailSoftwareVersion, this.formatDetailValue(metadata.softwareVersion, telemetryState));
+      this.setText(this.elements.gpsDetailFpgaVersion, this.formatDetailValue(metadata.fpgaVersion, telemetryState));
+      this.setText(this.elements.gpsDetailLatitude, this.formatCoordinateDetail(position.latitude, telemetryState));
+      this.setText(this.elements.gpsDetailLongitude, this.formatCoordinateDetail(position.longitude, telemetryState));
+      this.setText(this.elements.gpsDetailAltitude, this.formatMeterValue(position.altitudeMeters, telemetryState));
+      this.setText(this.elements.gpsDetailX, this.formatMeterValue(position.xMeters, telemetryState));
+      this.setText(this.elements.gpsDetailY, this.formatMeterValue(position.yMeters, telemetryState));
+      this.setText(this.elements.gpsDetailZ, this.formatMeterValue(position.zMeters, telemetryState));
+      this.setBadge(
+        this.elements.gpsSatelliteCount,
+        satellites.length > 0 ? "ok" : telemetryState === "unavailable" ? "warning" : "info",
+        satellites.length > 0 ? `${satellites.length} SAT` : telemetryState === "unavailable" ? "UNAVAILABLE" : this.getTelemetryStateLabel(receiverStatus).toUpperCase(),
+      );
+      this.renderSatelliteTable(satellites, telemetryState);
     }
 
-    formatDetailValue(value) {
-      return value ? String(value) : "Unavailable";
+    formatDetailValue(value, telemetryState = "unavailable") {
+      return value ? String(value) : this.getUnavailableDetailLabel(telemetryState);
     }
 
-    formatCoordinateDetail(value) {
+    formatCoordinateDetail(value, telemetryState = "unavailable") {
       if (!value) {
-        return "Unavailable";
+        return this.getUnavailableDetailLabel(telemetryState);
       }
 
       if (typeof value === "object" && value.text) {
@@ -481,23 +493,23 @@
       return String(value);
     }
 
-    formatMeterValue(value) {
+    formatMeterValue(value, telemetryState = "unavailable") {
       if (!Number.isFinite(Number(value))) {
-        return "Unavailable";
+        return this.getUnavailableDetailLabel(telemetryState);
       }
 
       return `${Number(value).toFixed(1)} m`;
     }
 
-    formatLevelDbw(value) {
+    formatLevelDbw(value, telemetryState = "unavailable") {
       if (!Number.isFinite(Number(value))) {
-        return "Unavailable";
+        return this.getUnavailableDetailLabel(telemetryState);
       }
 
       return `${Number(value).toFixed(1)} dBW`;
     }
 
-    renderSatelliteTable(satellites) {
+    renderSatelliteTable(satellites, telemetryState = "unavailable") {
       if (!this.elements.gpsSatelliteTableBody) {
         return;
       }
@@ -507,7 +519,9 @@
         const cell = document.createElement("td");
         cell.colSpan = 4;
         cell.className = "gps-satellite-empty";
-        cell.textContent = "Satellite tracking data is unavailable.";
+        cell.textContent = telemetryState === "unavailable"
+          ? "Satellite tracking data is unavailable."
+          : "Recent satellite tracking data is being retained.";
         row.append(cell);
         this.elements.gpsSatelliteTableBody.replaceChildren(row);
         return;
@@ -518,9 +532,9 @@
           const row = document.createElement("tr");
           [
             satellite.prn,
-            this.formatDetailValue(satellite.status),
-            this.formatDetailValue(satellite.utilization),
-            this.formatLevelDbw(satellite.levelDbw),
+            this.formatDetailValue(satellite.status, telemetryState),
+            this.formatDetailValue(satellite.utilization, telemetryState),
+            this.formatLevelDbw(satellite.levelDbw, telemetryState),
           ].forEach((value) => {
             const cell = document.createElement("td");
             cell.textContent = String(value);
@@ -605,7 +619,7 @@
         return "Checked: Never";
       }
 
-      return `Checked: ${formatClockTime(receiverStatus.checkedAt)}`;
+      return `Checked: ${formatClockTime(receiverStatus.checkedAt)} · ${this.getTelemetryStateLabel(receiverStatus)}`;
     }
 
     getLockText(data, receiverStatus) {
@@ -631,6 +645,32 @@
     getConsistencyHint(data, receiverStatus) {
       const status = getStandardStatusInfo(data);
       return `${formatStandardStatusLines(data)[0]} | ${formatStandardStatusLines(data)[1]}`;
+    }
+
+    getTelemetryStateLabel(receiverStatus = {}) {
+      return {
+        normal: "Normal",
+        cached: "Cached",
+        reconnecting: "Reconnecting",
+        unavailable: "Unavailable",
+      }[receiverStatus.telemetryState] || "Unavailable";
+    }
+
+    getTelemetryStateNote(receiverStatus = {}) {
+      return {
+        normal: "Receiver telemetry is current.",
+        cached: "Showing recent receiver telemetry from cache.",
+        reconnecting: "Receiver reconnect is in progress; recent telemetry is retained.",
+        unavailable: "Receiver telemetry is unavailable.",
+      }[receiverStatus.telemetryState] || "Receiver telemetry is unavailable.";
+    }
+
+    getUnavailableDetailLabel(telemetryState = "unavailable") {
+      return telemetryState === "cached"
+        ? "Cached"
+        : telemetryState === "reconnecting"
+          ? "Reconnecting"
+          : "Unavailable";
     }
   }
 

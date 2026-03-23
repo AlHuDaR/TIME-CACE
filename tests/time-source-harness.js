@@ -45,10 +45,10 @@ async function withHttpServer(handler, run) {
 }
 
 async function runTests() {
-  assert.equal(getSourceDefinition('gps-xli').sourceLabel, 'GPS RECEIVER (XLi)');
-  assert.equal(getSourceDefinition('ntp-nist').status, 'Traceable fallback active');
-  assert.equal(getSourceDefinition('https-worldtimeapi').sourceLabel, 'HTTPS TIME API (WorldTimeAPI)');
-  assert.equal(getSourceDefinition('https-timeapiio').sourceLabel, 'HTTPS TIME API (TimeAPI.io)');
+  assert.equal(getSourceDefinition('gps-xli').sourceLabel, 'GPS Receiver');
+  assert.equal(getSourceDefinition('ntp-nist').status, 'Degraded (primary source unavailable)');
+  assert.equal(getSourceDefinition('https-worldtimeapi').sourceLabel, 'Internet (WorldTimeAPI)');
+  assert.equal(getSourceDefinition('https-timeapiio').sourceLabel, 'Internet (timeapi.io)');
   assert.equal(getSourceDefinition('http-date').traceable, false);
   assert.equal(getSourceDefinition('local-clock').sourceTier, 'emergency-fallback');
 
@@ -69,7 +69,7 @@ async function runTests() {
 
     const result = await service.resolveFallbackHierarchy();
     assert.equal(result.sourceKey, 'ntp-nist');
-    assert.equal(result.sourceLabel, 'NTP (NIST)');
+    assert.equal(result.sourceLabel, 'Internet (NIST)');
     assert.equal(result.traceable, true);
     assert.equal(result.fallback, true);
     assert.ok(Number.isFinite(result.timestamp));
@@ -91,7 +91,7 @@ async function runTests() {
 
     const result = await service.resolveFallbackHierarchy();
     assert.equal(result.sourceKey, 'ntp-npl-india');
-    assert.equal(result.sourceLabel, 'NTP (NPL India)');
+    assert.equal(result.sourceLabel, 'Internet (NPL India)');
     assert.equal(result.traceable, true);
     assert.equal(result.resolutionErrors.length, 1);
     assert.equal(result.resolutionErrors[0].sourceKey, 'ntp-nist');
@@ -114,7 +114,7 @@ async function runTests() {
 
     const result = await service.resolveFallbackHierarchy();
     assert.equal(result.sourceKey, 'https-worldtimeapi');
-    assert.equal(result.sourceLabel, 'HTTPS TIME API (WorldTimeAPI)');
+    assert.equal(result.sourceLabel, 'Internet (WorldTimeAPI)');
     assert.equal(result.traceable, false);
     assert.equal(result.resolutionErrors.length, 2);
   });
@@ -136,7 +136,7 @@ async function runTests() {
 
     const result = await service.resolveFallbackHierarchy();
     assert.equal(result.sourceKey, 'https-timeapiio');
-    assert.equal(result.sourceLabel, 'HTTPS TIME API (TimeAPI.io)');
+    assert.equal(result.sourceLabel, 'Internet (timeapi.io)');
     assert.equal(result.resolutionErrors.length, 3);
   });
 
@@ -158,7 +158,7 @@ async function runTests() {
 
     const result = await service.resolveFallbackHierarchy();
     assert.equal(result.sourceKey, 'http-date');
-    assert.equal(result.sourceLabel, 'INTERNET/HTTP DATE');
+    assert.equal(result.sourceLabel, 'Internet (HTTP Date)');
     assert.equal(result.traceable, false);
     assert.equal(result.resolutionErrors.length, 4);
   });
@@ -199,7 +199,7 @@ async function runTests() {
   });
   const localResult = await localOnly.resolveFallbackHierarchy();
   assert.equal(localResult.sourceKey, 'local-clock');
-  assert.equal(localResult.sourceLabel, 'LOCAL CLOCK');
+  assert.equal(localResult.sourceLabel, 'Internal Clock');
   assert.ok(Array.isArray(localResult.resolutionErrors));
   assert.equal(localResult.resolutionErrors.length, 5);
 

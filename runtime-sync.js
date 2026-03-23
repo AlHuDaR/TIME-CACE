@@ -100,6 +100,7 @@
       traceable: false,
       fallback: true,
       receiverCommunicationState: "not-started",
+      receiverConnectionState: "idle",
       fallbackReason: null,
       lastError: null,
       checkedAt: null,
@@ -109,6 +110,7 @@
       cacheAgeMs: null,
       fetchedFromCache: false,
       dataState: "waiting",
+      telemetryState: "unavailable",
       stale: true,
       monitoringState: null,
       lastKnownGoodGpsLockAt: null,
@@ -136,6 +138,17 @@
           zMeters: null,
         },
         satellites: [],
+      },
+      receiverConnection: {
+        connected: false,
+        connecting: false,
+        reconnecting: false,
+        state: "idle",
+        lastConnectedAt: null,
+        lastAuthenticatedAt: null,
+        lastSuccessfulCommunicationAt: null,
+        lastError: null,
+        reconnectAttempt: 0,
       },
       ...overrides,
     };
@@ -790,6 +803,11 @@
     nextStatus.statusAgeMs = statusAgeMs;
     nextStatus.dataState = normalizeDataState(nextStatus.dataState, stale);
     nextStatus.stale = stale;
+    nextStatus.telemetryState = nextStatus.dataState === "unavailable"
+      ? "unavailable"
+      : stale
+        ? "unavailable"
+        : nextStatus.telemetryState || (nextStatus.dataState === "cached" ? "cached" : "normal");
     nextStatus.lastSuccessfulPollAt = nextStatus.lastSuccessfulPollAt || this.lastSuccessfulStatusPollAt;
     nextStatus.lastPollAttemptAt = nextStatus.lastPollAttemptAt || this.lastStatusPollAttemptAt;
     this.updateSessionMarkersFromStatus(nextStatus);
@@ -1071,6 +1089,7 @@
       authenticated: "Authenticated",
       reachable: "Reachable",
       "receiver-responding": "Reachable",
+      reconnecting: "Reconnecting",
       disabled: "Receiver disabled",
       "login-failed": "Login failed",
       "auth-failed": "Authentication failed",
