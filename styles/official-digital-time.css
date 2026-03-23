@@ -175,7 +175,7 @@ body.dark-mode .digital-hero__source {
 
 .digital-hero__main {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.55fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.72fr);
   align-items: end;
   gap: clamp(1rem, 2.2vw, 2rem);
   min-height: 0;
@@ -222,7 +222,10 @@ body.dark-mode .digital-hero__clock {
 
 .digital-hero__meta {
   display: grid;
+  width: min(100%, 32rem);
+  min-width: 0;
   align-self: center;
+  justify-self: end;
   justify-items: end;
   align-content: center;
   text-align: right;
@@ -240,8 +243,10 @@ body.dark-mode .digital-hero__meta {
 }
 
 .digital-hero__date {
-  font-size: clamp(1.45rem, 2.5vw, 2.7rem);
+  font-size: clamp(1.3rem, 2vw, 2.45rem);
   line-height: 1.02;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
   color: #223649;
 }
 
@@ -483,7 +488,7 @@ body.dark-mode .world-clock-card__time {
 
 @media (max-width: 1200px) {
   .digital-hero__main {
-    grid-template-columns: minmax(0, 1.2fr) minmax(250px, 0.8fr);
+    grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr);
   }
 
   .city-cloud--major {
@@ -529,6 +534,7 @@ body.dark-mode .world-clock-card__time {
   }
 
   .digital-hero__meta {
+    width: min(100%, 28rem);
     justify-items: start;
     text-align: left;
   }
@@ -576,6 +582,10 @@ body.dark-mode .world-clock-card__time {
 
   .digital-hero__clock {
     font-size: clamp(3.3rem, 18vw, 5rem);
+  }
+
+  .digital-hero__date {
+    font-size: clamp(1.1rem, 5vw, 1.4rem);
   }
 
   .digital-world-strip__grid,
