@@ -25,6 +25,62 @@
     year: "numeric",
   });
 
+  const TIME_DIFF_THRESHOLDS = Object.freeze({
+    second: 1000,
+    minute: 60 * 1000,
+    hour: 60 * 60 * 1000,
+    day: 24 * 60 * 60 * 1000,
+  });
+
+  function getTimeDiffSeverity(diffMs) {
+    const absDiffMs = Math.abs(diffMs);
+
+    if (absDiffMs < 1) {
+      return "green";
+    }
+
+    if (absDiffMs < TIME_DIFF_THRESHOLDS.second) {
+      return "yellow";
+    }
+
+    if (absDiffMs < TIME_DIFF_THRESHOLDS.day) {
+      return "red";
+    }
+
+    return "critical";
+  }
+
+  function formatCompactTimeDiff(diffMs) {
+    const absDiffMs = Math.abs(diffMs);
+    const polarity = diffMs >= 0 ? "+" : "−";
+
+    if (absDiffMs < TIME_DIFF_THRESHOLDS.second) {
+      return `${polarity}${Math.round(absDiffMs)} ms`;
+    }
+
+    if (absDiffMs < TIME_DIFF_THRESHOLDS.minute) {
+      const seconds = absDiffMs / TIME_DIFF_THRESHOLDS.second;
+      const secondsDigits = seconds >= 10 ? 1 : 2;
+      return `${polarity}${seconds.toFixed(secondsDigits).replace(/\.0$/u, "")} s`;
+    }
+
+    if (absDiffMs < TIME_DIFF_THRESHOLDS.hour) {
+      const minutes = Math.floor(absDiffMs / TIME_DIFF_THRESHOLDS.minute);
+      const seconds = Math.floor((absDiffMs % TIME_DIFF_THRESHOLDS.minute) / TIME_DIFF_THRESHOLDS.second);
+      return `${polarity}${minutes}m ${seconds}s`;
+    }
+
+    if (absDiffMs < TIME_DIFF_THRESHOLDS.day) {
+      const hours = Math.floor(absDiffMs / TIME_DIFF_THRESHOLDS.hour);
+      const minutes = Math.floor((absDiffMs % TIME_DIFF_THRESHOLDS.hour) / TIME_DIFF_THRESHOLDS.minute);
+      return `${polarity}${hours}h ${minutes}m`;
+    }
+
+    const days = Math.floor(absDiffMs / TIME_DIFF_THRESHOLDS.day);
+    const hours = Math.floor((absDiffMs % TIME_DIFF_THRESHOLDS.day) / TIME_DIFF_THRESHOLDS.hour);
+    return `${polarity}${days}d ${hours}h`;
+  }
+
   class OfficialTimePage {
     constructor() {
       this.elements = {
@@ -130,17 +186,17 @@
 
     updateDifference(syncedNow, deviceNow) {
       const diffMs = syncedNow.getTime() - deviceNow.getTime();
-      const absDiffMs = Math.abs(diffMs);
-      const polarity = diffMs >= 0 ? "+" : "−";
-      const displayValue = `${polarity}${Math.round(absDiffMs)} ms`;
-      const severity = absDiffMs > 1000 ? "critical" : absDiffMs > 100 ? "warning" : "healthy";
+      const severity = getTimeDiffSeverity(diffMs);
+      const displayValue = formatCompactTimeDiff(diffMs);
 
       this.elements.differenceValue.textContent = displayValue;
-      this.elements.differenceNote.textContent = severity === "healthy"
-        ? "Device and synchronized reference are closely aligned."
-        : severity === "warning"
-          ? "Difference exceeds the advisory threshold (100 ms)."
-          : "Difference exceeds the critical threshold (1000 ms).";
+      this.elements.differenceNote.textContent = severity === "green"
+        ? "Healthy: the device and synchronized reference are effectively aligned."
+        : severity === "yellow"
+          ? "Caution: the offset is measurable but still below one second."
+          : severity === "red"
+            ? "Serious: the offset is at least one second and needs attention."
+            : "Major fault: the offset is at least one day and should be treated as critical.";
       this.elements.differenceCard.dataset.severity = severity;
     }
 
