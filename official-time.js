@@ -30,7 +30,17 @@
     minute: 60 * 1000,
     hour: 60 * 60 * 1000,
     day: 24 * 60 * 60 * 1000,
+    year: 365 * 24 * 60 * 60 * 1000,
   });
+
+  const TIME_DIFF_UNITS = Object.freeze([
+    { limit: TIME_DIFF_THRESHOLDS.second, divisor: 1, suffix: "ms" },
+    { limit: TIME_DIFF_THRESHOLDS.minute, divisor: TIME_DIFF_THRESHOLDS.second, suffix: "s" },
+    { limit: TIME_DIFF_THRESHOLDS.hour, divisor: TIME_DIFF_THRESHOLDS.minute, suffix: "min" },
+    { limit: TIME_DIFF_THRESHOLDS.day, divisor: TIME_DIFF_THRESHOLDS.hour, suffix: "h" },
+    { limit: TIME_DIFF_THRESHOLDS.year, divisor: TIME_DIFF_THRESHOLDS.day, suffix: "d" },
+    { limit: Number.POSITIVE_INFINITY, divisor: TIME_DIFF_THRESHOLDS.year, suffix: "y" },
+  ]);
 
   function getTimeDiffSeverity(diffMs) {
     const absDiffMs = Math.abs(diffMs);
@@ -52,33 +62,17 @@
 
   function formatCompactTimeDiff(diffMs) {
     const absDiffMs = Math.abs(diffMs);
-    const polarity = diffMs >= 0 ? "+" : "−";
+    const polarity = diffMs >= 0 ? "+" : "-";
+    const unitConfig = TIME_DIFF_UNITS.find(({ limit }) => absDiffMs < limit) || TIME_DIFF_UNITS[TIME_DIFF_UNITS.length - 1];
+    const rawValue = absDiffMs / unitConfig.divisor;
+    const shouldUseDecimal = unitConfig.suffix !== "ms" && (rawValue < 10 || unitConfig.suffix === "d" || unitConfig.suffix === "y");
+    const value = unitConfig.suffix === "ms"
+      ? Math.round(rawValue).toString()
+      : shouldUseDecimal
+        ? rawValue.toFixed(1)
+        : Math.round(rawValue).toString();
 
-    if (absDiffMs < TIME_DIFF_THRESHOLDS.second) {
-      return `${polarity}${Math.round(absDiffMs)} ms`;
-    }
-
-    if (absDiffMs < TIME_DIFF_THRESHOLDS.minute) {
-      const seconds = absDiffMs / TIME_DIFF_THRESHOLDS.second;
-      const secondsDigits = seconds >= 10 ? 1 : 2;
-      return `${polarity}${seconds.toFixed(secondsDigits).replace(/\.0$/u, "")} s`;
-    }
-
-    if (absDiffMs < TIME_DIFF_THRESHOLDS.hour) {
-      const minutes = Math.floor(absDiffMs / TIME_DIFF_THRESHOLDS.minute);
-      const seconds = Math.floor((absDiffMs % TIME_DIFF_THRESHOLDS.minute) / TIME_DIFF_THRESHOLDS.second);
-      return `${polarity}${minutes}m ${seconds}s`;
-    }
-
-    if (absDiffMs < TIME_DIFF_THRESHOLDS.day) {
-      const hours = Math.floor(absDiffMs / TIME_DIFF_THRESHOLDS.hour);
-      const minutes = Math.floor((absDiffMs % TIME_DIFF_THRESHOLDS.hour) / TIME_DIFF_THRESHOLDS.minute);
-      return `${polarity}${hours}h ${minutes}m`;
-    }
-
-    const days = Math.floor(absDiffMs / TIME_DIFF_THRESHOLDS.day);
-    const hours = Math.floor((absDiffMs % TIME_DIFF_THRESHOLDS.day) / TIME_DIFF_THRESHOLDS.hour);
-    return `${polarity}${days}d ${hours}h`;
+    return `${polarity}${value} ${unitConfig.suffix}`;
   }
 
   class OfficialTimePage {
