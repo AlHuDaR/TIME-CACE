@@ -498,6 +498,8 @@ class ReceiverConnectionManager {
       let settled = false;
       let stabilizeTimer = null;
       let connected = false;
+      let promptedForUsername = false;
+      let nudgedPrompt = false;
       const timeoutId = setTimeout(() => {
         rejectConnection(createCommandError("Receiver connection timeout", "RECEIVER_CONNECT_TIMEOUT"));
       }, this.commandTimeoutMs);
@@ -535,6 +537,10 @@ class ReceiverConnectionManager {
         stabilizeTimer = setTimeout(() => {
           if (!settled && stage === "await-banner") {
             stage = "await-username";
+            if (!nudgedPrompt) {
+              nudgedPrompt = true;
+              socket.write("\r\n");
+            }
           }
         }, this.connectStabilizationMs);
       });
@@ -546,6 +552,7 @@ class ReceiverConnectionManager {
         if ((stage === "await-banner" || stage === "await-username") && /(USER NAME:|LOGIN:|USERNAME:)/i.test(this.handshakeBuffer)) {
           stage = "await-password";
           this.handshakeBuffer = "";
+          promptedForUsername = true;
           socket.write(`${this.username}\r\n`);
           return;
         }

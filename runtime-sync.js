@@ -172,6 +172,15 @@
         lastError: null,
         reconnectAttempt: 0,
       },
+      cardStates: {
+        communication: "unavailable",
+        lock: "unavailable",
+        acquisition: "unavailable",
+        antenna: "unavailable",
+        telemetryDetail: "unavailable",
+        position: "unavailable",
+        satellites: "unavailable",
+      },
       ...overrides,
     };
   }
