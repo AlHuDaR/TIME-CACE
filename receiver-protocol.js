@@ -498,6 +498,9 @@ class ReceiverConnectionManager {
       let settled = false;
       let stabilizeTimer = null;
       let connected = false;
+      let promptedForUsername = false;
+      let promptedForPassword = false;
+      let nudgedPrompt = false;
       const timeoutId = setTimeout(() => {
         rejectConnection(createCommandError("Receiver connection timeout", "RECEIVER_CONNECT_TIMEOUT"));
       }, this.commandTimeoutMs);
@@ -535,6 +538,10 @@ class ReceiverConnectionManager {
         stabilizeTimer = setTimeout(() => {
           if (!settled && stage === "await-banner") {
             stage = "await-username";
+            if (!nudgedPrompt) {
+              nudgedPrompt = true;
+              socket.write("\r\n");
+            }
           }
         }, this.connectStabilizationMs);
       });
@@ -546,6 +553,7 @@ class ReceiverConnectionManager {
         if ((stage === "await-banner" || stage === "await-username") && /(USER NAME:|LOGIN:|USERNAME:)/i.test(this.handshakeBuffer)) {
           stage = "await-password";
           this.handshakeBuffer = "";
+          promptedForUsername = true;
           socket.write(`${this.username}\r\n`);
           return;
         }
@@ -553,7 +561,23 @@ class ReceiverConnectionManager {
         if (stage === "await-password" && /PASSWORD:/i.test(this.handshakeBuffer)) {
           stage = "await-login";
           this.handshakeBuffer = "";
+          promptedForPassword = true;
           socket.write(`${this.password}\r\n`);
+          return;
+        }
+
+        if (stage === "await-username" && !promptedForUsername && /PASSWORD:/i.test(this.handshakeBuffer)) {
+          stage = "await-login";
+          this.handshakeBuffer = "";
+          promptedForPassword = true;
+          socket.write(`${this.password}\r\n`);
+          return;
+        }
+
+        if (stage === "await-username" && !promptedForUsername && /\n\s*$/i.test(this.handshakeBuffer) && this.handshakeBuffer.length > 0) {
+          promptedForUsername = true;
+          this.handshakeBuffer = "";
+          socket.write(`${this.username}\r\n`);
           return;
         }
 
@@ -569,6 +593,24 @@ class ReceiverConnectionManager {
           this.buffer = "";
           this.attachPersistentSocketListeners(socket, generation);
           this.log("info", "Receiver authentication succeeded.");
+          finish(resolve, { generation });
+          return;
+        }
+
+        if ((stage === "await-login" || stage === "await-password" || stage === "await-username")
+          && /(XLI>|TIME SERVER>|#\s*$|>\s*$)/im.test(this.handshakeBuffer)
+          && !/(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
+          clearTimeout(stabilizeTimer);
+          this.socket = socket;
+          this.connectionGeneration = generation;
+          this.state = "authenticated";
+          this.authAttemptInProgress = false;
+          this.lastAuthenticatedAt = new Date().toISOString();
+          this.lastError = null;
+          this.reconnectAttempt = 0;
+          this.buffer = "";
+          this.attachPersistentSocketListeners(socket, generation);
+          this.log("info", "Receiver authentication prompt detected; assuming authenticated session.");
           finish(resolve, { generation });
           return;
         }
