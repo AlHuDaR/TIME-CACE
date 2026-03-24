@@ -499,7 +499,6 @@ class ReceiverConnectionManager {
       let stabilizeTimer = null;
       let connected = false;
       let promptedForUsername = false;
-      let promptedForPassword = false;
       let nudgedPrompt = false;
       const timeoutId = setTimeout(() => {
         rejectConnection(createCommandError("Receiver connection timeout", "RECEIVER_CONNECT_TIMEOUT"));
