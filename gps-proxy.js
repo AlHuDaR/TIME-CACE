@@ -301,6 +301,8 @@ function getReceiverManagerSnapshot() {
       connected: false,
       connecting: false,
       reconnecting: false,
+      tcpReachable: false,
+      authPending: false,
       state: "disabled",
       lastConnectedAt: null,
       lastAuthenticatedAt: null,
@@ -700,6 +702,8 @@ function buildStatusPayload(snapshot, overrides = {}) {
     traceable: activeSource.traceable,
     fallback: activeSource.fallback,
     receiverCommunicationState: snapshot.receiverCommunicationState || "not-started",
+    receiverTcpReachable: Boolean(managerSnapshot.tcpReachable),
+    receiverAuthPending: Boolean(managerSnapshot.authPending),
     receiverConnectionState: managerSnapshot.state,
     fallbackReason: snapshot.fallbackReason || null,
     lastError: snapshot.lastError || null,
@@ -797,24 +801,35 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
     statusDataFreshnessState,
     timingIntegrityState,
     alarmSeverityState,
-    communicationAuthState: snapshot.receiverConfigured === false ? "disabled" : snapshot.loginOk ? "authenticated" : snapshot.receiverReachable ? "auth-failed" : "receiver-unreachable",
+    communicationAuthState: snapshot.receiverConfigured === false
+      ? "disabled"
+      : snapshot.loginOk
+        ? "authenticated"
+        : ["auth-pending", "auth-recovery"].includes(snapshot.receiverCommunicationState)
+          ? "auth-recovery"
+          : snapshot.receiverReachable
+            ? "auth-failed"
+            : "receiver-unreachable",
   };
 }
 
 function updateReceiverSnapshot(snapshot) {
   const managerSnapshot = getReceiverManagerSnapshot();
-  const nextSnapshot = {
-    backendOnline: true,
-    checkedAt: new Date().toISOString(),
-    receiverCommunicationState: CONFIG.receiverEnabled
-      ? (managerSnapshot.reconnecting
-        ? "reconnecting"
-        : managerSnapshot.connected
-          ? "authenticated"
+  const inferredCommunicationState = CONFIG.receiverEnabled
+    ? (managerSnapshot.reconnecting
+      ? (managerSnapshot.tcpReachable ? "auth-recovery" : "reconnecting")
+      : managerSnapshot.connected
+        ? "authenticated"
+        : managerSnapshot.authPending
+          ? "auth-pending"
           : managerSnapshot.state === "login-failed"
             ? "login-failed"
             : snapshot.receiverCommunicationState)
-      : "disabled",
+    : "disabled";
+  const nextSnapshot = {
+    backendOnline: true,
+    checkedAt: new Date().toISOString(),
+    receiverCommunicationState: inferredCommunicationState,
     ...snapshot,
   };
 
@@ -964,13 +979,13 @@ async function readGpsReceiverDetailsCached(snapshot = lastReceiverSnapshot, { f
 function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {}) {
   const status = buildStatusPayload(snapshot, overrides);
   const communicationHealthy = Boolean(status.receiverReachable && status.loginOk) && !status.stale && status.dataState === "live";
-  const degradedCommunication = ["reconnecting", "auth-recovery", "login-failed", "auth-failed"].includes(status.receiverCommunicationState);
+  const degradedCommunication = ["reconnecting", "auth-pending", "auth-recovery", "login-failed", "auth-failed"].includes(status.receiverCommunicationState);
   status.telemetryState = status.dataState === "unavailable"
     ? "unavailable"
     : status.stale
       ? "unavailable"
       : degradedCommunication
-        ? "reconnecting"
+        ? (["auth-pending", "auth-recovery"].includes(status.receiverCommunicationState) ? "auth-recovery" : "reconnecting")
         : status.dataState === "cached"
           ? "cached"
           : communicationHealthy
@@ -1035,7 +1050,9 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
   const receiverCommunicationState = classified.receiverConfigured === false
     ? "disabled"
     : managerSnapshot.reconnecting || managerSnapshot.connecting
-      ? "reconnecting"
+      ? (managerSnapshot.tcpReachable ? "auth-recovery" : "reconnecting")
+      : managerSnapshot.authPending
+        ? "auth-pending"
       : classified.receiverCommunicationState === "auth-recovery"
         ? "auth-recovery"
       : managerSnapshot.state === "login-failed"
@@ -1044,16 +1061,20 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
 
   return {
     receiverConfigured: classified.receiverConfigured !== false,
-    receiverReachable: managerSnapshot.connected || classified.receiverReachable,
+    receiverReachable: managerSnapshot.connected || managerSnapshot.tcpReachable || classified.receiverReachable,
     loginOk: managerSnapshot.connected ? true : classified.loginOk,
     isLocked: false,
     gpsLockState: error?.parsed?.gpsLockState || "unknown",
     receiverCommunicationState,
+    receiverTcpReachable: Boolean(managerSnapshot.tcpReachable),
+    receiverAuthPending: Boolean(managerSnapshot.authPending),
     receiverConnectionState: managerSnapshot.state,
     fallbackReason: classified.receiverConfigured === false ? "receiver-not-configured" : fallbackReason,
     lastError: classified.lastError,
     statusText: receiverCommunicationState === "reconnecting"
       ? "Receiver reconnecting"
+      : receiverCommunicationState === "auth-pending"
+        ? "Receiver TCP reachable; authentication pending"
       : receiverCommunicationState === "auth-recovery"
         ? "Receiver reachable; authentication recovery in progress"
       : classified.statusText,
@@ -1192,7 +1213,7 @@ async function readReceiverStatusCached({ force = false } = {}) {
     return sanitizeReceiverStatus({
       ...receiverStatusCache.data,
       receiverCommunicationState: managerSnapshot.reconnecting
-        ? "reconnecting"
+        ? (managerSnapshot.tcpReachable ? "auth-recovery" : "reconnecting")
         : receiverStatusCache.data.receiverCommunicationState,
     }, {
       dataState: "cached",

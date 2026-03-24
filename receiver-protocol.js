@@ -431,6 +431,11 @@ class ReceiverConnectionManager {
     this.buffer = "";
     this.handshakeBuffer = "";
     this.authAttemptInProgress = false;
+    this.tcpReachable = false;
+    this.authPending = false;
+    this.authRecoveryRetryCount = 0;
+    this.authRecoveryRetryLimit = 2;
+    this.authRecoveryRetryMs = Math.min(600, Math.max(250, Math.floor(this.connectStabilizationMs * 1.5)));
   }
 
   getStateSnapshot() {
@@ -439,6 +444,8 @@ class ReceiverConnectionManager {
       connected,
       connecting: this.state === "connecting" || this.state === "authenticating",
       reconnecting: this.state === "reconnecting",
+      tcpReachable: this.tcpReachable,
+      authPending: this.authPending,
       state: this.state,
       lastConnectedAt: this.lastConnectedAt,
       lastAuthenticatedAt: this.lastAuthenticatedAt,
@@ -488,6 +495,8 @@ class ReceiverConnectionManager {
     this.resetSessionState();
     this.destroySocket({ preserveReconnect: true });
     this.state = "connecting";
+    this.tcpReachable = false;
+    this.authPending = true;
     this.authAttemptInProgress = true;
 
     const socket = new net.Socket();
@@ -526,6 +535,7 @@ class ReceiverConnectionManager {
         this.log("warn", `Receiver connection/authentication failed: ${error.message}`);
         clearTimeout(stabilizeTimer);
         this.authAttemptInProgress = false;
+        this.authPending = false;
         try {
           socket.destroy();
         } catch (destroyError) {
@@ -539,9 +549,11 @@ class ReceiverConnectionManager {
 
       socket.once("connect", () => {
         connected = true;
+        this.tcpReachable = true;
+        this.authPending = true;
         this.state = "authenticating";
         this.lastConnectedAt = new Date().toISOString();
-        this.log("info", `Receiver connection established to ${this.host}:${this.port}.`);
+        this.log("info", `Receiver TCP reachable at ${this.host}:${this.port}; authentication pending.`);
         stabilizeTimer = setTimeout(() => {
           if (!settled && stage === "await-banner") {
             setAuthStage("await-username", "stabilized without banner");
@@ -593,6 +605,9 @@ class ReceiverConnectionManager {
           this.socket = socket;
           this.connectionGeneration = generation;
           this.state = "authenticated";
+          this.tcpReachable = true;
+          this.authPending = false;
+          this.authRecoveryRetryCount = 0;
           this.authAttemptInProgress = false;
           this.lastAuthenticatedAt = new Date().toISOString();
           this.lastError = null;
@@ -612,6 +627,9 @@ class ReceiverConnectionManager {
           this.socket = socket;
           this.connectionGeneration = generation;
           this.state = "authenticated";
+          this.tcpReachable = true;
+          this.authPending = false;
+          this.authRecoveryRetryCount = 0;
           this.authAttemptInProgress = false;
           this.lastAuthenticatedAt = new Date().toISOString();
           this.lastError = null;
@@ -630,6 +648,9 @@ class ReceiverConnectionManager {
           this.socket = socket;
           this.connectionGeneration = generation;
           this.state = "authenticated";
+          this.tcpReachable = true;
+          this.authPending = false;
+          this.authRecoveryRetryCount = 0;
           this.authAttemptInProgress = false;
           this.lastAuthenticatedAt = new Date().toISOString();
           this.lastError = null;
@@ -643,6 +664,7 @@ class ReceiverConnectionManager {
 
         if (stage === "await-login" && /(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
           this.state = "login-failed";
+          this.authPending = false;
           rejectConnection(createCommandError("Receiver login failed", "RECEIVER_LOGIN_FAILED"));
         }
       });
@@ -816,6 +838,7 @@ class ReceiverConnectionManager {
 
     this.lastError = error;
     this.state = this.state === "login-failed" ? "login-failed" : "degraded";
+    this.authPending = false;
     this.destroySocket({ preserveReconnect: true });
     this.failCurrentCommand(error, { reconnect: false, destroyConnection: false });
     this.scheduleReconnect(error, { immediate: true });
@@ -826,20 +849,34 @@ class ReceiverConnectionManager {
       return;
     }
 
+    const authRecoveryMode = error?.code === "RECEIVER_AUTH_RECOVERY";
     const attempt = this.reconnectAttempt;
-    const delay = immediate && attempt === 0
-      ? 0
-      : Math.min(this.reconnectMaxMs, this.reconnectInitialMs * Math.max(1, 2 ** Math.max(0, attempt - 1)));
+    let delay;
+    if (authRecoveryMode && this.authRecoveryRetryCount < this.authRecoveryRetryLimit) {
+      this.authRecoveryRetryCount += 1;
+      delay = this.authRecoveryRetryMs;
+    } else {
+      this.authRecoveryRetryCount = authRecoveryMode ? this.authRecoveryRetryCount : 0;
+      delay = immediate && attempt === 0
+        ? 0
+        : Math.min(this.reconnectMaxMs, this.reconnectInitialMs * Math.max(1, 2 ** Math.max(0, attempt - 1)));
+    }
 
     this.reconnectAttempt += 1;
     this.state = "reconnecting";
-    this.log("warn", `Receiver reconnect scheduled in ${delay} ms${error?.message ? ` (${error.message})` : ""}.`);
+    this.authPending = authRecoveryMode || this.authAttemptInProgress;
+    this.log(
+      "warn",
+      authRecoveryMode
+        ? `Receiver auth recovery attempt scheduled in ${delay} ms${error?.message ? ` (${error.message})` : ""}.`
+        : `Receiver reconnect scheduled in ${delay} ms${error?.message ? ` (${error.message})` : ""}.`,
+    );
 
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       try {
         await this.ensureConnected({ triggerReconnect: false });
-        this.log("info", "Receiver reconnect succeeded.");
+        this.log("info", authRecoveryMode ? "Receiver auth recovery completed; receiver authenticated." : "Receiver reconnect succeeded.");
       } catch (reconnectError) {
         this.scheduleReconnect(reconnectError, { immediate: false });
       }
@@ -871,6 +908,8 @@ class ReceiverConnectionManager {
     this.socket = null;
     this.expectedClose = false;
     this.authAttemptInProgress = false;
+    this.authPending = false;
+    this.tcpReachable = false;
     if (!preserveReconnect) {
       this.clearReconnectTimer();
     }
