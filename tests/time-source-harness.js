@@ -138,6 +138,8 @@ async function runTests() {
     assert.equal(result.sourceKey, 'https-timeapiio');
     assert.equal(result.sourceLabel, 'Internet (timeapi.io)');
     assert.equal(result.resolutionErrors.length, 3);
+    assert.equal(result.preferredFallbackAttempted, 'ntp-nist');
+    assert.equal(result.selectedSource, 'https-timeapiio');
   });
 
   await withHttpServer((req, res) => {
@@ -202,6 +204,34 @@ async function runTests() {
   assert.equal(localResult.sourceLabel, 'Internal Clock');
   assert.ok(Array.isArray(localResult.resolutionErrors));
   assert.equal(localResult.resolutionErrors.length, 5);
+  assert.equal(localResult.preferredFallbackAttempted, 'ntp-nist');
+  assert.equal(localResult.failedFallbackTier, 'ntp-nist');
+  assert.equal(localResult.selectedSource, 'local-clock');
+
+  const logs = [];
+  const serviceWithLogs = createTimingSourceService({
+    ntpTimeoutMs: 50,
+    httpsApiTimeoutMs: 50,
+    httpTimeoutMs: 50,
+    nistHosts: ['203.0.113.90:123'],
+    nplHosts: ['203.0.113.91:123'],
+    worldTimeApiUrls: ['http://127.0.0.1:9'],
+    timeApiIoUrls: ['http://127.0.0.1:9'],
+    httpDateUrls: ['http://127.0.0.1:9'],
+    logger: {
+      info: (...parts) => logs.push(parts),
+      warn: (...parts) => logs.push(parts),
+      error: (...parts) => logs.push(parts),
+    },
+  });
+  await serviceWithLogs.resolveFallbackHierarchy();
+  const attemptedSources = logs
+    .filter((entry) => entry[0] === 'time-source-fallback-attempt')
+    .map((entry) => entry[1]?.sourceKey);
+  assert.deepEqual(
+    attemptedSources,
+    ['ntp-nist', 'ntp-npl-india', 'https-worldtimeapi', 'https-timeapiio', 'http-date'],
+  );
 
   console.log('Time source harness passed.');
 }

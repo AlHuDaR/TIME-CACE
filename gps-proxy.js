@@ -177,6 +177,7 @@ const timingSourceService = createTimingSourceService({
   worldTimeApiUrls: CONFIG.worldTimeApiUrls,
   timeApiIoUrls: CONFIG.timeApiIoUrls,
   httpDateUrls: CONFIG.httpDateUrls,
+  logger: console,
 });
 
 let lastResolvedTimeSource = {
@@ -607,6 +608,11 @@ function createLocalFallback(extra = {}) {
 
 async function resolveNetworkFallback(baseContext = {}) {
   const selection = await timingSourceService.resolveFallbackHierarchy();
+  const primaryFallbackError = Array.isArray(selection.resolutionErrors)
+    ? selection.resolutionErrors.find((entry) => entry?.sourceKey === 'ntp-nist')
+    : null;
+  const failedFallbackTier = selection.failedFallbackTier
+    || (selection.resolutionErrors?.[0]?.sourceKey ?? null);
   const fallbackReason = selection.sourceKey === 'ntp-nist'
     ? 'receiver-unavailable-nist-active'
     : selection.sourceKey === 'ntp-npl-india'
@@ -632,7 +638,11 @@ async function resolveNetworkFallback(baseContext = {}) {
       ...baseContext,
       statusText,
       fallbackReason,
-      lastError: baseContext.lastError || null,
+      lastError: baseContext.lastError || primaryFallbackError?.message || null,
+      preferredFallbackAttempted: selection.preferredFallbackAttempted || 'ntp-nist',
+      failedFallbackTier,
+      selectedSource: selection.selectedSource || selection.sourceKey,
+      resolutionTrace: selection.resolutionTrace || [],
     });
 }
 
