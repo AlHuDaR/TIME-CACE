@@ -42,6 +42,7 @@
       reachable: "Reachable",
       "receiver-responding": "Reachable",
       reconnecting: "Reconnecting",
+      "auth-recovery": "Authentication recovery",
       disabled: "Receiver disabled",
       "login-failed": "Authentication failed",
       "auth-failed": "Authentication failed",
@@ -169,6 +170,8 @@
           ? "receiver-unreachable"
           : receiverStatus.loginOk
             ? "authenticated"
+            : receiverStatus.receiverCommunicationState === "auth-recovery"
+              ? "auth-recovery"
             : "auth-failed";
 
     const mismatchWhileFresh = Boolean(

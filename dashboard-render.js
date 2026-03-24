@@ -355,6 +355,7 @@
         reachable: ["Normal", "Receiver communication is healthy.", "OK", "ok", "status-normal"],
         "receiver-responding": ["Normal", "Receiver communication is healthy.", "OK", "ok", "status-normal"],
         reconnecting: ["Reconnecting", "Receiver communication is reconnecting; recent telemetry is retained.", "INFO", "info", "status-advisory"],
+        "auth-recovery": ["Auth recovery", "Receiver link is up but login/session recovery is in progress.", "INFO", "info", "status-advisory"],
         disabled: ["Unavailable", "Receiver communication is disabled.", "INFO", "info", "status-advisory"],
         "login-failed": ["Unavailable", "Receiver authentication failed.", "WARNING", "warning", "status-warning"],
         "auth-failed": ["Unavailable", "Receiver authentication failed.", "WARNING", "warning", "status-warning"],
@@ -652,6 +653,7 @@
         normal: "Normal",
         cached: "Cached",
         reconnecting: "Reconnecting",
+        "auth-recovery": "Auth recovery",
         unavailable: "Unavailable",
       }[receiverStatus.telemetryState] || "Unavailable";
     }
@@ -661,6 +663,7 @@
         normal: "Receiver telemetry is current.",
         cached: "Showing recent receiver telemetry from cache.",
         reconnecting: "Receiver reconnect is in progress; recent telemetry is retained.",
+        "auth-recovery": "Receiver is reachable, but authentication/session recovery is in progress.",
         unavailable: "Receiver telemetry is unavailable.",
       }[receiverStatus.telemetryState] || "Receiver telemetry is unavailable.";
     }
