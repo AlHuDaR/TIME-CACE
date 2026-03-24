@@ -963,17 +963,61 @@ async function readGpsReceiverDetailsCached(snapshot = lastReceiverSnapshot, { f
 
 function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {}) {
   const status = buildStatusPayload(snapshot, overrides);
+  const communicationHealthy = Boolean(status.receiverReachable && status.loginOk) && !status.stale && status.dataState === "live";
+  const degradedCommunication = ["reconnecting", "auth-recovery", "login-failed", "auth-failed"].includes(status.receiverCommunicationState);
   status.telemetryState = status.dataState === "unavailable"
     ? "unavailable"
     : status.stale
       ? "unavailable"
-      : (status.receiverCommunicationState === "reconnecting" || status.receiverCommunicationState === "auth-recovery")
+      : degradedCommunication
         ? "reconnecting"
         : status.dataState === "cached"
           ? "cached"
-          : "normal";
+          : communicationHealthy
+            ? "normal"
+            : "reconnecting";
+
+  const cardStateFor = ({ hasValue = false } = {}) => {
+    if (communicationHealthy && status.dataState === "live") {
+      return "live";
+    }
+    if (status.dataState === "cached" && hasValue) {
+      return "cached";
+    }
+    if ((status.dataState === "cached" || degradedCommunication || !status.receiverReachable || !status.loginOk) && hasValue) {
+      return "retained";
+    }
+    return "unavailable";
+  };
+
+  const details = sanitizeGpsReceiverDetails(status.gpsReceiverDetails);
+  const metadata = details.metadata || {};
+  const position = details.position || {};
+  const satellites = Array.isArray(details.satellites) ? details.satellites : [];
+  const hasAcquisition = Boolean(metadata.acquisitionState);
+  const hasAntenna = Boolean(metadata.antennaStatus);
+  const hasTelemetryDetail = Boolean(metadata.boardPartNumber || metadata.softwareVersion || metadata.fpgaVersion);
+  const hasPosition = Boolean(position.latitude || position.longitude || Number.isFinite(position.altitudeMeters) || Number.isFinite(position.xMeters) || Number.isFinite(position.yMeters) || Number.isFinite(position.zMeters));
+  const hasSatellites = satellites.length > 0;
+  const lockLive = communicationHealthy && status.gpsLockState === "locked" && status.currentSource === "gps-xli";
+
+  status.cardStates = {
+    communication: communicationHealthy ? "live" : status.dataState === "cached" ? "cached" : degradedCommunication ? "retained" : "unavailable",
+    lock: lockLive ? "live" : cardStateFor({ hasValue: ["locked", "holdover", "unlocked"].includes(status.gpsLockState) }),
+    acquisition: cardStateFor({ hasValue: hasAcquisition }),
+    antenna: cardStateFor({ hasValue: hasAntenna }),
+    telemetryDetail: cardStateFor({ hasValue: hasTelemetryDetail }),
+    position: cardStateFor({ hasValue: hasPosition }),
+    satellites: cardStateFor({ hasValue: hasSatellites }),
+  };
+
+  if (!lockLive && status.gpsLockState === "locked") {
+    status.gpsLockState = "unknown";
+    status.isLocked = false;
+  }
+
   status.gpsReceiverDetails = {
-    ...sanitizeGpsReceiverDetails(status.gpsReceiverDetails),
+    ...details,
     cacheState: status.telemetryState === "normal" ? "live" : status.telemetryState === "cached" ? "cached" : "retained",
   };
   if (status.stale) {
@@ -1003,7 +1047,7 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
     receiverReachable: managerSnapshot.connected || classified.receiverReachable,
     loginOk: managerSnapshot.connected ? true : classified.loginOk,
     isLocked: false,
-    gpsLockState: error?.parsed?.gpsLockState || lastReceiverSnapshot.gpsLockState || "unknown",
+    gpsLockState: error?.parsed?.gpsLockState || "unknown",
     receiverCommunicationState,
     receiverConnectionState: managerSnapshot.state,
     fallbackReason: classified.receiverConfigured === false ? "receiver-not-configured" : fallbackReason,
@@ -1029,6 +1073,8 @@ function buildCachedReceiverStatus(error, { fallbackReason = "receiver-unavailab
   const cachedSnapshot = updateReceiverSnapshot({
     ...trustedSnapshot,
     ...failureContext,
+    isLocked: false,
+    gpsLockState: failureContext.gpsLockState || "unknown",
     gpsReceiverDetails: mergeGpsReceiverDetails(
       trustedSnapshot.gpsReceiverDetails,
       lastReceiverSnapshot.gpsReceiverDetails,

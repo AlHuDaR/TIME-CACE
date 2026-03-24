@@ -273,6 +273,23 @@
         waiting: "WAITING",
       }[dataState] || "WAITING";
 
+      const cardStates = receiverStatus.cardStates || {};
+      const isLockLive = cardStates.lock === "live";
+      const lockValue = isLockLive
+        ? "LOCKED"
+        : cardStates.lock === "cached"
+          ? "Cached"
+          : cardStates.lock === "retained"
+            ? "Retained"
+            : "Unavailable";
+      const lockNote = isLockLive
+        ? "Receiver lock is confirmed live."
+        : cardStates.lock === "cached"
+          ? "Receiver lock is from a cached status snapshot."
+          : cardStates.lock === "retained"
+            ? "Receiver communication is degraded; lock is retained from last known good data."
+            : "Receiver lock is not currently available.";
+
       return {
         dataState,
         dataStateLabel,
@@ -287,11 +304,11 @@
           chipClass: receiverStatus.telemetryState === "normal" ? "status-normal" : receiverStatus.telemetryState === "unavailable" ? "status-warning" : "status-advisory",
         },
         gpsLock: {
-          value: receiverStatus.gpsLockState === "locked" ? "LOCKED" : receiverStatus.gpsLockState === "holdover" ? "HOLDOVER" : receiverStatus.gpsLockState === "unlocked" ? "UNLOCKED" : "UNKNOWN",
-          note: receiverStatus.gpsLockState === "locked" ? "Receiver lock is confirmed." : receiverStatus.gpsLockState === "holdover" ? "Receiver is using holdover timing." : receiverStatus.gpsLockState === "unlocked" ? "Receiver lock is not confirmed." : "Receiver lock state is not available.",
-          badge: receiverStatus.gpsLockState === "locked" ? "OK" : "INFO",
-          badgeTone: receiverStatus.gpsLockState === "locked" ? "ok" : "info",
-          chipClass: receiverStatus.gpsLockState === "locked" ? "status-normal" : "status-advisory",
+          value: lockValue,
+          note: lockNote,
+          badge: isLockLive ? "OK" : cardStates.lock === "unavailable" ? "WARNING" : "INFO",
+          badgeTone: isLockLive ? "ok" : cardStates.lock === "unavailable" ? "warning" : "info",
+          chipClass: isLockLive ? "status-normal" : cardStates.lock === "unavailable" ? "status-warning" : "status-advisory",
         },
         activeSource,
         timingIntegrity,
@@ -458,59 +475,74 @@
       const satellites = Array.isArray(details.satellites) ? details.satellites : [];
 
       const telemetryState = receiverStatus?.telemetryState || "unavailable";
+      const cardStates = receiverStatus?.cardStates || {};
 
-      this.setText(this.elements.gpsDetailAcquisitionState, this.formatDetailValue(metadata.acquisitionState, telemetryState));
-      this.setText(this.elements.gpsDetailAntennaStatus, this.formatDetailValue(metadata.antennaStatus, telemetryState));
-      this.setText(this.elements.gpsDetailBoardPartNumber, this.formatDetailValue(metadata.boardPartNumber, telemetryState));
-      this.setText(this.elements.gpsDetailSoftwareVersion, this.formatDetailValue(metadata.softwareVersion, telemetryState));
-      this.setText(this.elements.gpsDetailFpgaVersion, this.formatDetailValue(metadata.fpgaVersion, telemetryState));
-      this.setText(this.elements.gpsDetailLatitude, this.formatCoordinateDetail(position.latitude, telemetryState));
-      this.setText(this.elements.gpsDetailLongitude, this.formatCoordinateDetail(position.longitude, telemetryState));
-      this.setText(this.elements.gpsDetailAltitude, this.formatMeterValue(position.altitudeMeters, telemetryState));
-      this.setText(this.elements.gpsDetailX, this.formatMeterValue(position.xMeters, telemetryState));
-      this.setText(this.elements.gpsDetailY, this.formatMeterValue(position.yMeters, telemetryState));
-      this.setText(this.elements.gpsDetailZ, this.formatMeterValue(position.zMeters, telemetryState));
+      this.setText(this.elements.gpsDetailAcquisitionState, this.formatDetailValue(metadata.acquisitionState, cardStates.acquisition || telemetryState));
+      this.setText(this.elements.gpsDetailAntennaStatus, this.formatDetailValue(metadata.antennaStatus, cardStates.antenna || telemetryState));
+      this.setText(this.elements.gpsDetailBoardPartNumber, this.formatDetailValue(metadata.boardPartNumber, cardStates.telemetryDetail || telemetryState));
+      this.setText(this.elements.gpsDetailSoftwareVersion, this.formatDetailValue(metadata.softwareVersion, cardStates.telemetryDetail || telemetryState));
+      this.setText(this.elements.gpsDetailFpgaVersion, this.formatDetailValue(metadata.fpgaVersion, cardStates.telemetryDetail || telemetryState));
+      this.setText(this.elements.gpsDetailLatitude, this.formatCoordinateDetail(position.latitude, cardStates.position || telemetryState));
+      this.setText(this.elements.gpsDetailLongitude, this.formatCoordinateDetail(position.longitude, cardStates.position || telemetryState));
+      this.setText(this.elements.gpsDetailAltitude, this.formatMeterValue(position.altitudeMeters, cardStates.position || telemetryState));
+      this.setText(this.elements.gpsDetailX, this.formatMeterValue(position.xMeters, cardStates.position || telemetryState));
+      this.setText(this.elements.gpsDetailY, this.formatMeterValue(position.yMeters, cardStates.position || telemetryState));
+      this.setText(this.elements.gpsDetailZ, this.formatMeterValue(position.zMeters, cardStates.position || telemetryState));
       this.setBadge(
         this.elements.gpsSatelliteCount,
-        satellites.length > 0 ? "ok" : telemetryState === "unavailable" ? "warning" : "info",
-        satellites.length > 0 ? `${satellites.length} SAT` : telemetryState === "unavailable" ? "UNAVAILABLE" : this.getTelemetryStateLabel(receiverStatus).toUpperCase(),
+        satellites.length > 0 && (cardStates.satellites || telemetryState) === "live" ? "ok" : (cardStates.satellites || telemetryState) === "unavailable" ? "warning" : "info",
+        satellites.length > 0 ? `${satellites.length} SAT (${this.getCardStateLabel(cardStates.satellites || telemetryState)})` : this.getCardStateLabel(cardStates.satellites || telemetryState).toUpperCase(),
       );
-      this.renderSatelliteTable(satellites, telemetryState);
+      this.renderSatelliteTable(satellites, cardStates.satellites || telemetryState);
     }
 
-    formatDetailValue(value, telemetryState = "unavailable") {
-      return value ? String(value) : this.getUnavailableDetailLabel(telemetryState);
-    }
-
-    formatCoordinateDetail(value, telemetryState = "unavailable") {
+    formatDetailValue(value, cardState = "unavailable") {
       if (!value) {
-        return this.getUnavailableDetailLabel(telemetryState);
+        return this.getUnavailableDetailLabel(cardState);
       }
-
-      if (typeof value === "object" && value.text) {
-        return value.text;
+      if (cardState === "live") {
+        return String(value);
       }
-
-      return String(value);
+      return `${String(value)} (${this.getCardStateLabel(cardState)})`;
     }
 
-    formatMeterValue(value, telemetryState = "unavailable") {
+    formatCoordinateDetail(value, cardState = "unavailable") {
+      if (!value) {
+        return this.getUnavailableDetailLabel(cardState);
+      }
+
+      const textValue = (typeof value === "object" && value.text) ? value.text : String(value);
+      if (cardState === "live") {
+        return textValue;
+      }
+      return `${textValue} (${this.getCardStateLabel(cardState)})`;
+    }
+
+    formatMeterValue(value, cardState = "unavailable") {
       if (!Number.isFinite(Number(value))) {
-        return this.getUnavailableDetailLabel(telemetryState);
+        return this.getUnavailableDetailLabel(cardState);
       }
 
-      return `${Number(value).toFixed(1)} m`;
+      const textValue = `${Number(value).toFixed(1)} m`;
+      if (cardState === "live") {
+        return textValue;
+      }
+      return `${textValue} (${this.getCardStateLabel(cardState)})`;
     }
 
-    formatLevelDbw(value, telemetryState = "unavailable") {
+    formatLevelDbw(value, cardState = "unavailable") {
       if (!Number.isFinite(Number(value))) {
-        return this.getUnavailableDetailLabel(telemetryState);
+        return this.getUnavailableDetailLabel(cardState);
       }
 
-      return `${Number(value).toFixed(1)} dBW`;
+      const textValue = `${Number(value).toFixed(1)} dBW`;
+      if (cardState === "live") {
+        return textValue;
+      }
+      return `${textValue} (${this.getCardStateLabel(cardState)})`;
     }
 
-    renderSatelliteTable(satellites, telemetryState = "unavailable") {
+    renderSatelliteTable(satellites, cardState = "unavailable") {
       if (!this.elements.gpsSatelliteTableBody) {
         return;
       }
@@ -520,9 +552,13 @@
         const cell = document.createElement("td");
         cell.colSpan = 4;
         cell.className = "gps-satellite-empty";
-        cell.textContent = telemetryState === "unavailable"
-          ? "Satellite tracking data is unavailable."
-          : "Recent satellite tracking data is being retained.";
+        cell.textContent = cardState === "live"
+          ? "No satellites currently reported."
+          : cardState === "cached"
+            ? "Satellite tracking data is cached."
+            : cardState === "retained"
+              ? "Satellite tracking is retained (last known good)."
+              : "Satellite tracking data is unavailable.";
         row.append(cell);
         this.elements.gpsSatelliteTableBody.replaceChildren(row);
         return;
@@ -533,9 +569,9 @@
           const row = document.createElement("tr");
           [
             satellite.prn,
-            this.formatDetailValue(satellite.status, telemetryState),
-            this.formatDetailValue(satellite.utilization, telemetryState),
-            this.formatLevelDbw(satellite.levelDbw, telemetryState),
+            this.formatDetailValue(satellite.status, cardState),
+            this.formatDetailValue(satellite.utilization, cardState),
+            this.formatLevelDbw(satellite.levelDbw, cardState),
           ].forEach((value) => {
             const cell = document.createElement("td");
             cell.textContent = String(value);
@@ -544,6 +580,20 @@
           return row;
         }),
       );
+    }
+
+    getCardStateLabel(cardState = "unavailable") {
+      return {
+        live: "Live",
+        cached: "Cached",
+        retained: "Retained",
+        reconnecting: "Retained",
+        unavailable: "Unavailable",
+      }[cardState] || "Unavailable";
+    }
+
+    getUnavailableDetailLabel(cardState = "unavailable") {
+      return this.getCardStateLabel(cardState);
     }
 
     setMetricCard(name, metric) {
@@ -668,13 +718,6 @@
       }[receiverStatus.telemetryState] || "Receiver telemetry is unavailable.";
     }
 
-    getUnavailableDetailLabel(telemetryState = "unavailable") {
-      return telemetryState === "cached"
-        ? "Cached"
-        : telemetryState === "reconnecting"
-          ? "Reconnecting"
-          : "Unavailable";
-    }
   }
 
   global.RAFOTimeApp.GPSDisplayManager = GPSDisplayManager;
