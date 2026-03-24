@@ -7,11 +7,11 @@
     timezone: "Asia/Muscat",
     timezoneLabel: "Gulf Standard Time (GST, UTC+04:00)",
     modeTransitionMs: 260,
-    syncIntervalMs: 30000,
+    syncIntervalMs: 15000,
     statusPollingEnabled: global.APP_CONFIG?.STATUS_POLLING_ENABLED !== false,
     statusPollingIntervalMs: Number(global.APP_CONFIG?.STATUS_POLLING_INTERVAL_MS) > 0
       ? Number(global.APP_CONFIG.STATUS_POLLING_INTERVAL_MS)
-      : 15000,
+      : 5000,
     statusFreshnessWindowMs: 45000,
     liveStatusRefreshIntervalMs: Number(global.APP_CONFIG?.LIVE_STATUS_REFRESH_INTERVAL_MS) > 0
       ? Number(global.APP_CONFIG.LIVE_STATUS_REFRESH_INTERVAL_MS)
@@ -119,6 +119,64 @@
     "frontend-http-date": "Internet (HTTP Date)",
     "local-clock": "Internal Clock",
     "browser-local-clock": "Internal Clock",
+  });
+
+  const SOURCE_STATUS_DEFAULTS = Object.freeze({
+    "gps-xli": Object.freeze({
+      sourceTier: "primary-reference",
+      status: "Nominal (synchronized)",
+      fallback: false,
+    }),
+    "ntp-nist": Object.freeze({
+      sourceTier: "traceable-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "ntp-npl-india": Object.freeze({
+      sourceTier: "traceable-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "https-worldtimeapi": Object.freeze({
+      sourceTier: "internet-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "https-timeapiio": Object.freeze({
+      sourceTier: "internet-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "http-date": Object.freeze({
+      sourceTier: "internet-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "frontend-worldtimeapi": Object.freeze({
+      sourceTier: "internet-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "frontend-timeapiio": Object.freeze({
+      sourceTier: "internet-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "frontend-http-date": Object.freeze({
+      sourceTier: "internet-fallback",
+      status: "Degraded (primary source unavailable)",
+      fallback: true,
+    }),
+    "local-clock": Object.freeze({
+      sourceTier: "emergency-fallback",
+      status: "Holdover (using last valid sync)",
+      fallback: true,
+    }),
+    "browser-local-clock": Object.freeze({
+      sourceTier: "browser-emergency-fallback",
+      status: "Holdover (using last valid sync)",
+      fallback: true,
+    }),
   });
 
   const RECEIVER_SOURCE_LABELS = Object.freeze({
@@ -263,32 +321,57 @@
     return FALLBACK_SOURCES.includes(source);
   }
 
+  function normalizeRuntimeSourceStatus(state = {}) {
+    const sourceKey = String(state.currentSource || state.sourceKey || state.source || "").trim() || "browser-local-clock";
+    const defaults = SOURCE_STATUS_DEFAULTS[sourceKey] || SOURCE_STATUS_DEFAULTS["browser-local-clock"];
+    const sourceLabel = String(
+      state.currentSourceLabel
+      || state.sourceLabel
+      || getSourceLabel(sourceKey),
+    ).trim() || getSourceLabel(sourceKey);
+    const sourceTier = String(state.sourceTier || defaults.sourceTier || "").trim() || "browser-emergency-fallback";
+    const statusText = String(state.statusText || state.status || defaults.status || "Lost (no valid time source)").trim();
+    const fallback = typeof state.fallback === "boolean" ? state.fallback : Boolean(defaults.fallback);
+
+    return {
+      currentSource: sourceKey,
+      currentSourceLabel: sourceLabel,
+      sourceKey,
+      sourceLabel,
+      sourceTier,
+      status: statusText,
+      statusText,
+      fallback,
+    };
+  }
+
   function getStandardStatusInfo(state = {}) {
-    const currentSource = String(state.currentSource || state.sourceKey || "").trim();
-    const sourceTier = String(state.sourceTier || "").trim();
+    const normalized = normalizeRuntimeSourceStatus(state);
+    const currentSource = normalized.currentSource;
+    const sourceTier = normalized.sourceTier;
     const gpsLockState = String(state.gpsLockState || "").trim();
     const isPrimaryGps = currentSource === "gps-xli" && sourceTier === "primary-reference";
 
     if (isPrimaryGps && gpsLockState === "locked") {
       return {
-        source: "GPS Receiver",
-        status: "Nominal (synchronized)",
+        source: normalized.sourceLabel,
+        status: normalized.statusText,
         severity: "healthy",
       };
     }
 
     if (["ntp-nist", "ntp-npl-india", "https-worldtimeapi", "https-timeapiio", "http-date", "frontend-worldtimeapi", "frontend-timeapiio", "frontend-http-date"].includes(currentSource) || sourceTier === "internet-fallback" || sourceTier === "traceable-fallback" || sourceTier === "non-traceable-fallback") {
       return {
-        source: getSourceLabel(currentSource || "https-timeapiio"),
-        status: "Degraded (primary source unavailable)",
+        source: normalized.sourceLabel,
+        status: normalized.statusText,
         severity: "warning",
       };
     }
 
     if (["local-clock", "browser-local-clock"].includes(currentSource) || sourceTier === "emergency-fallback" || sourceTier === "browser-emergency-fallback" || gpsLockState === "holdover") {
       return {
-        source: "Internal Clock",
-        status: "Holdover (using last valid sync)",
+        source: normalized.sourceLabel,
+        status: normalized.statusText,
         severity: "warning",
       };
     }
@@ -390,6 +473,7 @@
     applyFavicon,
     bootWhenDocumentReady,
     getSourceLabel,
+    normalizeRuntimeSourceStatus,
     getStandardStatusInfo,
     formatStandardStatusLines,
     isFallbackSource,
