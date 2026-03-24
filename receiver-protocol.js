@@ -560,7 +560,23 @@ class ReceiverConnectionManager {
         if (stage === "await-password" && /PASSWORD:/i.test(this.handshakeBuffer)) {
           stage = "await-login";
           this.handshakeBuffer = "";
+          promptedForPassword = true;
           socket.write(`${this.password}\r\n`);
+          return;
+        }
+
+        if (stage === "await-username" && !promptedForUsername && /PASSWORD:/i.test(this.handshakeBuffer)) {
+          stage = "await-login";
+          this.handshakeBuffer = "";
+          promptedForPassword = true;
+          socket.write(`${this.password}\r\n`);
+          return;
+        }
+
+        if (stage === "await-username" && !promptedForUsername && /\n\s*$/i.test(this.handshakeBuffer) && this.handshakeBuffer.length > 0) {
+          promptedForUsername = true;
+          this.handshakeBuffer = "";
+          socket.write(`${this.username}\r\n`);
           return;
         }
 
@@ -576,6 +592,24 @@ class ReceiverConnectionManager {
           this.buffer = "";
           this.attachPersistentSocketListeners(socket, generation);
           this.log("info", "Receiver authentication succeeded.");
+          finish(resolve, { generation });
+          return;
+        }
+
+        if ((stage === "await-login" || stage === "await-password" || stage === "await-username")
+          && /(XLI>|TIME SERVER>|#\s*$|>\s*$)/im.test(this.handshakeBuffer)
+          && !/(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
+          clearTimeout(stabilizeTimer);
+          this.socket = socket;
+          this.connectionGeneration = generation;
+          this.state = "authenticated";
+          this.authAttemptInProgress = false;
+          this.lastAuthenticatedAt = new Date().toISOString();
+          this.lastError = null;
+          this.reconnectAttempt = 0;
+          this.buffer = "";
+          this.attachPersistentSocketListeners(socket, generation);
+          this.log("info", "Receiver authentication prompt detected; assuming authenticated session.");
           finish(resolve, { generation });
           return;
         }
