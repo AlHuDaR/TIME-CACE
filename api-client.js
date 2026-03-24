@@ -267,8 +267,9 @@
     const currentSource = String(state.currentSource || state.sourceKey || "").trim();
     const sourceTier = String(state.sourceTier || "").trim();
     const gpsLockState = String(state.gpsLockState || "").trim();
+    const isPrimaryGps = currentSource === "gps-xli" && sourceTier === "primary-reference";
 
-    if (currentSource === "gps-xli" || gpsLockState === "locked") {
+    if (isPrimaryGps && gpsLockState === "locked") {
       return {
         source: "GPS Receiver",
         status: "Nominal (synchronized)",

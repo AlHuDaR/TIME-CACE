@@ -70,6 +70,7 @@ const CONFIG = validateConfig({
   statusStaleMs: readEnvNumber("STATUS_STALE_MS", 45000),
   receiverReconnectInitialMs: readEnvNumber("RECEIVER_RECONNECT_INITIAL_MS", 1000),
   receiverReconnectMaxMs: readEnvNumber("RECEIVER_RECONNECT_MAX_MS", 15000),
+  receiverConnectStabilizationMs: readEnvNumber("RECEIVER_CONNECT_STABILIZATION_MS", 220),
   receiverDetailCacheMs: readEnvNumber("GPS_DETAIL_CACHE_MS", 30000),
   authEnabled: process.env.API_AUTH_ENABLED === "true",
   authToken: process.env.API_AUTH_TOKEN || "",
@@ -162,6 +163,7 @@ const receiverManager = CONFIG.receiverEnabled
     commandTimeoutMs: CONFIG.requestTimeoutMs,
     reconnectInitialMs: CONFIG.receiverReconnectInitialMs,
     reconnectMaxMs: CONFIG.receiverReconnectMaxMs,
+    connectStabilizationMs: CONFIG.receiverConnectStabilizationMs,
     logger: console,
   })
   : null;
@@ -955,11 +957,15 @@ function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {})
     ? "unavailable"
     : status.stale
       ? "unavailable"
-      : status.receiverCommunicationState === "reconnecting"
+      : (status.receiverCommunicationState === "reconnecting" || status.receiverCommunicationState === "auth-recovery")
         ? "reconnecting"
         : status.dataState === "cached"
           ? "cached"
           : "normal";
+  status.gpsReceiverDetails = {
+    ...sanitizeGpsReceiverDetails(status.gpsReceiverDetails),
+    cacheState: status.telemetryState === "normal" ? "live" : status.telemetryState === "cached" ? "cached" : "retained",
+  };
   if (status.stale) {
     monitoringMemory.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt || status.checkedAt || new Date().toISOString();
     status.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt;
@@ -976,6 +982,8 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
     ? "disabled"
     : managerSnapshot.reconnecting || managerSnapshot.connecting
       ? "reconnecting"
+      : classified.receiverCommunicationState === "auth-recovery"
+        ? "auth-recovery"
       : managerSnapshot.state === "login-failed"
         ? "login-failed"
         : classified.receiverCommunicationState;
@@ -992,6 +1000,8 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
     lastError: classified.lastError,
     statusText: receiverCommunicationState === "reconnecting"
       ? "Receiver reconnecting"
+      : receiverCommunicationState === "auth-recovery"
+        ? "Receiver reachable; authentication recovery in progress"
       : classified.statusText,
   };
 }

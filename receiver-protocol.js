@@ -27,6 +27,7 @@ function validateConfig(config) {
     statusStaleMs: validateFiniteNumber("STATUS_STALE_MS", config.statusStaleMs, { min: 1000, max: 86400000, integer: true }),
     receiverReconnectInitialMs: validateFiniteNumber("RECEIVER_RECONNECT_INITIAL_MS", config.receiverReconnectInitialMs ?? 1000, { min: 0, max: 300000, integer: true }),
     receiverReconnectMaxMs: validateFiniteNumber("RECEIVER_RECONNECT_MAX_MS", config.receiverReconnectMaxMs ?? 15000, { min: 100, max: 300000, integer: true }),
+    receiverConnectStabilizationMs: validateFiniteNumber("RECEIVER_CONNECT_STABILIZATION_MS", config.receiverConnectStabilizationMs ?? 220, { min: 0, max: 5000, integer: true }),
     receiverDetailCacheMs: validateFiniteNumber("GPS_DETAIL_CACHE_MS", config.receiverDetailCacheMs ?? 30000, { min: 0, max: 300000, integer: true }),
     rateLimitWindowMs: validateFiniteNumber("RATE_LIMIT_WINDOW_MS", config.rateLimitWindowMs, { min: 1000, max: 86400000, integer: true }),
     rateLimitTimeMax: validateFiniteNumber("RATE_LIMIT_TIME_MAX", config.rateLimitTimeMax, { min: 1, max: 100000, integer: true }),
@@ -348,6 +349,17 @@ function classifyReceiverError(error) {
     };
   }
 
+  if (/auth[_-\s]?recovery|authentication not ready|socket closed unexpectedly/i.test(message) || error?.code === "RECEIVER_AUTH_RECOVERY") {
+    return {
+      receiverConfigured: true,
+      receiverReachable: true,
+      loginOk: false,
+      receiverCommunicationState: "auth-recovery",
+      statusText: "Receiver reachable; authentication recovery in progress",
+      lastError: message,
+    };
+  }
+
   if (/timeout|ECONNREFUSED|EHOSTUNREACH|ENOTFOUND|socket closed unexpectedly|receiver disconnected|receiver not connected/i.test(message)) {
     return {
       receiverConfigured: true,
@@ -385,6 +397,7 @@ class ReceiverConnectionManager {
     idleGraceMs = 140,
     reconnectInitialMs = 1000,
     reconnectMaxMs = 15000,
+    connectStabilizationMs = 220,
     logger = console,
   }) {
     this.host = host;
@@ -395,6 +408,7 @@ class ReceiverConnectionManager {
     this.idleGraceMs = idleGraceMs;
     this.reconnectInitialMs = reconnectInitialMs;
     this.reconnectMaxMs = reconnectMaxMs;
+    this.connectStabilizationMs = connectStabilizationMs;
     this.logger = logger;
 
     this.socket = null;
@@ -416,6 +430,7 @@ class ReceiverConnectionManager {
     this.currentCommand = null;
     this.buffer = "";
     this.handshakeBuffer = "";
+    this.authAttemptInProgress = false;
   }
 
   getStateSnapshot() {
@@ -470,16 +485,19 @@ class ReceiverConnectionManager {
   }
 
   async openConnection() {
+    this.resetSessionState();
     this.destroySocket({ preserveReconnect: true });
     this.state = "connecting";
-    this.handshakeBuffer = "";
+    this.authAttemptInProgress = true;
 
     const socket = new net.Socket();
     const generation = this.connectionGeneration + 1;
 
     return new Promise((resolve, reject) => {
-      let stage = "await-username";
+      let stage = "await-banner";
       let settled = false;
+      let stabilizeTimer = null;
+      let connected = false;
       const timeoutId = setTimeout(() => {
         rejectConnection(createCommandError("Receiver connection timeout", "RECEIVER_CONNECT_TIMEOUT"));
       }, this.commandTimeoutMs);
@@ -496,6 +514,8 @@ class ReceiverConnectionManager {
       const rejectConnection = (error) => {
         this.lastError = error;
         this.log("warn", `Receiver connection/authentication failed: ${error.message}`);
+        clearTimeout(stabilizeTimer);
+        this.authAttemptInProgress = false;
         try {
           socket.destroy();
         } catch (destroyError) {
@@ -508,16 +528,22 @@ class ReceiverConnectionManager {
       socket.setKeepAlive(true, 1000);
 
       socket.once("connect", () => {
+        connected = true;
         this.state = "authenticating";
         this.lastConnectedAt = new Date().toISOString();
         this.log("info", `Receiver connection established to ${this.host}:${this.port}.`);
+        stabilizeTimer = setTimeout(() => {
+          if (!settled && stage === "await-banner") {
+            stage = "await-username";
+          }
+        }, this.connectStabilizationMs);
       });
 
       socket.on("data", (chunk) => {
         const text = chunk.toString();
         this.handshakeBuffer += text;
 
-        if (stage === "await-username" && /USER NAME:/i.test(this.handshakeBuffer)) {
+        if ((stage === "await-banner" || stage === "await-username") && /(USER NAME:|LOGIN:|USERNAME:)/i.test(this.handshakeBuffer)) {
           stage = "await-password";
           this.handshakeBuffer = "";
           socket.write(`${this.username}\r\n`);
@@ -532,9 +558,11 @@ class ReceiverConnectionManager {
         }
 
         if (stage === "await-login" && /LOGIN SUCCESSFUL!/i.test(this.handshakeBuffer)) {
+          clearTimeout(stabilizeTimer);
           this.socket = socket;
           this.connectionGeneration = generation;
           this.state = "authenticated";
+          this.authAttemptInProgress = false;
           this.lastAuthenticatedAt = new Date().toISOString();
           this.lastError = null;
           this.reconnectAttempt = 0;
@@ -557,12 +585,21 @@ class ReceiverConnectionManager {
 
       socket.once("close", () => {
         if (!settled) {
-          rejectConnection(createCommandError("Receiver login failed or socket closed unexpectedly", "RECEIVER_SOCKET_CLOSED"));
+          const code = connected ? "RECEIVER_AUTH_RECOVERY" : "RECEIVER_SOCKET_CLOSED";
+          rejectConnection(createCommandError("Receiver login failed or socket closed unexpectedly", code));
         }
       });
 
       socket.connect(this.port, this.host);
     });
+  }
+
+  resetSessionState() {
+    this.clearCommandTimers();
+    this.currentCommand = null;
+    this.commandFinalized = false;
+    this.buffer = "";
+    this.handshakeBuffer = "";
   }
 
   attachPersistentSocketListeners(socket, generation) {
@@ -686,8 +723,7 @@ class ReceiverConnectionManager {
     this.commandFinalized = true;
     const current = this.currentCommand;
     this.currentCommand = null;
-    this.buffer = "";
-    this.clearCommandTimers();
+    this.resetSessionState();
     this.lastError = error;
 
     if (destroyConnection) {
@@ -756,6 +792,7 @@ class ReceiverConnectionManager {
 
   destroySocket({ preserveReconnect = false } = {}) {
     this.expectedClose = true;
+    this.resetSessionState();
     if (this.socket) {
       try {
         this.socket.destroy();
@@ -765,6 +802,7 @@ class ReceiverConnectionManager {
     }
     this.socket = null;
     this.expectedClose = false;
+    this.authAttemptInProgress = false;
     if (!preserveReconnect) {
       this.clearReconnectTimer();
     }
