@@ -499,7 +499,15 @@ class ReceiverConnectionManager {
       let stabilizeTimer = null;
       let connected = false;
       let promptedForUsername = false;
+      let promptedForPassword = false;
       let nudgedPrompt = false;
+      const setAuthStage = (nextStage, reason) => {
+        if (stage === nextStage) {
+          return;
+        }
+        this.log("info", `Receiver auth stage ${stage} -> ${nextStage}${reason ? ` (${reason})` : ""}.`);
+        stage = nextStage;
+      };
       const timeoutId = setTimeout(() => {
         rejectConnection(createCommandError("Receiver connection timeout", "RECEIVER_CONNECT_TIMEOUT"));
       }, this.commandTimeoutMs);
@@ -536,7 +544,7 @@ class ReceiverConnectionManager {
         this.log("info", `Receiver connection established to ${this.host}:${this.port}.`);
         stabilizeTimer = setTimeout(() => {
           if (!settled && stage === "await-banner") {
-            stage = "await-username";
+            setAuthStage("await-username", "stabilized without banner");
             if (!nudgedPrompt) {
               nudgedPrompt = true;
               socket.write("\r\n");
@@ -550,7 +558,7 @@ class ReceiverConnectionManager {
         this.handshakeBuffer += text;
 
         if ((stage === "await-banner" || stage === "await-username") && /(USER NAME:|LOGIN:|USERNAME:)/i.test(this.handshakeBuffer)) {
-          stage = "await-password";
+          setAuthStage("await-password", "username prompt detected");
           this.handshakeBuffer = "";
           promptedForUsername = true;
           socket.write(`${this.username}\r\n`);
@@ -558,7 +566,7 @@ class ReceiverConnectionManager {
         }
 
         if (stage === "await-password" && /PASSWORD:/i.test(this.handshakeBuffer)) {
-          stage = "await-login";
+          setAuthStage("await-login", "password prompt detected");
           this.handshakeBuffer = "";
           promptedForPassword = true;
           socket.write(`${this.password}\r\n`);
@@ -566,7 +574,7 @@ class ReceiverConnectionManager {
         }
 
         if (stage === "await-username" && !promptedForUsername && /PASSWORD:/i.test(this.handshakeBuffer)) {
-          stage = "await-login";
+          setAuthStage("await-login", "password-only prompt detected");
           this.handshakeBuffer = "";
           promptedForPassword = true;
           socket.write(`${this.password}\r\n`);
@@ -591,14 +599,15 @@ class ReceiverConnectionManager {
           this.reconnectAttempt = 0;
           this.buffer = "";
           this.attachPersistentSocketListeners(socket, generation);
-          this.log("info", "Receiver authentication succeeded.");
+          this.log("info", "Receiver authentication succeeded (explicit login success).");
           finish(resolve, { generation });
           return;
         }
 
-        if ((stage === "await-login" || stage === "await-password" || stage === "await-username")
+        if (stage === "await-login"
           && /(XLI>|TIME SERVER>|#\s*$|>\s*$)/im.test(this.handshakeBuffer)
-          && !/(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
+          && !/(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)
+          && promptedForPassword) {
           clearTimeout(stabilizeTimer);
           this.socket = socket;
           this.connectionGeneration = generation;
@@ -609,7 +618,25 @@ class ReceiverConnectionManager {
           this.reconnectAttempt = 0;
           this.buffer = "";
           this.attachPersistentSocketListeners(socket, generation);
-          this.log("info", "Receiver authentication prompt detected; assuming authenticated session.");
+          this.log("info", "Receiver authentication succeeded (command prompt detected after password submission).");
+          finish(resolve, { generation });
+          return;
+        }
+
+        if ((stage === "await-banner" || stage === "await-username")
+          && /(XLI>|TIME SERVER>|#\s*$|>\s*$)/im.test(this.handshakeBuffer)
+          && !/(USER NAME:|LOGIN:|USERNAME:|PASSWORD:|LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
+          clearTimeout(stabilizeTimer);
+          this.socket = socket;
+          this.connectionGeneration = generation;
+          this.state = "authenticated";
+          this.authAttemptInProgress = false;
+          this.lastAuthenticatedAt = new Date().toISOString();
+          this.lastError = null;
+          this.reconnectAttempt = 0;
+          this.buffer = "";
+          this.attachPersistentSocketListeners(socket, generation);
+          this.log("info", "Receiver authentication succeeded (existing authenticated prompt detected).");
           finish(resolve, { generation });
           return;
         }
