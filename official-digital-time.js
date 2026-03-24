@@ -6,10 +6,9 @@
     applyFavicon,
     bootWhenDocumentReady,
     formatStandardStatusLines,
-    getSourceLabel,
   } = global.RAFOTimeApp || {};
 
-  if (!APP_CONFIG || !GPSTimeSync || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatStandardStatusLines || !getSourceLabel) {
+  if (!APP_CONFIG || !GPSTimeSync || !syncAppLinks || !applyFavicon || !bootWhenDocumentReady || !formatStandardStatusLines) {
     throw new Error("Official digital time page dependencies are unavailable. Ensure shared runtime modules load first.");
   }
 
@@ -319,8 +318,7 @@
 
     renderSources(state) {
       const [sourceLine, statusLine] = formatStandardStatusLines(state || {});
-      const sourceLabel = getSourceLabel(state?.currentSource || state?.sourceKey || "browser-local-clock");
-      this.elements.source.textContent = `${sourceLine} · ${statusLine} · Active runtime: ${sourceLabel}`;
+      this.elements.source.textContent = `${sourceLine} · ${statusLine}`;
     }
 
     renderWorldTimes(referenceDate) {

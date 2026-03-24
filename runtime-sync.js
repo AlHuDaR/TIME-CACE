@@ -6,8 +6,8 @@
     normalizeBaseUrl,
     normalizeDataState,
     buildMonitoringModel,
-    humanizeSource,
     getSourceLabel,
+    normalizeRuntimeSourceStatus,
     getStandardStatusInfo,
     formatStandardStatusLines,
     formatClockTime,
@@ -47,6 +47,27 @@
       : key.toUpperCase();
   }
 
+  function normalizeSourceStatus(payload = {}) {
+    if (typeof normalizeRuntimeSourceStatus === "function") {
+      return normalizeRuntimeSourceStatus(payload);
+    }
+
+    const currentSource = payload.currentSource || payload.sourceKey || payload.source || "browser-local-clock";
+    const sourceLabel = payload.currentSourceLabel || payload.sourceLabel || resolveSourceLabel(currentSource);
+    const sourceTier = payload.sourceTier || "browser-emergency-fallback";
+    const statusText = payload.statusText || payload.status || getStandardStatusInfo(payload).status;
+    return {
+      currentSource,
+      currentSourceLabel: sourceLabel,
+      sourceKey: currentSource,
+      sourceLabel,
+      sourceTier,
+      status: statusText,
+      statusText,
+      fallback: typeof payload.fallback === "boolean" ? payload.fallback : true,
+    };
+  }
+
   class GPSTimeSync {
     constructor() {
       this.apiBaseUrl = resolveApiBaseUrl();
@@ -64,6 +85,7 @@
       this.lastSuccessfulStatusPollAt = null;
       this.lastStatusPollAttemptAt = null;
       this.lastFrontendFallbackSyncAt = 0;
+      this.lastDegradedSyncTriggerAt = 0;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
       this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "Internal Clock", sourceTier: "browser-emergency-fallback", status: "Holdover (using last valid sync)", statusText: "Holdover (using last valid sync)" });
@@ -193,20 +215,10 @@
     }
 
     resolveSourceSnapshot(payload = {}, fallback = {}) {
-      const currentSource = payload.currentSource || payload.sourceKey || fallback.currentSource || fallback.sourceKey || "browser-local-clock";
-      const sourceLabel = payload.sourceLabel
-        || payload.currentSourceLabel
-        || fallback.sourceLabel
-        || fallback.currentSourceLabel
-        || humanizeSource(currentSource);
-
-      return {
-        currentSource,
-        currentSourceLabel: payload.currentSourceLabel || payload.sourceLabel || fallback.currentSourceLabel || fallback.sourceLabel || sourceLabel,
-        sourceKey: payload.sourceKey || payload.currentSource || fallback.sourceKey || fallback.currentSource || currentSource,
-        sourceLabel,
-        sourceTier: payload.sourceTier || fallback.sourceTier || "emergency-fallback",
-      };
+      return normalizeSourceStatus({
+        ...fallback,
+        ...payload,
+      });
     }
 
     isObjectPayload(payload) {
@@ -267,7 +279,7 @@
 
   buildErrorState(error, fallback = {}) {
     const payload = error?.payload || {};
-    const source = this.resolveSourceSnapshot(payload, fallback);
+      const source = this.resolveSourceSnapshot(payload, fallback);
     return this.createState({
       success: false,
       ...fallback,
@@ -752,6 +764,7 @@
         lastPollAttemptAt: this.lastStatusPollAttemptAt,
         stale: Boolean(statusResult.stale),
       });
+      this.maybeTriggerImmediateDegradedSync(this.receiverStatus);
     } catch (error) {
       if (error?.payload) {
         const lastSuccessfulPollAt = this.receiverStatus.lastSuccessfulPollAt || this.lastSuccessfulStatusPollAt;
@@ -789,11 +802,13 @@
   }
 
   mergeReceiverStatus(statusUpdate, overrides = {}) {
+    const normalizedSource = normalizeSourceStatus(statusUpdate);
     const previousStatus = this.receiverStatus;
     const previousState = this.currentState;
     const nextStatus = this.createReceiverStatus({
       ...this.receiverStatus,
       ...statusUpdate,
+      ...normalizedSource,
       ...overrides,
     });
 
@@ -822,6 +837,27 @@
     );
     this.receiverStatus = nextStatus;
     this.evaluateEvents(previousState, this.currentState, previousStatus, nextStatus);
+  }
+
+  maybeTriggerImmediateDegradedSync(status) {
+    const runtimeIsPrimaryGps = this.currentState.currentSource === "gps-xli" && this.currentState.sourceTier === "primary-reference";
+    if (!runtimeIsPrimaryGps) {
+      return;
+    }
+
+    const degradedReceiverState = status.receiverConfigured !== false
+      && (!status.receiverReachable || !status.loginOk || ["unlocked", "holdover"].includes(status.gpsLockState));
+    if (!degradedReceiverState) {
+      return;
+    }
+
+    const now = Date.now();
+    if ((now - this.lastDegradedSyncTriggerAt) < 2500) {
+      return;
+    }
+
+    this.lastDegradedSyncTriggerAt = now;
+    this.syncTime();
   }
 
   updateSessionMarkersFromStatus(status) {
