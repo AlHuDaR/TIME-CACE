@@ -42,6 +42,7 @@
       reachable: "Reachable",
       "receiver-responding": "Reachable",
       reconnecting: "Reconnecting",
+      "auth-pending": "Authentication pending",
       "auth-recovery": "Authentication recovery",
       disabled: "Receiver disabled",
       "login-failed": "Authentication failed",
@@ -170,7 +171,7 @@
           ? "receiver-unreachable"
           : receiverStatus.loginOk
             ? "authenticated"
-            : receiverStatus.receiverCommunicationState === "auth-recovery"
+            : ["auth-pending", "auth-recovery"].includes(receiverStatus.receiverCommunicationState)
               ? "auth-recovery"
             : "auth-failed";
 
