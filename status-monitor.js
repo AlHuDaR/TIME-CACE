@@ -30,6 +30,7 @@
   function humanizeLockState(lockState) {
     return {
       locked: "Locked",
+      "locked-calendar-corrected": "Locked (calendar corrected)",
       unlocked: "Unlocked",
       holdover: "Holdover",
       unknown: "Unknown",
@@ -147,7 +148,7 @@
             : "critical";
     const gpsLockQualityState = !receiverConfigured
       ? "standby"
-      : receiverStatus.gpsLockState === "locked"
+      : ["locked", "locked-calendar-corrected"].includes(receiverStatus.gpsLockState)
         ? "healthy"
         : receiverStatus.gpsLockState === "holdover"
           ? "warning"
