@@ -124,6 +124,13 @@
       receiverCommunicationState: "not-started",
       receiverConnectionState: "idle",
       fallbackReason: null,
+      calendarTrusted: true,
+      calendarCorrected: false,
+      calendarCorrectionReason: null,
+      rolloverSuspected: false,
+      timeOfDayTrusted: true,
+      correctedTimestamp: null,
+      correctedDateSource: null,
       lastError: null,
       checkedAt: null,
       lastSuccessfulPollAt: null,
@@ -181,6 +188,13 @@
         position: "unavailable",
         satellites: "unavailable",
       },
+      calendarTrusted: true,
+      calendarCorrected: false,
+      calendarCorrectionReason: null,
+      rolloverSuspected: false,
+      timeOfDayTrusted: true,
+      correctedTimestamp: null,
+      correctedDateSource: null,
       ...overrides,
     };
   }
@@ -720,6 +734,13 @@
         upstream: payload.upstream || null,
         protocol: payload.protocol || null,
         internetFallbackMode: payload.internetFallbackMode || null,
+        calendarTrusted: typeof payload.calendarTrusted === "boolean" ? payload.calendarTrusted : true,
+        calendarCorrected: Boolean(payload.calendarCorrected),
+        calendarCorrectionReason: payload.calendarCorrectionReason || null,
+        rolloverSuspected: Boolean(payload.rolloverSuspected),
+        timeOfDayTrusted: typeof payload.timeOfDayTrusted === "boolean" ? payload.timeOfDayTrusted : true,
+        correctedTimestamp: payload.correctedTimestamp || normalizedTimestamp,
+        correctedDateSource: payload.correctedDateSource || null,
         resolutionErrors: payload.resolutionErrors || [],
       });
     } catch (error) {
@@ -877,7 +898,7 @@
       this.sessionState.communicationIssueCount += 1;
     }
 
-    if (status.gpsLockState === "locked") {
+    if (["locked", "locked-calendar-corrected"].includes(status.gpsLockState)) {
       this.sessionState.lastKnownGoodGpsLockAt = new Date().toISOString();
     }
 

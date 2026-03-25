@@ -683,6 +683,10 @@
     }
 
     getPrimarySourceNote(data, receiverStatus, sessionState) {
+      if (data.calendarCorrected) {
+        return "Calendar: Corrected (suspected receiver rollover / legacy date). Runtime: GPS timing with corrected calendar.";
+      }
+
       if (sessionState.lastKnownGoodGpsLockAt) {
         return `Last valid sync: ${formatRelativeAge(sessionState.lastKnownGoodGpsLockAt)}.`;
       }
@@ -696,7 +700,8 @@
 
     getConsistencyHint(data, receiverStatus) {
       const status = getStandardStatusInfo(data);
-      return `${formatStandardStatusLines(data)[0]} | ${formatStandardStatusLines(data)[1]}`;
+      const lines = formatStandardStatusLines(data);
+      return lines.join(" | ");
     }
 
     getTelemetryStateLabel(receiverStatus = {}) {
