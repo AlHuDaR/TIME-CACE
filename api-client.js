@@ -352,12 +352,10 @@
     const gpsLockState = String(state.gpsLockState || "").trim();
     const isPrimaryGps = currentSource === "gps-xli" && sourceTier === "primary-reference";
 
-    if (isPrimaryGps && ["locked", "locked-calendar-corrected"].includes(gpsLockState)) {
+    if (isPrimaryGps && gpsLockState === "locked") {
       return {
         source: normalized.sourceLabel,
-        status: state.calendarCorrected
-          ? "Locked · Calendar corrected (suspected receiver rollover / legacy date)"
-          : normalized.statusText,
+        status: normalized.statusText,
         severity: "healthy",
       };
     }
@@ -387,15 +385,9 @@
 
   function formatStandardStatusLines(state = {}) {
     const standard = getStandardStatusInfo(state);
-    const calendarLine = state?.calendarCorrected
-      ? "Calendar: Corrected (suspected receiver rollover / legacy date)"
-      : ["locked", "locked-calendar-corrected"].includes(String(state?.gpsLockState || ""))
-        ? "Calendar: Receiver"
-        : null;
     return [
       `Source: ${standard.source}`,
       `Status: ${standard.status}`,
-      ...(calendarLine ? [calendarLine] : []),
     ];
   }
 

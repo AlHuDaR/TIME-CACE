@@ -30,7 +30,6 @@
   function humanizeLockState(lockState) {
     return {
       locked: "Locked",
-      "locked-calendar-corrected": "Locked (calendar corrected)",
       unlocked: "Unlocked",
       holdover: "Holdover",
       unknown: "Unknown",
@@ -43,7 +42,6 @@
       reachable: "Reachable",
       "receiver-responding": "Reachable",
       reconnecting: "Reconnecting",
-      "auth-pending": "Authentication pending",
       "auth-recovery": "Authentication recovery",
       disabled: "Receiver disabled",
       "login-failed": "Authentication failed",
@@ -148,7 +146,7 @@
             : "critical";
     const gpsLockQualityState = !receiverConfigured
       ? "standby"
-      : ["locked", "locked-calendar-corrected"].includes(receiverStatus.gpsLockState)
+      : receiverStatus.gpsLockState === "locked"
         ? "healthy"
         : receiverStatus.gpsLockState === "holdover"
           ? "warning"
@@ -172,7 +170,7 @@
           ? "receiver-unreachable"
           : receiverStatus.loginOk
             ? "authenticated"
-            : ["auth-pending", "auth-recovery"].includes(receiverStatus.receiverCommunicationState)
+            : receiverStatus.receiverCommunicationState === "auth-recovery"
               ? "auth-recovery"
             : "auth-failed";
 

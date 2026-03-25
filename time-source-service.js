@@ -126,16 +126,6 @@ function flattenAggregateError(error) {
   return error?.message || String(error);
 }
 
-function createNoopLogger() {
-  const noop = () => {};
-  return Object.freeze({
-    debug: noop,
-    info: noop,
-    warn: noop,
-    error: noop,
-  });
-}
-
 function queryNtpSource({ host, timeoutMs, sourceKey, sourceHost }) {
   return new Promise((resolve, reject) => {
     const socket = dgram.createSocket('udp4');
@@ -349,15 +339,6 @@ async function queryHttpDateSource({ urls, timeoutMs }) {
 }
 
 function createTimingSourceService(options = {}) {
-  const logger = options.logger && typeof options.logger === 'object'
-    ? {
-      debug: typeof options.logger.debug === 'function' ? options.logger.debug.bind(options.logger) : () => {},
-      info: typeof options.logger.info === 'function' ? options.logger.info.bind(options.logger) : () => {},
-      warn: typeof options.logger.warn === 'function' ? options.logger.warn.bind(options.logger) : () => {},
-      error: typeof options.logger.error === 'function' ? options.logger.error.bind(options.logger) : () => {},
-    }
-    : createNoopLogger();
-
   const config = {
     ntpTimeoutMs: options.ntpTimeoutMs || 1500,
     httpsApiTimeoutMs: options.httpsApiTimeoutMs || 2000,
@@ -436,67 +417,21 @@ function createTimingSourceService(options = {}) {
     ];
 
     const resolutionErrors = [];
-    const resolutionTrace = [];
 
     for (const attempt of attempts) {
-      const startedAt = Date.now();
-      logger.info('time-source-fallback-attempt', {
-        sourceKey: attempt.sourceKey,
-        attemptedAt: new Date(startedAt).toISOString(),
-      });
       try {
         const result = await attempt.run();
-        const completedAt = Date.now();
-        resolutionTrace.push({
-          sourceKey: attempt.sourceKey,
-          outcome: 'success',
-          durationMs: Math.max(0, completedAt - startedAt),
-          completedAt: new Date(completedAt).toISOString(),
-          upstream: result.upstream || null,
-          protocol: result.protocol || null,
-        });
-        logger.info('time-source-fallback-success', {
-          sourceKey: attempt.sourceKey,
-          durationMs: Math.max(0, completedAt - startedAt),
-          upstream: result.upstream || null,
-          protocol: result.protocol || null,
-        });
         return {
           ...result,
           resolutionErrors,
-          resolutionTrace,
-          preferredFallbackAttempted: attempts[0].sourceKey,
-          failedFallbackTier: null,
-          selectedSource: result.sourceKey,
         };
       } catch (error) {
-        const completedAt = Date.now();
-        const message = error?.message || String(error);
         resolutionErrors.push({
           sourceKey: attempt.sourceKey,
-          message,
-        });
-        resolutionTrace.push({
-          sourceKey: attempt.sourceKey,
-          outcome: 'failure',
-          durationMs: Math.max(0, completedAt - startedAt),
-          completedAt: new Date(completedAt).toISOString(),
-          reason: message,
-        });
-        logger.warn('time-source-fallback-failure', {
-          sourceKey: attempt.sourceKey,
-          durationMs: Math.max(0, completedAt - startedAt),
-          reason: message,
+          message: error?.message || String(error),
         });
       }
     }
-
-    const failedFallbackTier = resolutionErrors.length > 0 ? resolutionErrors[0].sourceKey : null;
-    logger.error('time-source-fallback-exhausted', {
-      failedFallbackTier,
-      totalAttempts: attempts.length,
-      resolutionErrors,
-    });
 
     return {
       ...getSourceDefinition('local-clock'),
@@ -506,10 +441,6 @@ function createTimingSourceService(options = {}) {
       upstream: 'local-system-clock',
       protocol: 'local',
       resolutionErrors,
-      resolutionTrace,
-      preferredFallbackAttempted: attempts[0].sourceKey,
-      failedFallbackTier,
-      selectedSource: 'local-clock',
     };
   }
 

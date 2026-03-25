@@ -106,8 +106,6 @@ function parseGpsTimeResponse(raw) {
   const [month, day, year] = dateStr.split("/").map(Number);
   const [hours, minutes, seconds] = timeStr.split(":").map(Number);
   const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds);
-  const receiverDoyRawMatch = normalized.match(/\b(?:DOY|DAY\s*OF\s*YEAR)\s*[:=]?\s*(\d{1,3})\b/i);
-  const receiverYearRawMatch = normalized.match(/\b(?:YEAR|YYYY)\s*[:=]?\s*(\d{4})\b/i);
 
   const hasHoldover = /HOLDOVER/i.test(normalized);
   const explicitUnlocked = /(UNLOCK|NO\s+GPS|ANTENNA\s+FAULT|SEARCHING)/i.test(normalized);
@@ -135,8 +133,6 @@ function parseGpsTimeResponse(raw) {
     raw: normalized,
     receiverDate: dateStr,
     receiverTime: timeStr,
-    receiverDoyRaw: receiverDoyRawMatch ? Number(receiverDoyRawMatch[1]) : null,
-    receiverYearRaw: receiverYearRawMatch ? Number(receiverYearRawMatch[1]) : year,
     receiverTimeMode: timeMode.toUpperCase(),
     timestamp: utcTimestamp,
     isLocked,
@@ -435,11 +431,6 @@ class ReceiverConnectionManager {
     this.buffer = "";
     this.handshakeBuffer = "";
     this.authAttemptInProgress = false;
-    this.tcpReachable = false;
-    this.authPending = false;
-    this.authRecoveryRetryCount = 0;
-    this.authRecoveryRetryLimit = 2;
-    this.authRecoveryRetryMs = Math.min(600, Math.max(250, Math.floor(this.connectStabilizationMs * 1.5)));
   }
 
   getStateSnapshot() {
@@ -448,8 +439,6 @@ class ReceiverConnectionManager {
       connected,
       connecting: this.state === "connecting" || this.state === "authenticating",
       reconnecting: this.state === "reconnecting",
-      tcpReachable: this.tcpReachable,
-      authPending: this.authPending,
       state: this.state,
       lastConnectedAt: this.lastConnectedAt,
       lastAuthenticatedAt: this.lastAuthenticatedAt,
@@ -499,8 +488,6 @@ class ReceiverConnectionManager {
     this.resetSessionState();
     this.destroySocket({ preserveReconnect: true });
     this.state = "connecting";
-    this.tcpReachable = false;
-    this.authPending = true;
     this.authAttemptInProgress = true;
 
     const socket = new net.Socket();
@@ -511,16 +498,6 @@ class ReceiverConnectionManager {
       let settled = false;
       let stabilizeTimer = null;
       let connected = false;
-      let promptedForUsername = false;
-      let promptedForPassword = false;
-      let nudgedPrompt = false;
-      const setAuthStage = (nextStage, reason) => {
-        if (stage === nextStage) {
-          return;
-        }
-        this.log("info", `Receiver auth stage ${stage} -> ${nextStage}${reason ? ` (${reason})` : ""}.`);
-        stage = nextStage;
-      };
       const timeoutId = setTimeout(() => {
         rejectConnection(createCommandError("Receiver connection timeout", "RECEIVER_CONNECT_TIMEOUT"));
       }, this.commandTimeoutMs);
@@ -539,7 +516,6 @@ class ReceiverConnectionManager {
         this.log("warn", `Receiver connection/authentication failed: ${error.message}`);
         clearTimeout(stabilizeTimer);
         this.authAttemptInProgress = false;
-        this.authPending = false;
         try {
           socket.destroy();
         } catch (destroyError) {
@@ -553,18 +529,12 @@ class ReceiverConnectionManager {
 
       socket.once("connect", () => {
         connected = true;
-        this.tcpReachable = true;
-        this.authPending = true;
         this.state = "authenticating";
         this.lastConnectedAt = new Date().toISOString();
-        this.log("info", `Receiver TCP reachable at ${this.host}:${this.port}; authentication pending.`);
+        this.log("info", `Receiver connection established to ${this.host}:${this.port}.`);
         stabilizeTimer = setTimeout(() => {
           if (!settled && stage === "await-banner") {
-            setAuthStage("await-username", "stabilized without banner");
-            if (!nudgedPrompt) {
-              nudgedPrompt = true;
-              socket.write("\r\n");
-            }
+            stage = "await-username";
           }
         }, this.connectStabilizationMs);
       });
@@ -574,33 +544,16 @@ class ReceiverConnectionManager {
         this.handshakeBuffer += text;
 
         if ((stage === "await-banner" || stage === "await-username") && /(USER NAME:|LOGIN:|USERNAME:)/i.test(this.handshakeBuffer)) {
-          setAuthStage("await-password", "username prompt detected");
+          stage = "await-password";
           this.handshakeBuffer = "";
-          promptedForUsername = true;
           socket.write(`${this.username}\r\n`);
           return;
         }
 
         if (stage === "await-password" && /PASSWORD:/i.test(this.handshakeBuffer)) {
-          setAuthStage("await-login", "password prompt detected");
+          stage = "await-login";
           this.handshakeBuffer = "";
-          promptedForPassword = true;
           socket.write(`${this.password}\r\n`);
-          return;
-        }
-
-        if (stage === "await-username" && !promptedForUsername && /PASSWORD:/i.test(this.handshakeBuffer)) {
-          setAuthStage("await-login", "password-only prompt detected");
-          this.handshakeBuffer = "";
-          promptedForPassword = true;
-          socket.write(`${this.password}\r\n`);
-          return;
-        }
-
-        if (stage === "await-username" && !promptedForUsername && /\n\s*$/i.test(this.handshakeBuffer) && this.handshakeBuffer.length > 0) {
-          promptedForUsername = true;
-          this.handshakeBuffer = "";
-          socket.write(`${this.username}\r\n`);
           return;
         }
 
@@ -609,66 +562,19 @@ class ReceiverConnectionManager {
           this.socket = socket;
           this.connectionGeneration = generation;
           this.state = "authenticated";
-          this.tcpReachable = true;
-          this.authPending = false;
-          this.authRecoveryRetryCount = 0;
           this.authAttemptInProgress = false;
           this.lastAuthenticatedAt = new Date().toISOString();
           this.lastError = null;
           this.reconnectAttempt = 0;
           this.buffer = "";
           this.attachPersistentSocketListeners(socket, generation);
-          this.log("info", "Receiver authentication succeeded (explicit login success).");
-          finish(resolve, { generation });
-          return;
-        }
-
-        if (stage === "await-login"
-          && /(XLI>|TIME SERVER>|#\s*$|>\s*$)/im.test(this.handshakeBuffer)
-          && !/(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)
-          && promptedForPassword) {
-          clearTimeout(stabilizeTimer);
-          this.socket = socket;
-          this.connectionGeneration = generation;
-          this.state = "authenticated";
-          this.tcpReachable = true;
-          this.authPending = false;
-          this.authRecoveryRetryCount = 0;
-          this.authAttemptInProgress = false;
-          this.lastAuthenticatedAt = new Date().toISOString();
-          this.lastError = null;
-          this.reconnectAttempt = 0;
-          this.buffer = "";
-          this.attachPersistentSocketListeners(socket, generation);
-          this.log("info", "Receiver authentication succeeded (command prompt detected after password submission).");
-          finish(resolve, { generation });
-          return;
-        }
-
-        if ((stage === "await-banner" || stage === "await-username")
-          && /(XLI>|TIME SERVER>|#\s*$|>\s*$)/im.test(this.handshakeBuffer)
-          && !/(USER NAME:|LOGIN:|USERNAME:|PASSWORD:|LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
-          clearTimeout(stabilizeTimer);
-          this.socket = socket;
-          this.connectionGeneration = generation;
-          this.state = "authenticated";
-          this.tcpReachable = true;
-          this.authPending = false;
-          this.authRecoveryRetryCount = 0;
-          this.authAttemptInProgress = false;
-          this.lastAuthenticatedAt = new Date().toISOString();
-          this.lastError = null;
-          this.reconnectAttempt = 0;
-          this.buffer = "";
-          this.attachPersistentSocketListeners(socket, generation);
-          this.log("info", "Receiver authentication succeeded (existing authenticated prompt detected).");
+          this.log("info", "Receiver authentication succeeded.");
           finish(resolve, { generation });
           return;
         }
 
         if (stage === "await-login" && /(LOGIN FAILED|AUTHENTICATION FAILED|ACCESS DENIED|INVALID PASSWORD)/i.test(this.handshakeBuffer)) {
           this.state = "login-failed";
-          this.authPending = false;
           rejectConnection(createCommandError("Receiver login failed", "RECEIVER_LOGIN_FAILED"));
         }
       });
@@ -842,7 +748,6 @@ class ReceiverConnectionManager {
 
     this.lastError = error;
     this.state = this.state === "login-failed" ? "login-failed" : "degraded";
-    this.authPending = false;
     this.destroySocket({ preserveReconnect: true });
     this.failCurrentCommand(error, { reconnect: false, destroyConnection: false });
     this.scheduleReconnect(error, { immediate: true });
@@ -853,34 +758,20 @@ class ReceiverConnectionManager {
       return;
     }
 
-    const authRecoveryMode = error?.code === "RECEIVER_AUTH_RECOVERY";
     const attempt = this.reconnectAttempt;
-    let delay;
-    if (authRecoveryMode && this.authRecoveryRetryCount < this.authRecoveryRetryLimit) {
-      this.authRecoveryRetryCount += 1;
-      delay = this.authRecoveryRetryMs;
-    } else {
-      this.authRecoveryRetryCount = authRecoveryMode ? this.authRecoveryRetryCount : 0;
-      delay = immediate && attempt === 0
-        ? 0
-        : Math.min(this.reconnectMaxMs, this.reconnectInitialMs * Math.max(1, 2 ** Math.max(0, attempt - 1)));
-    }
+    const delay = immediate && attempt === 0
+      ? 0
+      : Math.min(this.reconnectMaxMs, this.reconnectInitialMs * Math.max(1, 2 ** Math.max(0, attempt - 1)));
 
     this.reconnectAttempt += 1;
     this.state = "reconnecting";
-    this.authPending = authRecoveryMode || this.authAttemptInProgress;
-    this.log(
-      "warn",
-      authRecoveryMode
-        ? `Receiver auth recovery attempt scheduled in ${delay} ms${error?.message ? ` (${error.message})` : ""}.`
-        : `Receiver reconnect scheduled in ${delay} ms${error?.message ? ` (${error.message})` : ""}.`,
-    );
+    this.log("warn", `Receiver reconnect scheduled in ${delay} ms${error?.message ? ` (${error.message})` : ""}.`);
 
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       try {
         await this.ensureConnected({ triggerReconnect: false });
-        this.log("info", authRecoveryMode ? "Receiver auth recovery completed; receiver authenticated." : "Receiver reconnect succeeded.");
+        this.log("info", "Receiver reconnect succeeded.");
       } catch (reconnectError) {
         this.scheduleReconnect(reconnectError, { immediate: false });
       }
@@ -912,8 +803,6 @@ class ReceiverConnectionManager {
     this.socket = null;
     this.expectedClose = false;
     this.authAttemptInProgress = false;
-    this.authPending = false;
-    this.tcpReachable = false;
     if (!preserveReconnect) {
       this.clearReconnectTimer();
     }
