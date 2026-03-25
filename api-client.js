@@ -385,9 +385,14 @@
 
   function formatStandardStatusLines(state = {}) {
     const standard = getStandardStatusInfo(state);
+    const calendarSuffix = state?.calendarCorrected
+      ? " · Calendar: Corrected (suspected receiver rollover / legacy date)"
+      : state?.calendarTrusted === true
+        ? " · Calendar: Trusted"
+        : "";
     return [
       `Source: ${standard.source}`,
-      `Status: ${standard.status}`,
+      `Status: ${standard.status}${calendarSuffix}`,
     ];
   }
 
