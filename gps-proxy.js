@@ -153,6 +153,21 @@ let monitoringMemory = {
   communicationIssueCount: 0,
 };
 let lastKnownGoodReceiverSnapshot = null;
+let calendarTrustState = {
+  mode: "trusted",
+  suspectCount: 0,
+  goodCount: 0,
+};
+
+const CALENDAR_SUSPECT_ENTER_THRESHOLD = 2;
+const CALENDAR_TRUSTED_EXIT_THRESHOLD = 3;
+const CALENDAR_DAY_DIFF_THRESHOLD = 2;
+const TIME_OF_DAY_PLAUSIBILITY_THRESHOLD_SECONDS = 120;
+const TRUSTED_REFERENCE_CACHE_MS = 15000;
+let trustedReferenceCache = {
+  expiresAt: 0,
+  payload: null,
+};
 
 const receiverManager = CONFIG.receiverEnabled
   ? createReceiverConnectionManager({
@@ -521,6 +536,135 @@ function updateLastResolvedTimeSource(selection = {}) {
   return lastResolvedTimeSource;
 }
 
+function getUtcDateParts(timestamp) {
+  const date = new Date(Number(timestamp));
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+    hour: date.getUTCHours(),
+    minute: date.getUTCMinutes(),
+    second: date.getUTCSeconds(),
+  };
+}
+
+function toUtcDayNumber(timestamp) {
+  const parts = getUtcDateParts(timestamp);
+  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
+}
+
+function computeUtcDayOfYear(timestamp) {
+  const parts = getUtcDateParts(timestamp);
+  const start = Date.UTC(parts.year, 0, 1);
+  const today = Date.UTC(parts.year, parts.month - 1, parts.day);
+  return Math.floor((today - start) / 86400000) + 1;
+}
+
+function secondsSinceUtcMidnight(timestamp) {
+  const parts = getUtcDateParts(timestamp);
+  return (parts.hour * 3600) + (parts.minute * 60) + parts.second;
+}
+
+function cyclicSecondDelta(a, b) {
+  const day = 86400;
+  const raw = Math.abs(a - b) % day;
+  return Math.min(raw, day - raw);
+}
+
+async function getTrustedReferenceTime() {
+  const now = Date.now();
+  if (trustedReferenceCache.payload && trustedReferenceCache.expiresAt > now) {
+    return trustedReferenceCache.payload;
+  }
+
+  const selection = await timingSourceService.resolveFallbackHierarchy();
+  const payload = {
+    timestamp: Number(selection.timestamp || now),
+    sourceKey: selection.sourceKey || "local-clock",
+  };
+  trustedReferenceCache = {
+    payload,
+    expiresAt: now + TRUSTED_REFERENCE_CACHE_MS,
+  };
+  return payload;
+}
+
+function analyzeReceiverCalendarTrust(parsed, trustedReference) {
+  const reasons = [];
+  const trustedTimestamp = Number(trustedReference?.timestamp || Date.now());
+  const trustedSourceKey = trustedReference?.sourceKey || "local-clock";
+  const receiverTimestamp = Number(parsed.timestamp);
+  const receiverParts = getUtcDateParts(receiverTimestamp);
+  const trustedParts = getUtcDateParts(trustedTimestamp);
+  const yearDiff = Math.abs(receiverParts.year - trustedParts.year);
+  if (yearDiff >= 2) {
+    reasons.push(`year-mismatch-${receiverParts.year}-vs-${trustedParts.year}`);
+  }
+
+  const dayDiff = Math.abs(toUtcDayNumber(receiverTimestamp) - toUtcDayNumber(trustedTimestamp));
+  if (dayDiff > CALENDAR_DAY_DIFF_THRESHOLD) {
+    reasons.push(`date-implausible-${dayDiff}d`);
+  }
+
+  if (Number.isFinite(parsed.receiverDoy)) {
+    const trustedDoy = computeUtcDayOfYear(trustedTimestamp);
+    if (Math.abs(parsed.receiverDoy - trustedDoy) > CALENDAR_DAY_DIFF_THRESHOLD) {
+      reasons.push(`doy-mismatch-${parsed.receiverDoy}-vs-${trustedDoy}`);
+    }
+  }
+
+  if (receiverParts.year <= 2010) {
+    reasons.push(`legacy-era-${receiverParts.year}`);
+  }
+
+  const suspected = reasons.length > 0;
+  if (suspected) {
+    calendarTrustState.suspectCount += 1;
+    calendarTrustState.goodCount = 0;
+  } else {
+    calendarTrustState.goodCount += 1;
+    calendarTrustState.suspectCount = 0;
+  }
+
+  if (calendarTrustState.mode !== "corrected" && calendarTrustState.suspectCount >= CALENDAR_SUSPECT_ENTER_THRESHOLD) {
+    calendarTrustState.mode = "corrected";
+  } else if (calendarTrustState.mode === "corrected" && calendarTrustState.goodCount >= CALENDAR_TRUSTED_EXIT_THRESHOLD) {
+    calendarTrustState.mode = "trusted";
+  }
+
+  const correctionActive = calendarTrustState.mode === "corrected";
+  const receiverTodSeconds = secondsSinceUtcMidnight(receiverTimestamp);
+  const trustedTodSeconds = secondsSinceUtcMidnight(trustedTimestamp);
+  const timeOfDayDeltaSeconds = cyclicSecondDelta(receiverTodSeconds, trustedTodSeconds);
+  const timeOfDayTrusted = timeOfDayDeltaSeconds <= TIME_OF_DAY_PLAUSIBILITY_THRESHOLD_SECONDS;
+  const correctedTimestamp = correctionActive
+    ? (timeOfDayTrusted
+      ? Date.UTC(
+        trustedParts.year,
+        trustedParts.month - 1,
+        trustedParts.day,
+        receiverParts.hour,
+        receiverParts.minute,
+        receiverParts.second,
+      )
+      : trustedTimestamp)
+    : receiverTimestamp;
+
+  return {
+    trustedTimestamp,
+    trustedSourceKey,
+    calendarTrusted: !correctionActive,
+    calendarCorrected: correctionActive,
+    rolloverSuspected: correctionActive,
+    calendarCorrectionReason: correctionActive
+      ? (reasons[0] || "hysteresis-calendar-correction")
+      : null,
+    timeOfDayTrusted: correctionActive ? timeOfDayTrusted : true,
+    correctedTimestamp,
+    correctedDateSource: correctionActive ? trustedSourceKey : "receiver-calendar",
+  };
+}
+
 function buildTimingPayload(selection, extra = {}) {
   const effectiveTimestamp = Number(selection.timestamp || Date.now());
   const sourceDefinition = getSourceDefinition(selection.sourceKey || extra.sourceKey || 'local-clock');
@@ -560,6 +704,19 @@ function buildTimingPayload(selection, extra = {}) {
     protocol: selection.protocol || null,
     roundTripMs: selection.roundTripMs ?? null,
     resolutionErrors: Array.isArray(selection.resolutionErrors) ? selection.resolutionErrors : [],
+    receiverTimestampRaw: extra.receiverTimestampRaw ?? null,
+    receiverDateRaw: extra.receiverDateRaw ?? null,
+    receiverTimeRaw: extra.receiverTimeRaw ?? null,
+    receiverDoyRaw: extra.receiverDoyRaw ?? null,
+    receiverYearRaw: extra.receiverYearRaw ?? null,
+    calendarTrusted: extra.calendarTrusted ?? null,
+    calendarCorrected: extra.calendarCorrected ?? false,
+    calendarCorrectionReason: extra.calendarCorrectionReason ?? null,
+    rolloverSuspected: extra.rolloverSuspected ?? false,
+    timeOfDayTrusted: extra.timeOfDayTrusted ?? null,
+    correctedTimestamp: extra.correctedTimestamp ?? effectiveTimestamp,
+    correctedDateSource: extra.correctedDateSource ?? null,
+    receiverOperationalState: extra.receiverOperationalState ?? null,
     monitoringState: null,
     lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
     lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
@@ -679,13 +836,13 @@ function buildStatusPayload(snapshot, overrides = {}) {
     loginOk: Boolean(snapshot.loginOk),
     isLocked: Boolean(snapshot.isLocked),
     gpsLockState: snapshot.gpsLockState || (snapshot.isLocked ? "locked" : "unknown"),
-    statusText: activeSource.status,
+    statusText: snapshot.statusText || activeSource.status,
     currentSource: activeSource.sourceKey,
     currentSourceLabel: activeSource.sourceLabel,
     sourceKey: activeSource.sourceKey,
     sourceLabel: activeSource.sourceLabel,
     sourceTier: activeSource.sourceTier,
-    status: activeSource.status,
+    status: snapshot.statusText || activeSource.status,
     authoritative: activeSource.authoritative,
     traceable: activeSource.traceable,
     fallback: activeSource.fallback,
@@ -702,6 +859,19 @@ function buildStatusPayload(snapshot, overrides = {}) {
     cacheAgeMs: null,
     upstream: snapshot.upstream || lastResolvedTimeSource.upstream || null,
     protocol: snapshot.protocol || lastResolvedTimeSource.protocol || null,
+    receiverTimestampRaw: snapshot.receiverTimestampRaw ?? null,
+    receiverDateRaw: snapshot.receiverDateRaw ?? null,
+    receiverTimeRaw: snapshot.receiverTimeRaw ?? null,
+    receiverDoyRaw: snapshot.receiverDoyRaw ?? null,
+    receiverYearRaw: snapshot.receiverYearRaw ?? null,
+    calendarTrusted: snapshot.calendarTrusted ?? null,
+    calendarCorrected: snapshot.calendarCorrected ?? false,
+    calendarCorrectionReason: snapshot.calendarCorrectionReason ?? null,
+    rolloverSuspected: snapshot.rolloverSuspected ?? false,
+    timeOfDayTrusted: snapshot.timeOfDayTrusted ?? null,
+    correctedTimestamp: snapshot.correctedTimestamp ?? null,
+    correctedDateSource: snapshot.correctedDateSource ?? null,
+    receiverOperationalState: snapshot.receiverOperationalState ?? null,
     monitoringState,
     lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
     lastSuccessfulReceiverCommunicationAt: monitoringMemory.lastSuccessfulReceiverCommunicationAt,
@@ -988,6 +1158,14 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
         ? "login-failed"
         : classified.receiverCommunicationState;
 
+  if (receiverCommunicationState === "reconnecting") {
+    console.warn("[GPS] receiver auth/session recovery pending");
+  } else if (receiverCommunicationState === "auth-recovery") {
+    console.warn("[GPS] receiver auth/session recovery pending");
+  } else if (!classified.receiverReachable) {
+    console.error("[GPS] receiver unreachable");
+  }
+
   return {
     receiverConfigured: classified.receiverConfigured !== false,
     receiverReachable: managerSnapshot.connected || classified.receiverReachable,
@@ -1038,6 +1216,18 @@ async function readReceiverTime() {
 
   const connection = await connectToReceiver("F3\r\n");
   const parsed = parseGpsTimeResponse(connection.raw);
+  const trustedReference = await getTrustedReferenceTime();
+  const calendarAssessment = analyzeReceiverCalendarTrust(parsed, trustedReference);
+  const operationalState = parsed.isLocked && calendarAssessment.calendarCorrected
+    ? "gps-locked-calendar-corrected"
+    : parsed.isLocked
+      ? "gps-locked-calendar-trusted"
+      : parsed.gpsLockState === "unlocked"
+        ? "gps-unlocked"
+        : parsed.gpsLockState;
+  const gpsStatusText = calendarAssessment.calendarCorrected
+    ? "Locked · Calendar corrected (suspected receiver rollover / legacy date)"
+    : getSourceDefinition("gps-xli").status;
 
   const snapshot = updateReceiverSnapshot({
     receiverConfigured: true,
@@ -1045,7 +1235,8 @@ async function readReceiverTime() {
     loginOk: connection.loginOk,
     isLocked: parsed.isLocked,
     gpsLockState: parsed.gpsLockState,
-    statusText: parsed.isLocked ? getSourceDefinition('gps-xli').status : getSourceDefinition(lastResolvedTimeSource.sourceKey || 'local-clock').status,
+    receiverOperationalState: operationalState,
+    statusText: parsed.isLocked ? gpsStatusText : getSourceDefinition(lastResolvedTimeSource.sourceKey || 'local-clock').status,
     currentSource: parsed.isLocked ? 'gps-xli' : (lastResolvedTimeSource.sourceKey || 'local-clock'),
     currentSourceLabel: parsed.isLocked ? getSourceDefinition('gps-xli').sourceLabel : (lastResolvedTimeSource.sourceLabel || getSourceDefinition('local-clock').sourceLabel),
     sourceKey: parsed.isLocked ? 'gps-xli' : (lastResolvedTimeSource.sourceKey || 'local-clock'),
@@ -1059,6 +1250,7 @@ async function readReceiverTime() {
   });
 
   if (!parsed.isLocked) {
+    console.warn("[GPS] receiver reachable but unlocked");
     const lockError = new Error(parsed.statusText);
     lockError.code = 'GPS_UNLOCKED';
     lockError.parsed = parsed;
@@ -1068,8 +1260,8 @@ async function readReceiverTime() {
 
   const payload = buildTimingPayload({
     ...getSourceDefinition('gps-xli'),
-    timestamp: parsed.timestamp,
-    isoTimestamp: new Date(parsed.timestamp).toISOString(),
+    timestamp: calendarAssessment.correctedTimestamp,
+    isoTimestamp: new Date(calendarAssessment.correctedTimestamp).toISOString(),
     upstream: CONFIG.gpsHost,
     protocol: 'receiver',
     roundTripMs: null,
@@ -1081,12 +1273,38 @@ async function readReceiverTime() {
     isLocked: true,
     gpsLockState: snapshot.gpsLockState,
     receiverCommunicationState: snapshot.receiverCommunicationState,
-    statusText: getSourceDefinition('gps-xli').status,
+    statusText: gpsStatusText,
     raw: parsed.raw,
     receiverDate: parsed.receiverDate,
     receiverTime: parsed.receiverTime,
+    receiverTimestampRaw: parsed.timestamp,
+    receiverDateRaw: parsed.receiverDate,
+    receiverTimeRaw: parsed.receiverTime,
+    receiverDoyRaw: Number.isFinite(parsed.receiverDoy) ? parsed.receiverDoy : null,
+    receiverYearRaw: parsed.receiverYear ?? null,
     receiverTimeMode: parsed.receiverTimeMode,
+    calendarTrusted: calendarAssessment.calendarTrusted,
+    calendarCorrected: calendarAssessment.calendarCorrected,
+    calendarCorrectionReason: calendarAssessment.calendarCorrectionReason,
+    rolloverSuspected: calendarAssessment.rolloverSuspected,
+    timeOfDayTrusted: calendarAssessment.timeOfDayTrusted,
+    correctedTimestamp: calendarAssessment.correctedTimestamp,
+    correctedDateSource: calendarAssessment.correctedDateSource,
+    receiverOperationalState: operationalState,
   });
+
+  if (parsed.isLocked) {
+    if (calendarAssessment.calendarCorrected) {
+      console.warn(`[GPS] receiver locked, calendar corrected (${calendarAssessment.calendarCorrectionReason})`);
+      if (calendarAssessment.timeOfDayTrusted) {
+        console.info(`[GPS] receiver locked, receiver time-of-day trusted (threshold ${TIME_OF_DAY_PLAUSIBILITY_THRESHOLD_SECONDS}s)`);
+      } else {
+        console.warn("[GPS] receiver locked, full trusted timestamp used");
+      }
+    } else {
+      console.info("[GPS] receiver locked, calendar trusted");
+    }
+  }
 
   updateReceiverSnapshot({
     ...snapshot,
@@ -1101,6 +1319,19 @@ async function readReceiverTime() {
     fallback: payload.fallback,
     upstream: payload.upstream,
     protocol: payload.protocol,
+    receiverTimestampRaw: payload.receiverTimestampRaw,
+    receiverDateRaw: payload.receiverDateRaw,
+    receiverTimeRaw: payload.receiverTimeRaw,
+    receiverDoyRaw: payload.receiverDoyRaw,
+    receiverYearRaw: payload.receiverYearRaw,
+    calendarTrusted: payload.calendarTrusted,
+    calendarCorrected: payload.calendarCorrected,
+    calendarCorrectionReason: payload.calendarCorrectionReason,
+    rolloverSuspected: payload.rolloverSuspected,
+    timeOfDayTrusted: payload.timeOfDayTrusted,
+    correctedTimestamp: payload.correctedTimestamp,
+    correctedDateSource: payload.correctedDateSource,
+    receiverOperationalState: payload.receiverOperationalState,
   });
 
   return payload;

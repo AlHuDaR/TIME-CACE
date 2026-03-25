@@ -106,6 +106,9 @@ function parseGpsTimeResponse(raw) {
   const [month, day, year] = dateStr.split("/").map(Number);
   const [hours, minutes, seconds] = timeStr.split(":").map(Number);
   const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, seconds);
+  const doyMatch = normalized.match(/\bDOY\b[:=\s-]*([0-3]?\d{1,2})\b/i)
+    || normalized.match(/\bDAY\s+OF\s+YEAR\b[:=\s-]*([0-3]?\d{1,2})\b/i);
+  const receiverDoy = doyMatch ? Number(doyMatch[1]) : null;
 
   const hasHoldover = /HOLDOVER/i.test(normalized);
   const explicitUnlocked = /(UNLOCK|NO\s+GPS|ANTENNA\s+FAULT|SEARCHING)/i.test(normalized);
@@ -133,6 +136,8 @@ function parseGpsTimeResponse(raw) {
     raw: normalized,
     receiverDate: dateStr,
     receiverTime: timeStr,
+    receiverDoy,
+    receiverYear: year,
     receiverTimeMode: timeMode.toUpperCase(),
     timestamp: utcTimestamp,
     isLocked,
