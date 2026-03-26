@@ -182,6 +182,9 @@
         && runtimeState.currentSource
         && receiverStatus.currentSource !== runtimeState.currentSource,
     );
+    const correctedCalendarGpsMode = runtimeState.sourceKey === "gps-xli"
+      && receiverStatus.gpsLockState === "locked"
+      && (receiverStatus.calendarCorrected === true || receiverStatus.rolloverSuspected === true);
 
     const timingIntegrityState = backendMonitoringState.timingIntegrityState
       || ((!receiverStatus.backendOnline || ["emergency-fallback", "browser-emergency-fallback"].includes(runtimeState.sourceTier) || dataState === "unavailable")
@@ -190,6 +193,8 @@
           ? "degraded"
           : (!receiverConfigured || runtimeState.sourceTier === "traceable-fallback")
             ? "reduced"
+            : correctedCalendarGpsMode
+              ? "reduced"
             : (!receiverStatus.receiverReachable || !receiverStatus.loginOk || receiverStatus.gpsLockState === "holdover" || dataState === "stale")
               ? "degraded"
               : (dataState === "cached" || receiverStatus.gpsLockState === "unlocked" || mismatchWhileFresh)
@@ -203,6 +208,8 @@
           ? "warning"
           : runtimeState.sourceTier === "traceable-fallback"
             ? receiverConfigured ? "warning" : "advisory"
+            : correctedCalendarGpsMode
+              ? "advisory"
             : (!receiverConfigured || (dataState === "cached" && runtimeState.sourceTier !== "primary-reference"))
               ? "advisory"
               : (!receiverStatus.receiverReachable || !receiverStatus.loginOk)
@@ -221,6 +228,7 @@
       communicationAuthState: backendMonitoringState.communicationAuthState || communicationAuthState,
       timingIntegrityState,
       alarmSeverityState,
+      correctedCalendarGpsMode,
       mismatchWhileFresh,
       dataState,
     };
