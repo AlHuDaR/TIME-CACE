@@ -13,9 +13,15 @@
   }
 
   const HERO_LOCATION = Object.freeze({
-    label: "Seeb, Oman",
+    fallbackLabel: "Oman",
     timeZone: APP_CONFIG.timezone,
+    fallbackLine: "Time in Oman now:",
+    genericLine: "Time at your current location now:",
   });
+
+  const REVERSE_GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
+  const REVERSE_GEOCODE_TIMEOUT_MS = 3200;
+  const BROWSER_GEOLOCATION_TIMEOUT_MS = 4200;
 
   const KEY_WORLD_CLOCKS = Object.freeze([
     { label: "New York", timeZone: "America/New_York" },
@@ -97,6 +103,10 @@
       "12-31": ["Year-end operations review"],
     }),
     defaultLine: "Operational observances: none scheduled",
+    cacheKeyPrefix: "rafo-oman-observances-v1-",
+    cacheTtlMs: 24 * 60 * 60 * 1000,
+    requestTimeoutMs: 3500,
+    countryCode: "OM",
   });
 
   const OMAN_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -104,6 +114,10 @@
     weekday: "long",
     month: "long",
     day: "numeric",
+    year: "numeric",
+  });
+  const OMAN_YEAR_FORMATTER = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_CONFIG.timezone,
     year: "numeric",
   });
 
@@ -135,7 +149,7 @@
     return getTimeFormatter(timeZone, options).format(date);
   }
 
-  function buildObservanceLine(date) {
+  function buildObservanceLine(date, dynamicObservances) {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: APP_CONFIG.timezone,
       month: "2-digit",
@@ -143,13 +157,35 @@
     }).formatToParts(date);
     const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     const key = `${map.month}-${map.day}`;
-    const entries = OBSERVANCE_CONFIG.recurring[key] || [];
+    const recurringEntries = OBSERVANCE_CONFIG.recurring[key] || [];
+    const dynamicEntries = dynamicObservances?.get(key) || [];
+    const entries = Array.from(new Set([...dynamicEntries, ...recurringEntries]));
 
     if (!entries.length) {
       return OBSERVANCE_CONFIG.defaultLine;
     }
 
-    return `Observances: ${entries.join(" / ")}`;
+    return `Operational observances: ${entries.join(" / ")}`;
+  }
+
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 3000) {
+    const controller = new AbortController();
+    const timeout = global.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      return response;
+    } finally {
+      global.clearTimeout(timeout);
+    }
+  }
+
+  function isWithinOmanBounds({ latitude, longitude }) {
+    return Number.isFinite(latitude)
+      && Number.isFinite(longitude)
+      && latitude >= 16.5
+      && latitude <= 26.5
+      && longitude >= 51.7
+      && longitude <= 59.9;
   }
 
   class OfficialDigitalTimePage {
@@ -177,13 +213,20 @@
       this.keyClockNodes = [];
       this.highlightedCityNodes = [];
       this.secondaryCityNodes = [];
+      this.observanceMap = new Map();
     }
 
     async init() {
       syncAppLinks();
       applyFavicon();
-      this.elements.locationLine.textContent = `Time in ${HERO_LOCATION.label} now:`;
+      this.elements.locationLine.textContent = HERO_LOCATION.fallbackLine;
       this.renderStaticCollections();
+      this.resolveLocationLine().catch(() => {
+        this.elements.locationLine.textContent = HERO_LOCATION.fallbackLine;
+      });
+      this.refreshObservanceCalendar().catch(() => {
+        this.observanceMap = new Map();
+      });
       await this.gpsTimeSync.init();
       this.gpsTimeSync.addEventListener("gpstimeupdate", this.boundUpdate);
       this.applyRuntimeState(this.gpsTimeSync.getCurrentState());
@@ -283,7 +326,7 @@
 
       this.elements.clock.textContent = HERO_CLOCK_FORMATTER.format(syncedNow);
       this.elements.date.textContent = OMAN_DATE_FORMATTER.format(syncedNow);
-      this.elements.observance.textContent = buildObservanceLine(syncedNow);
+      this.elements.observance.textContent = buildObservanceLine(syncedNow, this.observanceMap);
       this.renderOffset(state, syncedNow, deviceNow);
       this.renderSources(state);
       this.renderWorldTimes(syncedNow);
@@ -354,6 +397,167 @@
       }
 
       this.latestState = detail;
+    }
+
+    async resolveLocationLine() {
+      const locationLabel = await this.resolveLocationLabelFromBrowser();
+      this.elements.locationLine.textContent = locationLabel;
+    }
+
+    resolveBrowserPosition() {
+      if (!global.navigator?.geolocation?.getCurrentPosition) {
+        return Promise.reject(new Error("Browser geolocation unavailable."));
+      }
+
+      return new Promise((resolve, reject) => {
+        global.navigator.geolocation.getCurrentPosition(
+          (position) => resolve(position.coords),
+          (error) => reject(error),
+          {
+            enableHighAccuracy: false,
+            timeout: BROWSER_GEOLOCATION_TIMEOUT_MS,
+            maximumAge: 5 * 60 * 1000,
+          },
+        );
+      });
+    }
+
+    async resolveLocationLabelFromBrowser() {
+      try {
+        const coords = await this.resolveBrowserPosition();
+        const reverseLabel = await this.reverseGeocode(coords);
+        if (reverseLabel) {
+          return `Time in ${reverseLabel} now:`;
+        }
+        return isWithinOmanBounds(coords) ? HERO_LOCATION.fallbackLine : HERO_LOCATION.genericLine;
+      } catch (_error) {
+        return HERO_LOCATION.fallbackLine;
+      }
+    }
+
+    async reverseGeocode(coords) {
+      if (!Number.isFinite(coords?.latitude) || !Number.isFinite(coords?.longitude)) {
+        return null;
+      }
+
+      try {
+        const url = new URL(REVERSE_GEOCODE_ENDPOINT);
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("lat", String(coords.latitude));
+        url.searchParams.set("lon", String(coords.longitude));
+        url.searchParams.set("zoom", "10");
+        url.searchParams.set("accept-language", "en");
+
+        const response = await fetchWithTimeout(
+          url.toString(),
+          {
+            headers: {
+              Accept: "application/json",
+            },
+          },
+          REVERSE_GEOCODE_TIMEOUT_MS,
+        );
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = await response.json();
+        const address = payload?.address || {};
+        const countryCode = String(address.country_code || "").toUpperCase();
+        if (countryCode !== "OM") {
+          return null;
+        }
+        const city = address.city || address.town || address.village || address.municipality || address.county;
+        return city ? `${city}, Oman` : HERO_LOCATION.fallbackLabel;
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    getObservanceCacheKey(year) {
+      return `${OBSERVANCE_CONFIG.cacheKeyPrefix}${year}`;
+    }
+
+    loadCachedObservances(year) {
+      try {
+        const raw = global.localStorage?.getItem(this.getObservanceCacheKey(year));
+        if (!raw) {
+          return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.entries)) {
+          return null;
+        }
+        if (!Number.isFinite(parsed.cachedAt) || (Date.now() - parsed.cachedAt) > OBSERVANCE_CONFIG.cacheTtlMs) {
+          return null;
+        }
+        return parsed.entries;
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    cacheObservances(year, entries) {
+      try {
+        global.localStorage?.setItem(this.getObservanceCacheKey(year), JSON.stringify({
+          cachedAt: Date.now(),
+          entries,
+        }));
+      } catch (_error) {
+        // Ignore cache write failures (private mode / quota / disabled storage).
+      }
+    }
+
+    async refreshObservanceCalendar() {
+      const now = this.gpsTimeSync.getNow();
+      const year = Number(OMAN_YEAR_FORMATTER.format(now));
+      const cachedEntries = this.loadCachedObservances(year);
+      if (cachedEntries) {
+        this.observanceMap = this.createObservanceMap(cachedEntries);
+        return;
+      }
+
+      try {
+        const url = `https://date.nager.at/api/v3/PublicHolidays/${year}/${OBSERVANCE_CONFIG.countryCode}`;
+        const response = await fetchWithTimeout(url, { headers: { Accept: "application/json" } }, OBSERVANCE_CONFIG.requestTimeoutMs);
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        if (!Array.isArray(payload)) {
+          return;
+        }
+        const entries = payload
+          .map((item) => ({
+            date: typeof item?.date === "string" ? item.date : "",
+            name: typeof item?.localName === "string" && item.localName.trim()
+              ? item.localName.trim()
+              : (typeof item?.name === "string" ? item.name.trim() : ""),
+          }))
+          .filter((item) => item.date && item.name);
+        if (!entries.length) {
+          return;
+        }
+
+        this.cacheObservances(year, entries);
+        this.observanceMap = this.createObservanceMap(entries);
+      } catch (_error) {
+        this.observanceMap = new Map();
+      }
+    }
+
+    createObservanceMap(entries) {
+      const map = new Map();
+      entries.forEach((entry) => {
+        const [, month, day] = entry.date.split("-");
+        if (!month || !day) {
+          return;
+        }
+        const key = `${month}-${day}`;
+        const current = map.get(key) || [];
+        map.set(key, Array.from(new Set([...current, entry.name])));
+      });
+      return map;
     }
 
     handleVisibilityChange() {
