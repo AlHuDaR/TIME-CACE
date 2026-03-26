@@ -75,8 +75,10 @@
       this.notifications = global.appMessageCenter || new global.RAFOTimeApp.MessageCenter();
       this.eventTarget = new EventTarget();
       this.syncInterval = null;
+      this.syncSchedulerTimer = null;
       this.syncInFlight = null;
       this.statusPollInterval = null;
+      this.statusPollSchedulerTimer = null;
       this.statusPollInFlight = null;
       this.hasShownInitialSync = false;
       this.timeOffset = 0;
@@ -86,6 +88,7 @@
       this.lastStatusPollAttemptAt = null;
       this.lastFrontendFallbackSyncAt = 0;
       this.lastDegradedSyncTriggerAt = 0;
+      this.lastAppliedOffsetMs = 0;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
       this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "Internal Clock", sourceTier: "browser-emergency-fallback", status: "Holdover (using last valid sync)", statusText: "Holdover (using last valid sync)" });
@@ -681,7 +684,7 @@
       const payload = await this.fetchJson("/time");
       this.validateRuntimePayload(payload);
       const source = this.resolveSourceSnapshot(payload);
-      const normalizedTimestamp = Number(payload.timestamp);
+      const normalizedTimestamp = this.resolveDisciplinedTimestamp(payload);
       const displayParts = this.getOmanDisplayParts(normalizedTimestamp);
       nextState = this.createState({
         success: payload.success !== false,
@@ -702,6 +705,9 @@
         date: payload.date || displayParts.date,
         time: payload.time || displayParts.time,
         timestamp: normalizedTimestamp,
+        authoritativeTimestampMs: Number.isFinite(Number(payload.authoritativeTimestampMs))
+          ? Number(payload.authoritativeTimestampMs)
+          : Number(payload.timestamp),
         isoTimestamp: payload.isoTimestamp || new Date(normalizedTimestamp).toISOString(),
         timezone: payload.timezone || APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
         raw: payload.raw || null,
@@ -710,6 +716,29 @@
         fallbackReason: payload.fallbackReason || null,
         upstream: payload.upstream || null,
         protocol: payload.protocol || null,
+        backendCapturedAtMs: Number.isFinite(Number(payload.backendCapturedAtMs))
+          ? Number(payload.backendCapturedAtMs)
+          : null,
+        backendMonotonicCapturedAtMs: Number.isFinite(Number(payload.backendMonotonicCapturedAtMs))
+          ? Number(payload.backendMonotonicCapturedAtMs)
+          : null,
+        backendPayloadBuiltAtMs: Number.isFinite(Number(payload.backendPayloadBuiltAtMs))
+          ? Number(payload.backendPayloadBuiltAtMs)
+          : null,
+        backendResponseSentAtMs: Number.isFinite(Number(payload.backendResponseSentAtMs))
+          ? Number(payload.backendResponseSentAtMs)
+          : null,
+        freshnessMs: Number.isFinite(Number(payload.freshnessMs))
+          ? Number(payload.freshnessMs)
+          : null,
+        freshnessMsAtResponse: Number.isFinite(Number(payload.freshnessMsAtResponse))
+          ? Number(payload.freshnessMsAtResponse)
+          : null,
+        clientRoundTripMs: Number.isFinite(Number(payload._clientRoundTripMs))
+          ? Number(payload._clientRoundTripMs)
+          : null,
+        syncModel: "authoritative-sync-plus-local-extrapolation",
+        timingDiagnostics: payload.timingDiagnostics || null,
         internetFallbackMode: payload.internetFallbackMode || null,
         resolutionErrors: payload.resolutionErrors || [],
       });
@@ -969,6 +998,9 @@
     for (const baseUrl of baseUrls) {
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), APP_CONFIG.requestTimeoutMs);
+      const requestStartedPerf = (typeof performance !== "undefined" && typeof performance.now === "function")
+        ? performance.now()
+        : Date.now();
 
       try {
         const response = await fetch(`${baseUrl}${path}`, {
@@ -998,6 +1030,11 @@
         if (baseUrl !== this.apiBaseUrl) {
           this.apiBaseUrl = baseUrl;
         }
+        const responseReceivedPerf = (typeof performance !== "undefined" && typeof performance.now === "function")
+          ? performance.now()
+          : Date.now();
+        payload._clientRoundTripMs = Math.max(0, responseReceivedPerf - requestStartedPerf);
+        payload._clientResponseReceivedAtMs = Date.now();
         return payload;
       } catch (error) {
         const failure = error.name === "AbortError"
@@ -1041,11 +1078,41 @@
 
   applyState(state) {
     const localNow = Date.now();
+    const nextOffset = state.timestamp - localNow;
+    const previousOffset = Number.isFinite(this.timeOffset) ? this.timeOffset : nextOffset;
+    const correctionDelta = nextOffset - previousOffset;
+    const absDelta = Math.abs(correctionDelta);
+    const gentleCorrectionThresholdMs = 500;
+    const immediateReanchorThresholdMs = 1500;
+    const blendedOffset = absDelta >= immediateReanchorThresholdMs
+      ? nextOffset
+      : absDelta <= gentleCorrectionThresholdMs
+        ? previousOffset + (correctionDelta * 0.35)
+        : previousOffset + (correctionDelta * 0.65);
+
     this.currentState = state;
-    this.timeOffset = state.timestamp - localNow;
+    this.timeOffset = blendedOffset;
+    this.lastAppliedOffsetMs = blendedOffset;
     this.lastSyncTime = new Date();
     this.lastSyncTimestamp = Date.now();
     this.updateSessionMarkersFromState(state);
+  }
+
+  resolveDisciplinedTimestamp(payload = {}) {
+    const authoritativeTimestamp = Number(payload.authoritativeTimestampMs ?? payload.timestamp);
+    if (!Number.isFinite(authoritativeTimestamp)) {
+      return Number(payload.timestamp);
+    }
+
+    const backendFreshnessMs = Number(payload.freshnessMsAtResponse ?? payload.freshnessMs);
+    const hasBackendFreshness = Number.isFinite(backendFreshnessMs) && backendFreshnessMs >= 0;
+    const clientRoundTripMs = Number(payload._clientRoundTripMs);
+    const oneWayTransportMs = Number.isFinite(clientRoundTripMs) ? Math.max(0, clientRoundTripMs / 2) : 0;
+    const corrected = authoritativeTimestamp
+      + (hasBackendFreshness ? backendFreshnessMs : 0)
+      + oneWayTransportMs;
+
+    return Number.isFinite(corrected) ? corrected : authoritativeTimestamp;
   }
 
   maybeShowInitialNotification() {
@@ -1185,36 +1252,52 @@
   }
 
   startAutoSync() {
-    if (this.syncInterval) {
+    if (this.syncSchedulerTimer) {
       return;
     }
 
-    this.syncInterval = window.setInterval(() => {
-      this.syncTime();
-    }, APP_CONFIG.syncIntervalMs);
+    const scheduleNext = () => {
+      this.syncSchedulerTimer = window.setTimeout(async () => {
+        try {
+          await this.syncTime();
+        } finally {
+          scheduleNext();
+        }
+      }, APP_CONFIG.syncIntervalMs);
+    };
+
+    scheduleNext();
   }
 
   startStatusPolling() {
-    if (this.statusPollInterval || !APP_CONFIG.statusPollingEnabled) {
+    if (this.statusPollSchedulerTimer || !APP_CONFIG.statusPollingEnabled) {
       return;
     }
 
-    this.statusPollInterval = window.setInterval(() => {
-      this.pollStatus();
-    }, APP_CONFIG.statusPollingIntervalMs);
+    const scheduleNext = () => {
+      this.statusPollSchedulerTimer = window.setTimeout(async () => {
+        try {
+          await this.pollStatus();
+        } finally {
+          scheduleNext();
+        }
+      }, APP_CONFIG.statusPollingIntervalMs);
+    };
+
+    scheduleNext();
   }
 
   stopAutoSync() {
-    if (this.syncInterval) {
-      window.clearInterval(this.syncInterval);
-      this.syncInterval = null;
+    if (this.syncSchedulerTimer) {
+      window.clearTimeout(this.syncSchedulerTimer);
+      this.syncSchedulerTimer = null;
     }
   }
 
   stopStatusPolling() {
-    if (this.statusPollInterval) {
-      window.clearInterval(this.statusPollInterval);
-      this.statusPollInterval = null;
+    if (this.statusPollSchedulerTimer) {
+      window.clearTimeout(this.statusPollSchedulerTimer);
+      this.statusPollSchedulerTimer = null;
     }
   }
 

@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const path = require("path");
+const { performance } = require("perf_hooks");
 const express = require("express");
 const cors = require("cors");
 const {
@@ -168,6 +169,9 @@ let trustedReferenceCache = {
   expiresAt: 0,
   payload: null,
 };
+let trustedReferenceRefreshPromise = null;
+let lastLoggedReceiverOperationalState = null;
+let lastLoggedCalendarCorrectionReason = null;
 
 const receiverManager = CONFIG.receiverEnabled
   ? createReceiverConnectionManager({
@@ -589,6 +593,33 @@ async function getTrustedReferenceTime() {
   return payload;
 }
 
+function getTrustedReferenceTimeFast() {
+  const now = Date.now();
+  if (trustedReferenceCache.payload) {
+    if (trustedReferenceCache.expiresAt <= now && !trustedReferenceRefreshPromise) {
+      trustedReferenceRefreshPromise = getTrustedReferenceTime()
+        .catch(() => null)
+        .finally(() => {
+          trustedReferenceRefreshPromise = null;
+        });
+    }
+    return trustedReferenceCache.payload;
+  }
+
+  if (!trustedReferenceRefreshPromise) {
+    trustedReferenceRefreshPromise = getTrustedReferenceTime()
+      .catch(() => null)
+      .finally(() => {
+        trustedReferenceRefreshPromise = null;
+      });
+  }
+
+  return {
+    timestamp: now,
+    sourceKey: "local-clock",
+  };
+}
+
 function analyzeReceiverCalendarTrust(parsed, trustedReference) {
   const reasons = [];
   const trustedTimestamp = Number(trustedReference?.timestamp || Date.now());
@@ -703,6 +734,14 @@ function buildTimingPayload(selection, extra = {}) {
     upstream: selection.upstream || null,
     protocol: selection.protocol || null,
     roundTripMs: selection.roundTripMs ?? null,
+    backendCapturedAtMs: Number.isFinite(extra.backendCapturedAtMs) ? extra.backendCapturedAtMs : null,
+    backendMonotonicCapturedAtMs: Number.isFinite(extra.backendMonotonicCapturedAtMs) ? extra.backendMonotonicCapturedAtMs : null,
+    backendPayloadBuiltAtMs: Number.isFinite(extra.backendPayloadBuiltAtMs) ? extra.backendPayloadBuiltAtMs : null,
+    backendResponseSentAtMs: Number.isFinite(extra.backendResponseSentAtMs) ? extra.backendResponseSentAtMs : null,
+    freshnessMs: Number.isFinite(extra.freshnessMs) ? extra.freshnessMs : null,
+    freshnessMsAtResponse: Number.isFinite(extra.freshnessMsAtResponse) ? extra.freshnessMsAtResponse : null,
+    authoritativeTimestampMs: effectiveTimestamp,
+    timingDiagnostics: extra.timingDiagnostics || null,
     resolutionErrors: Array.isArray(selection.resolutionErrors) ? selection.resolutionErrors : [],
     receiverTimestampRaw: extra.receiverTimestampRaw ?? null,
     receiverDateRaw: extra.receiverDateRaw ?? null,
@@ -1212,12 +1251,26 @@ function buildCachedReceiverStatus(error, { fallbackReason = "receiver-unavailab
 }
 
 async function readReceiverTime() {
+  const diagnosticsEnabled = parseBoolean(process.env.TIMING_DIAGNOSTICS);
+  const monotonicStartMs = performance.now();
+  const wallPollStartMs = Date.now();
+  const timingMarks = {
+    pollStartMs: wallPollStartMs,
+    pollStartMonotonicMs: monotonicStartMs,
+  };
+
   await throttleReceiverAccess();
 
   const connection = await connectToReceiver("F3\r\n");
+  timingMarks.receiverResponseReceivedMs = Date.now();
+  timingMarks.receiverResponseReceivedMonotonicMs = performance.now();
   const parsed = parseGpsTimeResponse(connection.raw);
-  const trustedReference = await getTrustedReferenceTime();
+  timingMarks.parseCompletedMs = Date.now();
+  timingMarks.parseCompletedMonotonicMs = performance.now();
+  const trustedReference = getTrustedReferenceTimeFast();
   const calendarAssessment = analyzeReceiverCalendarTrust(parsed, trustedReference);
+  timingMarks.calendarCorrectionCompletedMs = Date.now();
+  timingMarks.calendarCorrectionCompletedMonotonicMs = performance.now();
   const operationalState = parsed.isLocked && calendarAssessment.calendarCorrected
     ? "gps-locked-calendar-corrected"
     : parsed.isLocked
@@ -1291,19 +1344,51 @@ async function readReceiverTime() {
     correctedTimestamp: calendarAssessment.correctedTimestamp,
     correctedDateSource: calendarAssessment.correctedDateSource,
     receiverOperationalState: operationalState,
+    backendCapturedAtMs: timingMarks.receiverResponseReceivedMs,
+    backendMonotonicCapturedAtMs: timingMarks.receiverResponseReceivedMonotonicMs,
   });
+  timingMarks.payloadBuiltMs = Date.now();
+  timingMarks.payloadBuiltMonotonicMs = performance.now();
+
+  payload.backendPayloadBuiltAtMs = timingMarks.payloadBuiltMs;
+  payload.freshnessMs = Math.max(0, timingMarks.payloadBuiltMs - timingMarks.receiverResponseReceivedMs);
+  payload.freshnessMsAtResponse = payload.freshnessMs;
+  payload.authoritativeTimestampMs = payload.timestamp;
+  payload.timingDiagnostics = diagnosticsEnabled
+    ? {
+      totalBackendPathMs: Math.round(timingMarks.payloadBuiltMonotonicMs - monotonicStartMs),
+      receiverReadMs: Math.round(timingMarks.receiverResponseReceivedMonotonicMs - monotonicStartMs),
+      parseMs: Math.round(timingMarks.parseCompletedMonotonicMs - timingMarks.receiverResponseReceivedMonotonicMs),
+      calendarCorrectionMs: Math.round(timingMarks.calendarCorrectionCompletedMonotonicMs - timingMarks.parseCompletedMonotonicMs),
+      payloadBuildMs: Math.round(timingMarks.payloadBuiltMonotonicMs - timingMarks.calendarCorrectionCompletedMonotonicMs),
+    }
+    : null;
 
   if (parsed.isLocked) {
-    if (calendarAssessment.calendarCorrected) {
-      console.warn(`[GPS] receiver locked, calendar corrected (${calendarAssessment.calendarCorrectionReason})`);
-      if (calendarAssessment.timeOfDayTrusted) {
-        console.info(`[GPS] receiver locked, receiver time-of-day trusted (threshold ${TIME_OF_DAY_PLAUSIBILITY_THRESHOLD_SECONDS}s)`);
+    const operationalStateChanged = operationalState !== lastLoggedReceiverOperationalState;
+    const correctionReasonChanged = calendarAssessment.calendarCorrectionReason !== lastLoggedCalendarCorrectionReason;
+    if (operationalStateChanged || correctionReasonChanged) {
+      if (calendarAssessment.calendarCorrected) {
+        console.warn(`[GPS] receiver locked, calendar corrected (${calendarAssessment.calendarCorrectionReason})`);
+        if (calendarAssessment.timeOfDayTrusted) {
+          console.info(`[GPS] receiver locked, receiver time-of-day trusted (threshold ${TIME_OF_DAY_PLAUSIBILITY_THRESHOLD_SECONDS}s)`);
+        } else {
+          console.warn("[GPS] receiver locked, full trusted timestamp used");
+        }
       } else {
-        console.warn("[GPS] receiver locked, full trusted timestamp used");
+        console.info("[GPS] receiver locked, calendar trusted");
       }
-    } else {
-      console.info("[GPS] receiver locked, calendar trusted");
+      lastLoggedReceiverOperationalState = operationalState;
+      lastLoggedCalendarCorrectionReason = calendarAssessment.calendarCorrectionReason;
     }
+  }
+
+  if (diagnosticsEnabled && payload.timingDiagnostics) {
+    console.info(
+      `[TIMING] receiver→payload ${payload.timingDiagnostics.totalBackendPathMs}ms `
+      + `(read ${payload.timingDiagnostics.receiverReadMs}ms, parse ${payload.timingDiagnostics.parseMs}ms, `
+      + `calendar ${payload.timingDiagnostics.calendarCorrectionMs}ms, build ${payload.timingDiagnostics.payloadBuildMs}ms)`,
+    );
   }
 
   updateReceiverSnapshot({
@@ -1516,6 +1601,11 @@ app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
 app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
   try {
     const receiverTime = await readReceiverTime();
+    const responseSentAtMs = Date.now();
+    receiverTime.backendResponseSentAtMs = responseSentAtMs;
+    receiverTime.freshnessMsAtResponse = Number.isFinite(receiverTime.backendCapturedAtMs)
+      ? Math.max(0, responseSentAtMs - receiverTime.backendCapturedAtMs)
+      : receiverTime.freshnessMs;
     receiverStatusCache = {
       promise: null,
       data: sanitizeReceiverStatus(lastReceiverSnapshot),
@@ -1558,6 +1648,11 @@ app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
       expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
     };
 
+    const responseSentAtMs = Date.now();
+    resolvedPayload.backendResponseSentAtMs = responseSentAtMs;
+    resolvedPayload.freshnessMsAtResponse = Number.isFinite(resolvedPayload.backendCapturedAtMs)
+      ? Math.max(0, responseSentAtMs - resolvedPayload.backendCapturedAtMs)
+      : null;
     res.json(resolvedPayload);
   }
 });
