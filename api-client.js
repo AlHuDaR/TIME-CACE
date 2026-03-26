@@ -7,15 +7,15 @@
     timezone: "Asia/Muscat",
     timezoneLabel: "Gulf Standard Time (GST, UTC+04:00)",
     modeTransitionMs: 260,
-    syncIntervalMs: 15000,
+    syncIntervalMs: 3000,
     statusPollingEnabled: global.APP_CONFIG?.STATUS_POLLING_ENABLED !== false,
     statusPollingIntervalMs: Number(global.APP_CONFIG?.STATUS_POLLING_INTERVAL_MS) > 0
       ? Number(global.APP_CONFIG.STATUS_POLLING_INTERVAL_MS)
-      : 5000,
+      : 2000,
     statusFreshnessWindowMs: 45000,
     liveStatusRefreshIntervalMs: Number(global.APP_CONFIG?.LIVE_STATUS_REFRESH_INTERVAL_MS) > 0
       ? Number(global.APP_CONFIG.LIVE_STATUS_REFRESH_INTERVAL_MS)
-      : 5000,
+      : 1000,
     requestTimeoutMs: Number(global.APP_CONFIG?.API_REQUEST_TIMEOUT_MS) > 0
       ? Number(global.APP_CONFIG.API_REQUEST_TIMEOUT_MS)
       : 5000,

@@ -546,6 +546,26 @@ function toUtcTimestampFromOmanParts({
   return Date.UTC(year, month - 1, day, hour - 4, minute, second, 0);
 }
 
+function parseReceiverTimeOfDay(receiverTimeRaw) {
+  const match = String(receiverTimeRaw || "").trim().match(/^(\d{2}):(\d{2}):(\d{2})$/);
+  if (!match) {
+    throw new Error("Could not parse receiver time-of-day");
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3]);
+  if (
+    !Number.isInteger(hour) || hour < 0 || hour > 23
+    || !Number.isInteger(minute) || minute < 0 || minute > 59
+    || !Number.isInteger(second) || second < 0 || second > 59
+  ) {
+    throw new Error("Receiver time-of-day out of range");
+  }
+
+  return { hour, minute, second };
+}
+
 function updateLastResolvedTimeSource(selection = {}) {
   lastResolvedTimeSource = {
     ...lastResolvedTimeSource,
@@ -621,13 +641,6 @@ function buildTimingPayload(selection, extra = {}) {
     receiverTimeRaw: extra.receiverTimeRaw ?? null,
     receiverDoyRaw: extra.receiverDoyRaw ?? null,
     receiverYearRaw: extra.receiverYearRaw ?? null,
-    calendarTrusted: extra.calendarTrusted ?? null,
-    calendarCorrected: extra.calendarCorrected ?? false,
-    calendarCorrectionReason: extra.calendarCorrectionReason ?? null,
-    rolloverSuspected: extra.rolloverSuspected ?? false,
-    timeOfDayTrusted: extra.timeOfDayTrusted ?? null,
-    correctedTimestamp: extra.correctedTimestamp ?? effectiveTimestamp,
-    correctedDateSource: extra.correctedDateSource ?? null,
     receiverOperationalState: extra.receiverOperationalState ?? null,
     monitoringState: null,
     lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
@@ -644,9 +657,8 @@ function buildTimingPayload(selection, extra = {}) {
 
   payload.monitoringState = deriveMonitoringState(payload, { dataState: fallback ? 'cached' : 'live', stale: payload.stale });
   payload.integritySnapshot = {
-    calendarTrusted: payload.calendarTrusted,
-    calendarCorrected: payload.calendarCorrected,
-    timeOfDayTrusted: payload.timeOfDayTrusted,
+    sourceTime: payload.sourceTime,
+    sourceCalendar: payload.sourceCalendar,
     timingIntegrityState: payload.monitoringState.timingIntegrityState,
     freshnessMs: payload.freshnessMsAtResponse ?? payload.freshnessMs ?? null,
   };
@@ -785,13 +797,6 @@ function buildStatusPayload(snapshot, overrides = {}) {
     receiverTimeRaw: snapshot.receiverTimeRaw ?? null,
     receiverDoyRaw: snapshot.receiverDoyRaw ?? null,
     receiverYearRaw: snapshot.receiverYearRaw ?? null,
-    calendarTrusted: snapshot.calendarTrusted ?? null,
-    calendarCorrected: snapshot.calendarCorrected ?? false,
-    calendarCorrectionReason: snapshot.calendarCorrectionReason ?? null,
-    rolloverSuspected: snapshot.rolloverSuspected ?? false,
-    timeOfDayTrusted: snapshot.timeOfDayTrusted ?? null,
-    correctedTimestamp: snapshot.correctedTimestamp ?? null,
-    correctedDateSource: snapshot.correctedDateSource ?? null,
     receiverOperationalState: snapshot.receiverOperationalState ?? null,
     monitoringState,
     lastKnownGoodGpsLockAt: monitoringMemory.lastKnownGoodGpsLockAt,
@@ -806,7 +811,6 @@ function buildStatusPayload(snapshot, overrides = {}) {
 }
 
 function deriveMonitoringState(snapshot, { dataState = "live", stale = false } = {}) {
-  const correctedCalendarGpsMode = false;
   const runtimeTimeSourceState = snapshot.sourceTier === "primary-reference"
     ? "healthy"
     : snapshot.sourceTier === "traceable-fallback"
@@ -844,14 +848,12 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
           ? "unavailable"
           : "unknown";
 
-  let timingIntegrityState = correctedCalendarGpsMode ? "reduced" : "high";
+  let timingIntegrityState = "high";
   if (snapshot.sourceTier === "emergency-fallback" || dataState === "unavailable") {
     timingIntegrityState = "low";
   } else if (snapshot.sourceTier === "internet-fallback") {
     timingIntegrityState = "degraded";
   } else if (snapshot.sourceTier === "traceable-fallback") {
-    timingIntegrityState = "reduced";
-  } else if (correctedCalendarGpsMode) {
     timingIntegrityState = "reduced";
   } else if (!snapshot.receiverReachable || !snapshot.loginOk || snapshot.gpsLockState === "holdover" || stale) {
     timingIntegrityState = "degraded";
@@ -859,15 +861,13 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
     timingIntegrityState = "reduced";
   }
 
-  let alarmSeverityState = correctedCalendarGpsMode ? "advisory" : "normal";
+  let alarmSeverityState = "normal";
   if (snapshot.sourceTier === "emergency-fallback") {
     alarmSeverityState = "critical";
   } else if (snapshot.sourceTier === "internet-fallback") {
     alarmSeverityState = "warning";
   } else if (snapshot.sourceTier === "traceable-fallback") {
     alarmSeverityState = snapshot.receiverConfigured === false ? "advisory" : "warning";
-  } else if (correctedCalendarGpsMode) {
-    alarmSeverityState = "advisory";
   } else if (snapshot.receiverConfigured !== false && (!snapshot.receiverReachable || !snapshot.loginOk)) {
     alarmSeverityState = "critical";
   } else if (stale || ["holdover", "unlocked"].includes(snapshot.gpsLockState) || monitoringMemory.communicationIssueCount >= 2) {
@@ -883,7 +883,6 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
     statusDataFreshnessState,
     timingIntegrityState,
     alarmSeverityState,
-    correctedCalendarGpsMode,
     communicationAuthState: snapshot.receiverConfigured === false ? "disabled" : snapshot.loginOk ? "authenticated" : snapshot.receiverReachable ? "auth-failed" : "receiver-unreachable",
   };
 }
@@ -1140,6 +1139,7 @@ function buildCachedReceiverStatus(error, { fallbackReason = "receiver-unavailab
 
 async function readReceiverTime() {
   const startedMonotonicMs = performance.now();
+  const calendarSelectionPromise = timingSourceService.resolveFallbackHierarchy();
   await throttleReceiverAccess();
   const connection = await connectToReceiver("F3\r\n");
   const receiverCapturedAtMs = Date.now();
@@ -1153,10 +1153,10 @@ async function readReceiverTime() {
     throw lockError;
   }
 
-  const calendarSelection = await timingSourceService.resolveFallbackHierarchy();
+  const calendarSelection = await calendarSelectionPromise;
   const calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
   const calendarParts = getOmanDateTimeParts(calendarTimestamp);
-  const gpsTimeParts = getOmanDateTimeParts(parsed.timestamp);
+  const gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
   const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
 
   let mergedTimestampMs = toUtcTimestampFromOmanParts({
@@ -1224,12 +1224,6 @@ async function readReceiverTime() {
       receiverPathMs: Math.round(performance.now() - startedMonotonicMs),
       calendarSourceKey: calendarSelection.sourceKey,
     },
-    calendarTrusted: null,
-    calendarCorrected: false,
-    calendarCorrectionReason: null,
-    rolloverSuspected: false,
-    correctedTimestamp: mergedTimestampMs,
-    correctedDateSource: calendarSource,
   });
 
   updateReceiverSnapshot({
