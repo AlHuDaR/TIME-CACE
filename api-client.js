@@ -351,8 +351,9 @@
     const sourceTier = normalized.sourceTier;
     const gpsLockState = String(state.gpsLockState || "").trim();
     const isPrimaryGps = currentSource === "gps-xli" && sourceTier === "primary-reference";
+    const sourceCalendar = String(state.sourceCalendar || "").trim();
 
-    if (isPrimaryGps && gpsLockState === "locked") {
+    if (isPrimaryGps && gpsLockState === "locked" && sourceCalendar !== "local") {
       return {
         source: normalized.sourceLabel,
         status: normalized.statusText,
@@ -385,14 +386,20 @@
 
   function formatStandardStatusLines(state = {}) {
     const standard = getStandardStatusInfo(state);
-    const calendarSuffix = state?.calendarCorrected
-      ? " · Calendar: Corrected (suspected receiver rollover / legacy date)"
-      : state?.calendarTrusted === true
-        ? " · Calendar: Trusted"
-        : "";
+    const sourceTime = state?.sourceTime === "gps"
+      ? "GPS receiver"
+      : (state?.sourceTime || "Fallback");
+    const sourceCalendar = state?.sourceCalendar === "internet"
+      ? "Internet"
+      : state?.sourceCalendar === "local"
+        ? "Local device fallback"
+        : null;
+    const sourceSuffix = sourceCalendar
+      ? ` · Time source: ${sourceTime} · Calendar source: ${sourceCalendar}`
+      : "";
     return [
       `Source: ${standard.source}`,
-      `Status: ${standard.status}${calendarSuffix}`,
+      `Status: ${standard.status}${sourceSuffix}`,
     ];
   }
 
