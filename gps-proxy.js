@@ -770,6 +770,13 @@ function buildTimingPayload(selection, extra = {}) {
   payload.gpsReceiverDetails = sanitizeGpsReceiverDetails(payload.gpsReceiverDetails);
 
   payload.monitoringState = deriveMonitoringState(payload, { dataState: fallback ? 'cached' : 'live', stale: payload.stale });
+  payload.integritySnapshot = {
+    calendarTrusted: payload.calendarTrusted,
+    calendarCorrected: payload.calendarCorrected,
+    timeOfDayTrusted: payload.timeOfDayTrusted,
+    timingIntegrityState: payload.monitoringState.timingIntegrityState,
+    freshnessMs: payload.freshnessMsAtResponse ?? payload.freshnessMs ?? null,
+  };
   updateLastResolvedTimeSource({
     ...selection,
     ...sourceDefinition,
@@ -924,6 +931,9 @@ function buildStatusPayload(snapshot, overrides = {}) {
 }
 
 function deriveMonitoringState(snapshot, { dataState = "live", stale = false } = {}) {
+  const correctedCalendarGpsMode = snapshot.sourceKey === "gps-xli"
+    && snapshot.gpsLockState === "locked"
+    && (snapshot.calendarCorrected === true || snapshot.rolloverSuspected === true);
   const runtimeTimeSourceState = snapshot.sourceTier === "primary-reference"
     ? "healthy"
     : snapshot.sourceTier === "traceable-fallback"
@@ -961,12 +971,14 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
           ? "unavailable"
           : "unknown";
 
-  let timingIntegrityState = "high";
+  let timingIntegrityState = correctedCalendarGpsMode ? "reduced" : "high";
   if (snapshot.sourceTier === "emergency-fallback" || dataState === "unavailable") {
     timingIntegrityState = "low";
   } else if (snapshot.sourceTier === "internet-fallback") {
     timingIntegrityState = "degraded";
   } else if (snapshot.sourceTier === "traceable-fallback") {
+    timingIntegrityState = "reduced";
+  } else if (correctedCalendarGpsMode) {
     timingIntegrityState = "reduced";
   } else if (!snapshot.receiverReachable || !snapshot.loginOk || snapshot.gpsLockState === "holdover" || stale) {
     timingIntegrityState = "degraded";
@@ -974,13 +986,15 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
     timingIntegrityState = "reduced";
   }
 
-  let alarmSeverityState = "normal";
+  let alarmSeverityState = correctedCalendarGpsMode ? "advisory" : "normal";
   if (snapshot.sourceTier === "emergency-fallback") {
     alarmSeverityState = "critical";
   } else if (snapshot.sourceTier === "internet-fallback") {
     alarmSeverityState = "warning";
   } else if (snapshot.sourceTier === "traceable-fallback") {
     alarmSeverityState = snapshot.receiverConfigured === false ? "advisory" : "warning";
+  } else if (correctedCalendarGpsMode) {
+    alarmSeverityState = "advisory";
   } else if (snapshot.receiverConfigured !== false && (!snapshot.receiverReachable || !snapshot.loginOk)) {
     alarmSeverityState = "critical";
   } else if (stale || ["holdover", "unlocked"].includes(snapshot.gpsLockState) || monitoringMemory.communicationIssueCount >= 2) {
@@ -996,6 +1010,7 @@ function deriveMonitoringState(snapshot, { dataState = "live", stale = false } =
     statusDataFreshnessState,
     timingIntegrityState,
     alarmSeverityState,
+    correctedCalendarGpsMode,
     communicationAuthState: snapshot.receiverConfigured === false ? "disabled" : snapshot.loginOk ? "authenticated" : snapshot.receiverReachable ? "auth-failed" : "receiver-unreachable",
   };
 }

@@ -358,6 +358,7 @@ function createTimingSourceService(options = {}) {
     httpDateUrls: Array.isArray(options.httpDateUrls) && options.httpDateUrls.length > 0
       ? options.httpDateUrls
       : ['https://www.google.com', 'https://www.microsoft.com'],
+    logger: options.logger || null,
   };
 
   async function queryNtpGroup(sourceKey, hosts = []) {
@@ -417,15 +418,29 @@ function createTimingSourceService(options = {}) {
     ];
 
     const resolutionErrors = [];
+    const preferredFallbackAttempted = attempts[0]?.sourceKey || null;
+    let failedFallbackTier = null;
 
     for (const attempt of attempts) {
+      config.logger?.info?.('time-source-fallback-attempt', { sourceKey: attempt.sourceKey });
       try {
         const result = await attempt.run();
+        config.logger?.info?.('time-source-fallback-selected', { sourceKey: result.sourceKey });
         return {
           ...result,
+          selectedSource: result.sourceKey,
+          preferredFallbackAttempted,
+          failedFallbackTier,
           resolutionErrors,
         };
       } catch (error) {
+        config.logger?.warn?.('time-source-fallback-error', {
+          sourceKey: attempt.sourceKey,
+          message: error?.message || String(error),
+        });
+        if (!failedFallbackTier) {
+          failedFallbackTier = attempt.sourceKey;
+        }
         resolutionErrors.push({
           sourceKey: attempt.sourceKey,
           message: error?.message || String(error),
@@ -440,6 +455,9 @@ function createTimingSourceService(options = {}) {
       roundTripMs: null,
       upstream: 'local-system-clock',
       protocol: 'local',
+      selectedSource: 'local-clock',
+      preferredFallbackAttempted,
+      failedFallbackTier,
       resolutionErrors,
     };
   }
