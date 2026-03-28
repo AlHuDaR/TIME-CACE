@@ -1294,7 +1294,6 @@ async function readReceiverTime() {
     receiverTimeRaw: parsed.receiverTime,
     receiverDoyRaw: Number.isFinite(parsed.receiverDoy) ? parsed.receiverDoy : null,
     receiverYearRaw: parsed.receiverYear ?? null,
-    displayTimestampMs: mergedTimestampMs,
     displayIso: new Date(mergedTimestampMs).toISOString(),
     omanFormattedParts: getOmanDateTimeParts(mergedTimestampMs),
     calendarReferenceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,
@@ -1309,7 +1308,7 @@ async function readReceiverTime() {
     hotPathLatencyMs: Math.round(performance.now() - startedMonotonicMs),
     timingDiagnostics: {
       receiverPathMs: Math.round(performance.now() - startedMonotonicMs),
-      calendarSourceKey: calendarSelection.sourceKey,
+      calendarSourceKey: calendarSelection?.sourceKey || "receiver-date",
     },
   });
 
