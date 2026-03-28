@@ -538,6 +538,18 @@ function getOmanDateTimeParts(timestamp) {
   };
 }
 
+function getUtcDateTimeParts(timestamp) {
+  const date = new Date(Number(timestamp));
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+    hour: date.getUTCHours(),
+    minute: date.getUTCMinutes(),
+    second: date.getUTCSeconds(),
+  };
+}
+
 function toUtcTimestampFromOmanParts({
   year,
   month,
@@ -548,6 +560,36 @@ function toUtcTimestampFromOmanParts({
 }) {
   // Oman is UTC+04:00 with no DST.
   return Date.UTC(year, month - 1, day, hour - 4, minute, second, 0);
+}
+
+function composeMergedTimestampFromCalendar({
+  calendarTimestamp,
+  gpsTimeParts,
+  receiverTimeMode,
+}) {
+  const normalizedMode = String(receiverTimeMode || "UTC").toUpperCase();
+  if (normalizedMode === "UTC") {
+    const utcParts = getUtcDateTimeParts(calendarTimestamp);
+    return Date.UTC(
+      utcParts.year,
+      utcParts.month - 1,
+      utcParts.day,
+      gpsTimeParts.hour,
+      gpsTimeParts.minute,
+      gpsTimeParts.second,
+      0,
+    );
+  }
+
+  const calendarParts = getOmanDateTimeParts(calendarTimestamp);
+  return toUtcTimestampFromOmanParts({
+    year: calendarParts.year,
+    month: calendarParts.month,
+    day: calendarParts.day,
+    hour: gpsTimeParts.hour,
+    minute: gpsTimeParts.minute,
+    second: gpsTimeParts.second,
+  });
 }
 
 function parseReceiverTimeOfDay(receiverTimeRaw) {
@@ -1248,17 +1290,13 @@ async function readReceiverTime() {
 
   const calendarSelection = await calendarSelectionPromise;
   const calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
-  const calendarParts = getOmanDateTimeParts(calendarTimestamp);
   const gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
   const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
 
-  let mergedTimestampMs = toUtcTimestampFromOmanParts({
-    year: calendarParts.year,
-    month: calendarParts.month,
-    day: calendarParts.day,
-    hour: gpsTimeParts.hour,
-    minute: gpsTimeParts.minute,
-    second: gpsTimeParts.second,
+  let mergedTimestampMs = composeMergedTimestampFromCalendar({
+    calendarTimestamp,
+    gpsTimeParts,
+    receiverTimeMode: parsed.receiverTimeMode,
   });
   mergedTimestampMs = stabilizeMergedTimestamp({
     mergedTimestampMs,
@@ -1306,6 +1344,7 @@ async function readReceiverTime() {
     receiverTimeRaw: parsed.receiverTime,
     receiverDoyRaw: Number.isFinite(parsed.receiverDoy) ? parsed.receiverDoy : null,
     receiverYearRaw: parsed.receiverYear ?? null,
+    receiverTimeMode: parsed.receiverTimeMode,
     displayIso: new Date(mergedTimestampMs).toISOString(),
     omanFormattedParts: getOmanDateTimeParts(mergedTimestampMs),
     calendarReferenceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,

@@ -51,6 +51,7 @@ The backend resolves **calendar date** in this exact order:
 - The backend always reads and parses receiver `F3` responses.
 - **Time-of-day (`hour`, `minute`, `second`) is taken from the RX receiver only.**
 - **Date (`day`, `month`, `year`) is taken only from the external hierarchy above (or local clock as last fallback).**
+- Receiver time mode is honored during merge (`UTC` receiver mode merges with UTC calendar day; non-UTC mode merges with Oman calendar day).
 - Receiver date fields are preserved for diagnostics (`receiverDateRaw`, `receiverYearRaw`, `receiverDoyRaw`) but are not used as authoritative display date values.
 - `/api/time` returns a merged timestamp (`displayTimestampMs`) plus separation metadata:
   - `sourceTime` (RX receiver),
