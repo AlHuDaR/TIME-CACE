@@ -1480,10 +1480,11 @@ async function readReceiverStatusCached({ force = false } = {}) {
         ? "reconnecting"
         : receiverStatusCache.data.receiverCommunicationState,
     }, {
-      dataState: "cached",
+      dataState: "live",
       fetchedFromCache: true,
       cacheAgeMs: Math.max(0, now - new Date(receiverStatusCache.data.checkedAt).getTime()),
       statusAgeMs: Math.max(0, now - new Date(receiverStatusCache.data.checkedAt).getTime()),
+      cacheState: "warm",
     });
   }
 
