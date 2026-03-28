@@ -153,6 +153,10 @@ let monitoringMemory = {
   statusBecameStaleAt: null,
   communicationIssueCount: 0,
 };
+let receiverFailureLogMemory = {
+  key: null,
+  lastAt: 0,
+};
 let lastKnownGoodReceiverSnapshot = null;
 let mergedClockState = {
   lastGpsTodSeconds: null,
@@ -1103,6 +1107,8 @@ function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {})
 function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavailable" } = {}) {
   const classified = classifyReceiverError(error);
   const managerSnapshot = getReceiverManagerSnapshot();
+  const effectiveReceiverReachable = managerSnapshot.connected || classified.receiverReachable;
+  const effectiveLoginOk = managerSnapshot.connected ? true : classified.loginOk;
   const receiverCommunicationState = classified.receiverConfigured === false
     ? "disabled"
     : managerSnapshot.reconnecting || managerSnapshot.connecting
@@ -1113,18 +1119,38 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
         ? "login-failed"
         : classified.receiverCommunicationState;
 
-  if (receiverCommunicationState === "reconnecting") {
-    console.warn("[GPS] receiver auth/session recovery pending");
-  } else if (receiverCommunicationState === "auth-recovery") {
-    console.warn("[GPS] receiver auth/session recovery pending");
-  } else if (!classified.receiverReachable) {
-    console.error("[GPS] receiver unreachable");
+  const logMessage = receiverCommunicationState === "reconnecting"
+    ? "[GPS] receiver auth/session recovery pending (reconnecting)"
+    : receiverCommunicationState === "auth-recovery"
+      ? "[GPS] receiver auth/session recovery pending (auth-recovery)"
+      : !effectiveReceiverReachable
+        ? "[GPS] receiver unreachable"
+        : !effectiveLoginOk
+          ? "[GPS] receiver reachable but login/authentication not ready"
+          : null;
+  const logKey = `${receiverCommunicationState}:${effectiveReceiverReachable ? "reachable" : "unreachable"}:${effectiveLoginOk ? "login-ok" : "login-fail"}`;
+  if (logMessage) {
+    const now = Date.now();
+    const shouldLog = receiverFailureLogMemory.key !== logKey || (now - receiverFailureLogMemory.lastAt) >= 15000;
+    if (shouldLog) {
+      receiverFailureLogMemory = {
+        key: logKey,
+        lastAt: now,
+      };
+      if (receiverCommunicationState === "reconnecting" || receiverCommunicationState === "auth-recovery") {
+        console.warn(logMessage);
+      } else if (!effectiveReceiverReachable) {
+        console.error(logMessage);
+      } else {
+        console.warn(logMessage);
+      }
+    }
   }
 
   return {
     receiverConfigured: classified.receiverConfigured !== false,
-    receiverReachable: managerSnapshot.connected || classified.receiverReachable,
-    loginOk: managerSnapshot.connected ? true : classified.loginOk,
+    receiverReachable: effectiveReceiverReachable,
+    loginOk: effectiveLoginOk,
     isLocked: false,
     gpsLockState: error?.parsed?.gpsLockState || lastReceiverSnapshot.gpsLockState || "unknown",
     receiverCommunicationState,
