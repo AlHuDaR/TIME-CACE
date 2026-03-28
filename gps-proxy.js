@@ -65,13 +65,13 @@ const CONFIG = validateConfig({
     ? process.env.SERVE_STATIC === "true"
     : process.env.NODE_ENV !== "production",
   nodeEnv: process.env.NODE_ENV || "development",
-  minConnectionIntervalMs: readEnvNumber("MIN_CONNECTION_INTERVAL_MS", 1000),
+  minConnectionIntervalMs: readEnvNumber("MIN_CONNECTION_INTERVAL_MS", 250),
   requestTimeoutMs: readEnvNumber("REQUEST_TIMEOUT_MS", 3000),
   receiverStatusCacheMs: readEnvNumber("RECEIVER_STATUS_CACHE_MS", 1500),
   statusStaleMs: readEnvNumber("STATUS_STALE_MS", 45000),
   receiverReconnectInitialMs: readEnvNumber("RECEIVER_RECONNECT_INITIAL_MS", 1000),
   receiverReconnectMaxMs: readEnvNumber("RECEIVER_RECONNECT_MAX_MS", 15000),
-  receiverConnectStabilizationMs: readEnvNumber("RECEIVER_CONNECT_STABILIZATION_MS", 220),
+  receiverConnectStabilizationMs: readEnvNumber("RECEIVER_CONNECT_STABILIZATION_MS", 120),
   receiverDetailCacheMs: readEnvNumber("GPS_DETAIL_CACHE_MS", 30000),
   authEnabled: process.env.API_AUTH_ENABLED === "true",
   authToken: process.env.API_AUTH_TOKEN || "",
@@ -162,6 +162,8 @@ let mergedClockState = {
   lastGpsTodSeconds: null,
   lastMergedTimestampMs: null,
 };
+let inFlightHighPriorityTimeRead = null;
+let lastFastRxTimePayload = null;
 
 const receiverManager = CONFIG.receiverEnabled
   ? createReceiverConnectionManager({
@@ -505,7 +507,14 @@ function createRateLimiter({ key, windowMs, maxRequests }) {
   };
 }
 
-async function throttleReceiverAccess() {
+async function throttleReceiverAccess({ commandPriority = "normal" } = {}) {
+  if (!receiverManager) {
+    return;
+  }
+  const managerSnapshot = receiverManager.getStateSnapshot();
+  if (managerSnapshot.connected && commandPriority === "high") {
+    return;
+  }
   const now = Date.now();
   const elapsed = now - lastConnectionAttempt;
   if (elapsed < CONFIG.minConnectionIntervalMs) {
@@ -848,6 +857,8 @@ function connectToReceiver(command, overrides = {}) {
     completionPattern: overrides.completionPattern,
     responseMode: overrides.responseMode,
     idleGraceMs: overrides.idleGraceMs,
+    priority: overrides.priority,
+    priorityWeight: overrides.priorityWeight,
   });
 }
 
@@ -1053,11 +1064,12 @@ async function executeReceiverCommandVariants(commands, parser, { timeoutMs = CO
 
   for (const command of commands) {
     try {
-      await throttleReceiverAccess();
+      await throttleReceiverAccess({ commandPriority: "low" });
       const response = await connectToReceiver(command, {
         timeoutMs,
         responseMode: 'idle',
         idleGraceMs: 160,
+        priority: "low",
       });
       return parser(response.raw);
     } catch (error) {
@@ -1274,10 +1286,23 @@ function buildCachedReceiverStatus(error, { fallbackReason = "receiver-unavailab
 
 async function readReceiverTime() {
   const startedMonotonicMs = performance.now();
+  const startedAtMs = Date.now();
   const calendarSelectionPromise = timingSourceService.resolveFallbackHierarchy();
-  await throttleReceiverAccess();
-  const connection = await connectToReceiver("F3\r\n");
-  const receiverCapturedAtMs = Date.now();
+  await throttleReceiverAccess({ commandPriority: "high" });
+  const connection = await connectToReceiver("F3\r\n", {
+    responseMode: "pattern",
+    completionPattern: /F3\s+\w+\s+\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}/i,
+    idleGraceMs: 35,
+    priority: "high",
+    priorityWeight: 1000,
+  });
+  const receiverCapturedAtMs = Number.isFinite(connection?.timings?.receiverResponseFirstByteAtMs)
+    ? connection.timings.receiverResponseFirstByteAtMs
+    : Date.now();
+  const receiverResponseCompleteAtMs = Number.isFinite(connection?.timings?.receiverResponseCompleteAtMs)
+    ? connection.timings.receiverResponseCompleteAtMs
+    : receiverCapturedAtMs;
+  const receiverParsedAtMs = Date.now();
   const parsed = parseGpsTimeResponse(connection.raw);
 
   if (!parsed.isLocked) {
@@ -1356,10 +1381,17 @@ async function readReceiverTime() {
     backendMonotonicCapturedAtMs: startedMonotonicMs,
     sourceCapturedAtMs: receiverCapturedAtMs,
     sourceMonotonicCapturedAtMs: startedMonotonicMs,
+    commandQueuedAtMs: connection?.timings?.commandQueuedAtMs ?? startedAtMs,
+    commandSentAtMs: connection?.timings?.commandSentAtMs ?? null,
+    receiverResponseFirstByteAt: receiverCapturedAtMs,
+    receiverResponseCompleteAt: receiverResponseCompleteAtMs,
+    receiverParsedAt: receiverParsedAtMs,
     hotPathLatencyMs: Math.round(performance.now() - startedMonotonicMs),
     timingDiagnostics: {
       receiverPathMs: Math.round(performance.now() - startedMonotonicMs),
       calendarSourceKey: calendarSelection?.sourceKey || "local-clock",
+      queueWaitMs: connection?.timings?.queueWaitMs ?? null,
+      receiverResponseWindowMs: connection?.timings?.receiverResponseWindowMs ?? null,
     },
   });
 
@@ -1390,6 +1422,29 @@ async function readReceiverTime() {
   });
 
   return payload;
+}
+
+async function readReceiverTimeFastPath() {
+  const now = Date.now();
+  if (lastFastRxTimePayload && Number.isFinite(lastFastRxTimePayload.backendCapturedAtMs) && (now - lastFastRxTimePayload.backendCapturedAtMs) <= 150) {
+    return {
+      ...lastFastRxTimePayload,
+      servedFromHotCache: true,
+    };
+  }
+
+  if (!inFlightHighPriorityTimeRead) {
+    inFlightHighPriorityTimeRead = readReceiverTime()
+      .then((payload) => {
+        lastFastRxTimePayload = payload;
+        return payload;
+      })
+      .finally(() => {
+        inFlightHighPriorityTimeRead = null;
+      });
+  }
+
+  return inFlightHighPriorityTimeRead;
 }
 
 async function readReceiverStatusCached({ force = false } = {}) {
@@ -1570,7 +1625,7 @@ app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
 
 app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
   try {
-    const receiverTime = await readReceiverTime();
+    const receiverTime = await readReceiverTimeFastPath();
     const responseSentAtMs = Date.now();
     receiverTime.backendResponseSentAtMs = responseSentAtMs;
     const freshnessReferenceMs = Number.isFinite(receiverTime.backendCapturedAtMs)
@@ -1578,6 +1633,7 @@ app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
       : Number.isFinite(receiverTime.backendPayloadBuiltAtMs)
         ? receiverTime.backendPayloadBuiltAtMs
         : responseSentAtMs;
+    receiverTime.backendPayloadBuiltAtMs = receiverTime.backendPayloadBuiltAtMs || Date.now();
     receiverTime.freshnessMs = Math.max(0, (receiverTime.backendPayloadBuiltAtMs || responseSentAtMs) - freshnessReferenceMs);
     receiverTime.freshnessMsAtResponse = Math.max(0, responseSentAtMs - freshnessReferenceMs);
     receiverStatusCache = {
