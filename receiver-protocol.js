@@ -27,7 +27,7 @@ function validateConfig(config) {
     statusStaleMs: validateFiniteNumber("STATUS_STALE_MS", config.statusStaleMs, { min: 1000, max: 86400000, integer: true }),
     receiverReconnectInitialMs: validateFiniteNumber("RECEIVER_RECONNECT_INITIAL_MS", config.receiverReconnectInitialMs ?? 1000, { min: 0, max: 300000, integer: true }),
     receiverReconnectMaxMs: validateFiniteNumber("RECEIVER_RECONNECT_MAX_MS", config.receiverReconnectMaxMs ?? 15000, { min: 100, max: 300000, integer: true }),
-    receiverConnectStabilizationMs: validateFiniteNumber("RECEIVER_CONNECT_STABILIZATION_MS", config.receiverConnectStabilizationMs ?? 220, { min: 0, max: 5000, integer: true }),
+    receiverConnectStabilizationMs: validateFiniteNumber("RECEIVER_CONNECT_STABILIZATION_MS", config.receiverConnectStabilizationMs ?? 120, { min: 0, max: 5000, integer: true }),
     receiverDetailCacheMs: validateFiniteNumber("GPS_DETAIL_CACHE_MS", config.receiverDetailCacheMs ?? 30000, { min: 0, max: 300000, integer: true }),
     rateLimitWindowMs: validateFiniteNumber("RATE_LIMIT_WINDOW_MS", config.rateLimitWindowMs, { min: 1000, max: 86400000, integer: true }),
     rateLimitTimeMax: validateFiniteNumber("RATE_LIMIT_TIME_MAX", config.rateLimitTimeMax, { min: 1, max: 100000, integer: true }),
@@ -402,7 +402,7 @@ class ReceiverConnectionManager {
     idleGraceMs = 140,
     reconnectInitialMs = 1000,
     reconnectMaxMs = 15000,
-    connectStabilizationMs = 220,
+    connectStabilizationMs = 120,
     logger = console,
   }) {
     this.host = host;
@@ -418,7 +418,8 @@ class ReceiverConnectionManager {
 
     this.socket = null;
     this.connectPromise = null;
-    this.commandQueue = Promise.resolve();
+    this.pendingCommands = [];
+    this.activeCommandTask = null;
     this.reconnectTimer = null;
     this.commandTimer = null;
     this.commandIdleTimer = null;
@@ -454,14 +455,75 @@ class ReceiverConnectionManager {
   }
 
   async sendCommand(command, options = {}) {
-    const task = async () => {
-      const connection = await this.ensureConnected();
-      return this.executeCommand(connection.generation, command, options);
-    };
+    const priorityWeight = Number.isFinite(options.priorityWeight)
+      ? Number(options.priorityWeight)
+      : this.resolveCommandPriorityWeight(options.priority);
 
-    const queued = this.commandQueue.then(task, task);
-    this.commandQueue = queued.catch(() => undefined);
-    return queued;
+    const queuedAtMs = Date.now();
+    const queuedMonotonicAtMs = Number(process.hrtime.bigint() / 1000000n);
+
+    return new Promise((resolve, reject) => {
+      this.pendingCommands.push({
+        command,
+        options,
+        priorityWeight,
+        queuedAtMs,
+        queuedMonotonicAtMs,
+        resolve,
+        reject,
+      });
+
+      this.pendingCommands.sort((left, right) => {
+        if (left.priorityWeight !== right.priorityWeight) {
+          return right.priorityWeight - left.priorityWeight;
+        }
+        return left.queuedAtMs - right.queuedAtMs;
+      });
+
+      this.processQueue();
+    });
+  }
+
+  resolveCommandPriorityWeight(priority) {
+    const normalized = String(priority || "normal").toLowerCase();
+    if (normalized === "high") {
+      return 100;
+    }
+    if (normalized === "low") {
+      return 10;
+    }
+    return 50;
+  }
+
+  async processQueue() {
+    if (this.activeCommandTask) {
+      return this.activeCommandTask;
+    }
+
+    this.activeCommandTask = (async () => {
+      while (this.pendingCommands.length > 0) {
+        const item = this.pendingCommands.shift();
+        try {
+          const connection = await this.ensureConnected();
+          const result = await this.executeCommand(connection.generation, item.command, {
+            ...item.options,
+            commandQueuedAtMs: item.queuedAtMs,
+            commandQueuedMonotonicAtMs: item.queuedMonotonicAtMs,
+          });
+          item.resolve(result);
+        } catch (error) {
+          item.reject(error);
+        }
+      }
+    })()
+      .finally(() => {
+        this.activeCommandTask = null;
+        if (this.pendingCommands.length > 0) {
+          this.processQueue();
+        }
+      });
+
+    return this.activeCommandTask;
   }
 
   async ensureConnected({ triggerReconnect = true } = {}) {
@@ -643,6 +705,8 @@ class ReceiverConnectionManager {
     this.buffer = "";
 
     return new Promise((resolve, reject) => {
+      const commandSentAtMs = Date.now();
+      const commandSentMonotonicAtMs = Number(process.hrtime.bigint() / 1000000n);
       this.currentCommand = {
         generation,
         command,
@@ -650,6 +714,12 @@ class ReceiverConnectionManager {
         responseMode,
         completionPattern,
         idleGraceMs,
+        commandQueuedAtMs: options.commandQueuedAtMs ?? null,
+        commandQueuedMonotonicAtMs: options.commandQueuedMonotonicAtMs ?? null,
+        commandSentAtMs,
+        commandSentMonotonicAtMs,
+        receiverResponseFirstByteAtMs: null,
+        receiverResponseFirstByteMonotonicAtMs: null,
         resolve,
         reject,
       };
@@ -675,6 +745,10 @@ class ReceiverConnectionManager {
 
     this.buffer += text;
     const current = this.currentCommand;
+    if (!Number.isFinite(current.receiverResponseFirstByteAtMs)) {
+      current.receiverResponseFirstByteAtMs = Date.now();
+      current.receiverResponseFirstByteMonotonicAtMs = Number(process.hrtime.bigint() / 1000000n);
+    }
 
     if (current.responseMode === "pattern") {
       const complete = current.expectOk
@@ -702,6 +776,8 @@ class ReceiverConnectionManager {
     this.commandFinalized = true;
     const current = this.currentCommand;
     const raw = this.buffer;
+    const receiverResponseCompleteAtMs = Date.now();
+    const receiverResponseCompleteMonotonicAtMs = Number(process.hrtime.bigint() / 1000000n);
     this.currentCommand = null;
     this.buffer = "";
     this.clearCommandTimers();
@@ -711,6 +787,22 @@ class ReceiverConnectionManager {
       receiverReachable: true,
       loginOk: true,
       raw,
+      timings: {
+        commandQueuedAtMs: Number.isFinite(current.commandQueuedAtMs) ? current.commandQueuedAtMs : null,
+        commandQueuedMonotonicAtMs: Number.isFinite(current.commandQueuedMonotonicAtMs) ? current.commandQueuedMonotonicAtMs : null,
+        commandSentAtMs: current.commandSentAtMs,
+        commandSentMonotonicAtMs: current.commandSentMonotonicAtMs,
+        receiverResponseFirstByteAtMs: current.receiverResponseFirstByteAtMs,
+        receiverResponseFirstByteMonotonicAtMs: current.receiverResponseFirstByteMonotonicAtMs,
+        receiverResponseCompleteAtMs,
+        receiverResponseCompleteMonotonicAtMs,
+        queueWaitMs: Number.isFinite(current.commandQueuedAtMs)
+          ? Math.max(0, current.commandSentAtMs - current.commandQueuedAtMs)
+          : null,
+        receiverResponseWindowMs: Number.isFinite(current.receiverResponseFirstByteAtMs)
+          ? Math.max(0, receiverResponseCompleteAtMs - current.receiverResponseFirstByteAtMs)
+          : null,
+      },
     });
   }
 
