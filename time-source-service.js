@@ -79,6 +79,10 @@ const SOURCE_DEFINITIONS = Object.freeze({
 const NTP_UNIX_EPOCH_OFFSET_SECONDS = 2208988800;
 const OMAN_UTC_OFFSET_SUFFIX = '+04:00';
 
+function monotonicNowMs() {
+  return Number(process.hrtime.bigint() / 1000000n);
+}
+
 function getSourceDefinition(sourceKey) {
   return SOURCE_DEFINITIONS[sourceKey] || SOURCE_DEFINITIONS['local-clock'];
 }
@@ -158,12 +162,17 @@ function queryNtpSource({ host, timeoutMs, sourceKey, sourceHost }) {
 
     socket.once('message', (message) => {
       try {
+        const finishedAt = Date.now();
+        const finishedMonoAt = monotonicNowMs();
         const timestamp = parseNtpTimestamp(message);
         finish(resolve, {
           ...getSourceDefinition(sourceKey),
           timestamp,
           isoTimestamp: new Date(timestamp).toISOString(),
-          roundTripMs: Math.max(0, Date.now() - startedAt),
+          roundTripMs: Math.max(0, finishedAt - startedAt),
+          sourceCapturedAtMs: finishedAt,
+          sourceMonotonicCapturedAtMs: finishedMonoAt,
+          sourceRoundTripMs: Math.max(0, finishedAt - startedAt),
           upstream: sourceHost || target.host,
           protocol: 'ntp',
         });
@@ -270,11 +279,16 @@ async function queryHttpsTimeApiSource({ sourceKey, urls, timeoutMs, parser, pro
     const startedAt = Date.now();
     const payload = await fetchJsonWithTimeout(url, timeoutMs);
     const timestamp = parser(payload, url);
+    const finishedAt = Date.now();
+    const finishedMonoAt = monotonicNowMs();
     return {
       ...getSourceDefinition(sourceKey),
       timestamp,
       isoTimestamp: new Date(timestamp).toISOString(),
-      roundTripMs: Math.max(0, Date.now() - startedAt),
+      roundTripMs: Math.max(0, finishedAt - startedAt),
+      sourceCapturedAtMs: finishedAt,
+      sourceMonotonicCapturedAtMs: finishedMonoAt,
+      sourceRoundTripMs: Math.max(0, finishedAt - startedAt),
       upstream: url,
       protocol,
     };
@@ -308,6 +322,7 @@ async function queryHttpDateSource({ urls, timeoutMs }) {
     }
 
     const finishedAt = Date.now();
+    const finishedMonoAt = monotonicNowMs();
     const headerValue = response.headers.get('date');
     if (!headerValue) {
       throw new Error(`HTTP Date header missing from ${url}`);
@@ -326,6 +341,9 @@ async function queryHttpDateSource({ urls, timeoutMs }) {
       timestamp,
       isoTimestamp: new Date(timestamp).toISOString(),
       roundTripMs,
+      sourceCapturedAtMs: finishedAt,
+      sourceMonotonicCapturedAtMs: finishedMonoAt,
+      sourceRoundTripMs: roundTripMs,
       upstream: url,
       protocol: 'http-date',
     };
@@ -453,6 +471,9 @@ function createTimingSourceService(options = {}) {
       timestamp: Date.now(),
       isoTimestamp: new Date().toISOString(),
       roundTripMs: null,
+      sourceCapturedAtMs: Date.now(),
+      sourceMonotonicCapturedAtMs: monotonicNowMs(),
+      sourceRoundTripMs: null,
       upstream: 'local-system-clock',
       protocol: 'local',
       selectedSource: 'local-clock',
