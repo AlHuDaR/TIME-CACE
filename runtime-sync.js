@@ -89,6 +89,15 @@
       this.lastFrontendFallbackSyncAt = 0;
       this.lastDegradedSyncTriggerAt = 0;
       this.lastAppliedOffsetMs = 0;
+      this.offsetEstimateMs = 0;
+      this.jitterEstimateMs = 0;
+      this.uncertaintyEstimateMs = 250;
+      this.confidenceLevel = "low";
+      this.syncSamples = [];
+      this.maxSyncSamples = 12;
+      this.anchorServerTimeMs = Date.now();
+      this.anchorClientPerfNowMs = this.getPerfNow();
+      this.chosenSampleRTT = null;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
       this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "Internal Clock", sourceTier: "browser-emergency-fallback", status: "Holdover (using last valid sync)", statusText: "Holdover (using last valid sync)" });
@@ -208,6 +217,15 @@
         timezone: APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
         raw: null,
         roundTripMs: null,
+        sourceTimestampMs: null,
+        authoritativeTimestampMs: null,
+        displayTimestampMs: null,
+        offsetEstimateMs: 0,
+        chosenSampleRTT: null,
+        jitterEstimateMs: 0,
+        uncertaintyEstimateMs: 250,
+        confidenceLevel: "low",
+        syncSampleCount: 0,
         monitoringState: null,
         upstream: null,
         protocol: null,
@@ -242,6 +260,25 @@
       if (!this.isObjectPayload(payload)) {
         throw new Error("API returned an invalid /status payload");
       }
+    }
+
+    getPerfNow() {
+      return (typeof performance !== "undefined" && typeof performance.now === "function")
+        ? performance.now()
+        : Date.now();
+    }
+
+    getSourceConfidenceLevel(sourceTier, gpsLockState, uncertaintyMs) {
+      if (sourceTier === "primary-reference" && gpsLockState === "locked" && uncertaintyMs <= 120) {
+        return "high";
+      }
+      if (sourceTier === "traceable-fallback") {
+        return uncertaintyMs <= 220 ? "reduced" : "degraded";
+      }
+      if (sourceTier === "internet-fallback") {
+        return "degraded";
+      }
+      return "low";
     }
 
   async init() {
@@ -354,6 +391,10 @@
       time: displayParts.time,
       timezone: APP_CONFIG.timezoneLabel || "GST (UTC+04:00)",
       roundTripMs,
+      sourceTimestampMs: normalizedTimestamp,
+      authoritativeTimestampMs: normalizedTimestamp,
+      displayTimestampMs: normalizedTimestamp,
+      confidenceLevel: sourceTier === "internet-fallback" ? "degraded" : "low",
       upstream,
       protocol,
       fallbackReason,
@@ -684,7 +725,8 @@
       const payload = await this.fetchJson("/time");
       this.validateRuntimePayload(payload);
       const source = this.resolveSourceSnapshot(payload);
-      const normalizedTimestamp = this.resolveDisciplinedTimestamp(payload);
+      const syncEstimate = this.estimateSyncFromPayload(payload, source);
+      const normalizedTimestamp = syncEstimate.disciplinedNowMs;
       const displayParts = this.getOmanDisplayParts(normalizedTimestamp);
       nextState = this.createState({
         success: payload.success !== false,
@@ -738,6 +780,21 @@
           ? Number(payload._clientRoundTripMs)
           : null,
         syncModel: "authoritative-sync-plus-local-extrapolation",
+        sourceTimestampMs: Number.isFinite(Number(payload.sourceTimestampMs))
+          ? Number(payload.sourceTimestampMs)
+          : Number(payload.timestamp),
+        authoritativeTimestampMs: Number.isFinite(Number(payload.authoritativeTimestampMs))
+          ? Number(payload.authoritativeTimestampMs)
+          : Number(payload.timestamp),
+        displayTimestampMs: Number.isFinite(Number(payload.displayTimestampMs))
+          ? Number(payload.displayTimestampMs)
+          : normalizedTimestamp,
+        offsetEstimateMs: syncEstimate.offsetEstimateMs,
+        chosenSampleRTT: syncEstimate.chosenSampleRTT,
+        jitterEstimateMs: syncEstimate.jitterEstimateMs,
+        uncertaintyEstimateMs: syncEstimate.uncertaintyEstimateMs,
+        confidenceLevel: syncEstimate.confidenceLevel,
+        syncSampleCount: syncEstimate.syncSampleCount,
         timingDiagnostics: payload.timingDiagnostics || null,
         internetFallbackMode: payload.internetFallbackMode || null,
         resolutionErrors: payload.resolutionErrors || [],
@@ -1034,6 +1091,8 @@
           ? performance.now()
           : Date.now();
         payload._clientRoundTripMs = Math.max(0, responseReceivedPerf - requestStartedPerf);
+        payload._clientRequestStartedPerfMs = requestStartedPerf;
+        payload._clientResponseReceivedPerfMs = responseReceivedPerf;
         payload._clientResponseReceivedAtMs = Date.now();
         return payload;
       } catch (error) {
@@ -1078,41 +1137,140 @@
 
   applyState(state) {
     const localNow = Date.now();
-    const nextOffset = state.timestamp - localNow;
-    const previousOffset = Number.isFinite(this.timeOffset) ? this.timeOffset : nextOffset;
-    const correctionDelta = nextOffset - previousOffset;
+    const sampleOffset = Number.isFinite(Number(state.offsetEstimateMs))
+      ? Number(state.offsetEstimateMs)
+      : state.timestamp - localNow;
+    const previousOffset = Number.isFinite(this.offsetEstimateMs) ? this.offsetEstimateMs : sampleOffset;
+    const correctionDelta = sampleOffset - previousOffset;
     const absDelta = Math.abs(correctionDelta);
     const gentleCorrectionThresholdMs = 500;
     const immediateReanchorThresholdMs = 1500;
-    const blendedOffset = absDelta >= immediateReanchorThresholdMs
-      ? nextOffset
+    const alpha = absDelta >= immediateReanchorThresholdMs
+      ? 1
       : absDelta <= gentleCorrectionThresholdMs
-        ? previousOffset + (correctionDelta * 0.35)
-        : previousOffset + (correctionDelta * 0.65);
+        ? 0.28
+        : 0.58;
+    const blendedOffset = previousOffset + (correctionDelta * alpha);
+    const receivePerfNow = this.getPerfNow();
+    const anchorServerTimeMs = localNow + blendedOffset;
 
     this.currentState = state;
+    this.anchorServerTimeMs = anchorServerTimeMs;
+    this.anchorClientPerfNowMs = receivePerfNow;
+    this.offsetEstimateMs = blendedOffset;
     this.timeOffset = blendedOffset;
     this.lastAppliedOffsetMs = blendedOffset;
+    this.jitterEstimateMs = Number.isFinite(Number(state.jitterEstimateMs)) ? Number(state.jitterEstimateMs) : this.jitterEstimateMs;
+    this.uncertaintyEstimateMs = Number.isFinite(Number(state.uncertaintyEstimateMs)) ? Number(state.uncertaintyEstimateMs) : this.uncertaintyEstimateMs;
+    this.confidenceLevel = state.confidenceLevel || this.confidenceLevel;
+    this.chosenSampleRTT = Number.isFinite(Number(state.chosenSampleRTT)) ? Number(state.chosenSampleRTT) : this.chosenSampleRTT;
     this.lastSyncTime = new Date();
     this.lastSyncTimestamp = Date.now();
     this.updateSessionMarkersFromState(state);
   }
 
-  resolveDisciplinedTimestamp(payload = {}) {
-    const authoritativeTimestamp = Number(payload.authoritativeTimestampMs ?? payload.timestamp);
-    if (!Number.isFinite(authoritativeTimestamp)) {
-      return Number(payload.timestamp);
-    }
-
-    const backendFreshnessMs = Number(payload.freshnessMsAtResponse ?? payload.freshnessMs);
-    const hasBackendFreshness = Number.isFinite(backendFreshnessMs) && backendFreshnessMs >= 0;
+  estimateSyncFromPayload(payload = {}, source = {}) {
+    const clientReceiveWallMs = Number(payload._clientResponseReceivedAtMs) || Date.now();
+    const clientReceivePerfMs = Number(payload._clientResponseReceivedPerfMs) || this.getPerfNow();
     const clientRoundTripMs = Number(payload._clientRoundTripMs);
     const oneWayTransportMs = Number.isFinite(clientRoundTripMs) ? Math.max(0, clientRoundTripMs / 2) : 0;
-    const corrected = authoritativeTimestamp
-      + (hasBackendFreshness ? backendFreshnessMs : 0)
-      + oneWayTransportMs;
 
-    return Number.isFinite(corrected) ? corrected : authoritativeTimestamp;
+    const authoritativeTimestampMs = Number(payload.authoritativeTimestampMs ?? payload.timestamp);
+    const freshnessAtResponseMs = Number(payload.freshnessMsAtResponse ?? payload.freshnessMs);
+    const hasFreshnessAtResponse = Number.isFinite(freshnessAtResponseMs) && freshnessAtResponseMs >= 0;
+    const authoritativeAtResponseMs = authoritativeTimestampMs + (hasFreshnessAtResponse ? freshnessAtResponseMs : 0);
+    const estimatedServerAtClientReceiveMs = authoritativeAtResponseMs + oneWayTransportMs;
+    const sampleOffsetMs = estimatedServerAtClientReceiveMs - clientReceiveWallMs;
+    const sample = {
+      offsetMs: sampleOffsetMs,
+      roundTripMs: Number.isFinite(clientRoundTripMs) ? Math.max(0, clientRoundTripMs) : null,
+      capturedAtMs: clientReceiveWallMs,
+      sourceKey: source.currentSource || payload.currentSource || payload.sourceKey || "unknown",
+    };
+    this.recordSyncSample(sample);
+
+    const chosenSample = this.chooseBestSyncSample(source.currentSource || payload.currentSource || payload.sourceKey || "unknown");
+    const chosenOffsetMs = chosenSample?.offsetMs ?? sampleOffsetMs;
+    const chosenSampleRTT = Number.isFinite(chosenSample?.roundTripMs) ? chosenSample.roundTripMs : (Number.isFinite(clientRoundTripMs) ? clientRoundTripMs : null);
+    const jitterEstimateMs = this.computeOffsetJitter(source.currentSource || payload.currentSource || payload.sourceKey || "unknown");
+    const uncertaintyEstimateMs = this.estimateUncertaintyMs({
+      sourceTier: source.sourceTier || payload.sourceTier || "browser-emergency-fallback",
+      jitterEstimateMs,
+      chosenSampleRTT,
+      freshnessAtResponseMs,
+    });
+    const confidenceLevel = this.getSourceConfidenceLevel(
+      source.sourceTier || payload.sourceTier || "browser-emergency-fallback",
+      payload.gpsLockState || source.gpsLockState || "unknown",
+      uncertaintyEstimateMs,
+    );
+
+    return {
+      disciplinedNowMs: clientReceiveWallMs + chosenOffsetMs,
+      offsetEstimateMs: chosenOffsetMs,
+      chosenSampleRTT,
+      jitterEstimateMs,
+      uncertaintyEstimateMs,
+      confidenceLevel,
+      syncSampleCount: this.syncSamples.length,
+      clientReceiveWallMs,
+      clientReceivePerfMs,
+    };
+  }
+
+  recordSyncSample(sample) {
+    if (!Number.isFinite(sample?.offsetMs)) {
+      return;
+    }
+    this.syncSamples.push(sample);
+    const horizonMs = 120000;
+    const cutoff = Date.now() - horizonMs;
+    this.syncSamples = this.syncSamples
+      .filter((entry) => Number.isFinite(entry.capturedAtMs) && entry.capturedAtMs >= cutoff)
+      .slice(-this.maxSyncSamples);
+  }
+
+  chooseBestSyncSample(sourceKey) {
+    const candidates = this.syncSamples.filter((sample) => sample.sourceKey === sourceKey);
+    if (candidates.length === 0) {
+      return null;
+    }
+    const offsets = candidates.map((sample) => sample.offsetMs).sort((a, b) => a - b);
+    const median = offsets[Math.floor(offsets.length / 2)];
+    const filtered = candidates.filter((sample) => Math.abs(sample.offsetMs - median) <= Math.max(200, (sample.roundTripMs || 0) * 1.5));
+    const working = filtered.length > 0 ? filtered : candidates;
+    const withRtt = working.filter((sample) => Number.isFinite(sample.roundTripMs));
+    if (withRtt.length > 0) {
+      return withRtt.reduce((best, current) => current.roundTripMs < best.roundTripMs ? current : best);
+    }
+    return working[working.length - 1];
+  }
+
+  computeOffsetJitter(sourceKey) {
+    const candidates = this.syncSamples.filter((sample) => sample.sourceKey === sourceKey);
+    if (candidates.length < 2) {
+      return 0;
+    }
+    const mean = candidates.reduce((sum, sample) => sum + sample.offsetMs, 0) / candidates.length;
+    const variance = candidates.reduce((sum, sample) => {
+      const delta = sample.offsetMs - mean;
+      return sum + (delta * delta);
+    }, 0) / Math.max(1, candidates.length - 1);
+    return Math.sqrt(Math.max(0, variance));
+  }
+
+  estimateUncertaintyMs({ sourceTier, jitterEstimateMs, chosenSampleRTT, freshnessAtResponseMs }) {
+    const transportComponent = Number.isFinite(chosenSampleRTT) ? Math.max(5, chosenSampleRTT / 2) : 120;
+    const jitterComponent = Number.isFinite(jitterEstimateMs) ? jitterEstimateMs : 0;
+    const freshnessComponent = Number.isFinite(freshnessAtResponseMs) ? Math.max(0, freshnessAtResponseMs * 0.25) : 40;
+    const tierFloor = sourceTier === "primary-reference"
+      ? 20
+      : sourceTier === "traceable-fallback"
+        ? 60
+        : sourceTier === "internet-fallback"
+          ? 140
+          : 300;
+    return Math.max(tierFloor, transportComponent + jitterComponent + freshnessComponent);
   }
 
   maybeShowInitialNotification() {
@@ -1158,15 +1316,21 @@
   dispatchUpdate() {
     const offsetMs = Number.isFinite(this.timeOffset) ? this.timeOffset : 0;
     const lastSyncTime = this.lastSyncTime || (this.lastSyncTimestamp ? new Date(this.lastSyncTimestamp) : null);
-    const detail = {
-      ...this.currentState,
+      const detail = {
+        ...this.currentState,
       receiverStatus: this.getReceiverStatus(),
       sessionState: this.getSessionState(),
-      offset: offsetMs,
-      offsetMs,
-      lastSyncTime,
-      lastSyncTimestamp: this.lastSyncTimestamp,
-    };
+        offset: offsetMs,
+        offsetMs,
+        offsetEstimateMs: this.offsetEstimateMs,
+        chosenSampleRTT: this.chosenSampleRTT,
+        jitterEstimateMs: this.jitterEstimateMs,
+        uncertaintyEstimateMs: this.uncertaintyEstimateMs,
+        confidenceLevel: this.confidenceLevel,
+        syncSampleCount: this.syncSamples.length,
+        lastSyncTime,
+        lastSyncTimestamp: this.lastSyncTimestamp,
+      };
 
     const event = new CustomEvent("gpstimeupdate", { detail });
     this.eventTarget.dispatchEvent(event);
@@ -1204,6 +1368,12 @@
   }
 
   getNow() {
+    const perfNow = this.getPerfNow();
+    const anchorPerfNow = Number(this.anchorClientPerfNowMs);
+    const anchorServerTimeMs = Number(this.anchorServerTimeMs);
+    if (Number.isFinite(perfNow) && Number.isFinite(anchorPerfNow) && Number.isFinite(anchorServerTimeMs)) {
+      return new Date(anchorServerTimeMs + (perfNow - anchorPerfNow));
+    }
     return new Date(Date.now() + this.timeOffset);
   }
 
@@ -1217,6 +1387,12 @@
       sessionState: this.getSessionState(),
       offset: offsetMs,
       offsetMs,
+      offsetEstimateMs: this.offsetEstimateMs,
+      chosenSampleRTT: this.chosenSampleRTT,
+      jitterEstimateMs: this.jitterEstimateMs,
+      uncertaintyEstimateMs: this.uncertaintyEstimateMs,
+      confidenceLevel: this.confidenceLevel,
+      syncSampleCount: this.syncSamples.length,
       lastSyncTime,
       lastSyncTimestamp: this.lastSyncTimestamp,
     };
@@ -1251,19 +1427,35 @@
     return this.currentState.currentSource === "gps-xli" && this.currentState.isLocked;
   }
 
+  getAdaptiveSyncIntervalMs() {
+    const tier = this.currentState.sourceTier || "browser-emergency-fallback";
+    const confidence = this.confidenceLevel || "low";
+    if (tier === "primary-reference" && confidence === "high") {
+      return Math.max(APP_CONFIG.syncIntervalMs, 5000);
+    }
+    if (tier === "traceable-fallback") {
+      return Math.min(Math.max(2500, APP_CONFIG.syncIntervalMs), 4500);
+    }
+    if (tier === "internet-fallback") {
+      return Math.min(APP_CONFIG.syncIntervalMs, 2200);
+    }
+    return Math.min(APP_CONFIG.syncIntervalMs, 1800);
+  }
+
   startAutoSync() {
     if (this.syncSchedulerTimer) {
       return;
     }
 
     const scheduleNext = () => {
+      const intervalMs = this.getAdaptiveSyncIntervalMs();
       this.syncSchedulerTimer = window.setTimeout(async () => {
         try {
           await this.syncTime();
         } finally {
           scheduleNext();
         }
-      }, APP_CONFIG.syncIntervalMs);
+      }, intervalMs);
     };
 
     scheduleNext();

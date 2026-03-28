@@ -347,16 +347,33 @@
       }
 
       const accuracySeconds = this.estimateAccuracySeconds(state);
-      this.elements.accuracyLine.textContent = `Accuracy of synchronization was ±${accuracySeconds.toFixed(3)} seconds`;
+      const confidence = this.resolveConfidenceLabel(state);
+      this.elements.accuracyLine.textContent = `Accuracy estimate: ±${accuracySeconds.toFixed(3)} seconds · Confidence: ${confidence}`;
     }
 
     estimateAccuracySeconds(state) {
+      const uncertaintyEstimateMs = Number(state?.uncertaintyEstimateMs);
+      if (Number.isFinite(uncertaintyEstimateMs) && uncertaintyEstimateMs >= 0) {
+        return uncertaintyEstimateMs / 1000;
+      }
       const roundTripMs = Number(state?.roundTripMs);
       if (Number.isFinite(roundTripMs) && roundTripMs >= 0) {
-        return roundTripMs / 2000;
+        return Math.max(0.05, roundTripMs / 2000);
       }
 
-      return 0;
+      const sourceTier = String(state?.sourceTier || "");
+      if (sourceTier === "primary-reference") return 0.08;
+      if (sourceTier === "traceable-fallback") return 0.16;
+      if (sourceTier === "internet-fallback") return 0.35;
+      return 0.75;
+    }
+
+    resolveConfidenceLabel(state) {
+      const level = String(state?.confidenceLevel || "").toLowerCase();
+      if (level === "high") return "High";
+      if (level === "reduced") return "Reduced";
+      if (level === "degraded") return "Degraded";
+      return "Low";
     }
 
     renderSources(state) {

@@ -125,7 +125,11 @@
           ? `Last sync: ${formatClockTime(data.lastSyncTimestamp)}`
           : "Last sync: Never";
 
-        this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
+        const uncertainty = Number.isFinite(Number(data.uncertaintyEstimateMs))
+          ? ` ±${Math.round(Number(data.uncertaintyEstimateMs))} ms`
+          : "";
+        const confidence = data.confidenceLevel ? ` · ${String(data.confidenceLevel).toUpperCase()}` : "";
+        this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms${uncertainty}${confidence}`;
         this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
       }
 
@@ -172,7 +176,11 @@
         this.elements.lastSyncTime.textContent = data.lastSyncTimestamp
           ? `Last sync: ${formatClockTime(data.lastSyncTimestamp)}`
           : "Last sync: Never";
-        this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms`;
+        const uncertainty = Number.isFinite(Number(data.uncertaintyEstimateMs))
+          ? ` ±${Math.round(Number(data.uncertaintyEstimateMs))} ms`
+          : "";
+        const confidence = data.confidenceLevel ? ` · ${String(data.confidenceLevel).toUpperCase()}` : "";
+        this.elements.offsetDisplay.textContent = `Offset: ${Math.round(data.offset)} ms${uncertainty}${confidence}`;
         this.elements.statusFreshness.textContent = this.getStatusFreshnessText(receiverStatus);
       }
 

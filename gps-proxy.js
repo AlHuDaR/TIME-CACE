@@ -153,6 +153,10 @@ let monitoringMemory = {
   statusBecameStaleAt: null,
   communicationIssueCount: 0,
 };
+let receiverFailureLogMemory = {
+  key: null,
+  lastAt: 0,
+};
 let lastKnownGoodReceiverSnapshot = null;
 let mergedClockState = {
   lastGpsTodSeconds: null,
@@ -584,11 +588,39 @@ function updateLastResolvedTimeSource(selection = {}) {
 }
 
 function buildTimingPayload(selection, extra = {}) {
+  const payloadBuiltAtMs = Date.now();
+  const payloadBuiltMonoMs = performance.now();
   const effectiveTimestamp = Number(selection.timestamp || Date.now());
   const sourceDefinition = getSourceDefinition(selection.sourceKey || extra.sourceKey || 'local-clock');
   const display = getOmanDisplayParts(effectiveTimestamp);
   const fallback = sourceDefinition.fallback;
   const managerSnapshot = getReceiverManagerSnapshot();
+  const backendCapturedAtMs = Number.isFinite(extra.backendCapturedAtMs)
+    ? extra.backendCapturedAtMs
+    : Number.isFinite(extra.sourceCapturedAtMs)
+      ? extra.sourceCapturedAtMs
+      : Number.isFinite(selection.sourceCapturedAtMs)
+        ? selection.sourceCapturedAtMs
+      : payloadBuiltAtMs;
+  const backendMonotonicCapturedAtMs = Number.isFinite(extra.backendMonotonicCapturedAtMs)
+    ? extra.backendMonotonicCapturedAtMs
+    : Number.isFinite(extra.sourceMonotonicCapturedAtMs)
+      ? extra.sourceMonotonicCapturedAtMs
+      : Number.isFinite(selection.sourceMonotonicCapturedAtMs)
+        ? selection.sourceMonotonicCapturedAtMs
+      : payloadBuiltMonoMs;
+  const sourceTimestampMs = Number.isFinite(extra.sourceTimestampMs)
+    ? extra.sourceTimestampMs
+    : effectiveTimestamp;
+  const authoritativeTimestampMs = Number.isFinite(extra.authoritativeTimestampMs)
+    ? extra.authoritativeTimestampMs
+    : effectiveTimestamp;
+  const displayTimestampMs = Number.isFinite(extra.displayTimestampMs)
+    ? extra.displayTimestampMs
+    : effectiveTimestamp;
+  const freshnessMs = Number.isFinite(extra.freshnessMs)
+    ? extra.freshnessMs
+    : Math.max(0, payloadBuiltAtMs - backendCapturedAtMs);
   const payload = {
     success: true,
     source: sourceDefinition.sourceKey,
@@ -606,8 +638,10 @@ function buildTimingPayload(selection, extra = {}) {
     date: display.date,
     time: display.time,
     timezone: 'GST (UTC+04:00)',
-    timestamp: effectiveTimestamp,
-    displayTimestampMs: effectiveTimestamp,
+    timestamp: displayTimestampMs,
+    sourceTimestampMs,
+    authoritativeTimestampMs,
+    displayTimestampMs,
     displayIso: selection.isoTimestamp || new Date(effectiveTimestamp).toISOString(),
     sourceTime: extra.sourceTime || (sourceDefinition.sourceKey === "gps-xli" ? "gps" : sourceDefinition.sourceKey),
     sourceCalendar: extra.sourceCalendar || (sourceDefinition.sourceKey === "gps-xli" ? "internet" : "local"),
@@ -626,14 +660,13 @@ function buildTimingPayload(selection, extra = {}) {
     upstream: selection.upstream || null,
     protocol: selection.protocol || null,
     roundTripMs: selection.roundTripMs ?? null,
-    backendCapturedAtMs: Number.isFinite(extra.backendCapturedAtMs) ? extra.backendCapturedAtMs : null,
-    backendMonotonicCapturedAtMs: Number.isFinite(extra.backendMonotonicCapturedAtMs) ? extra.backendMonotonicCapturedAtMs : null,
-    backendPayloadBuiltAtMs: Number.isFinite(extra.backendPayloadBuiltAtMs) ? extra.backendPayloadBuiltAtMs : null,
+    backendCapturedAtMs,
+    backendMonotonicCapturedAtMs,
+    backendPayloadBuiltAtMs: Number.isFinite(extra.backendPayloadBuiltAtMs) ? extra.backendPayloadBuiltAtMs : payloadBuiltAtMs,
     backendResponseSentAtMs: Number.isFinite(extra.backendResponseSentAtMs) ? extra.backendResponseSentAtMs : null,
-    freshnessMs: Number.isFinite(extra.freshnessMs) ? extra.freshnessMs : null,
+    freshnessMs,
     freshnessMsAtResponse: Number.isFinite(extra.freshnessMsAtResponse) ? extra.freshnessMsAtResponse : null,
     hotPathLatencyMs: Number.isFinite(extra.hotPathLatencyMs) ? extra.hotPathLatencyMs : null,
-    authoritativeTimestampMs: effectiveTimestamp,
     timingDiagnostics: extra.timingDiagnostics || null,
     resolutionErrors: Array.isArray(selection.resolutionErrors) ? selection.resolutionErrors : [],
     receiverTimestampRaw: extra.receiverTimestampRaw ?? null,
@@ -665,7 +698,7 @@ function buildTimingPayload(selection, extra = {}) {
   updateLastResolvedTimeSource({
     ...selection,
     ...sourceDefinition,
-    timestamp: effectiveTimestamp,
+    timestamp: displayTimestampMs,
     isoTimestamp: payload.isoTimestamp,
     stale: payload.stale,
     fallback: payload.fallback,
@@ -1074,6 +1107,8 @@ function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {})
 function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavailable" } = {}) {
   const classified = classifyReceiverError(error);
   const managerSnapshot = getReceiverManagerSnapshot();
+  const effectiveReceiverReachable = managerSnapshot.connected || classified.receiverReachable;
+  const effectiveLoginOk = managerSnapshot.connected ? true : classified.loginOk;
   const receiverCommunicationState = classified.receiverConfigured === false
     ? "disabled"
     : managerSnapshot.reconnecting || managerSnapshot.connecting
@@ -1084,18 +1119,38 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
         ? "login-failed"
         : classified.receiverCommunicationState;
 
-  if (receiverCommunicationState === "reconnecting") {
-    console.warn("[GPS] receiver auth/session recovery pending");
-  } else if (receiverCommunicationState === "auth-recovery") {
-    console.warn("[GPS] receiver auth/session recovery pending");
-  } else if (!classified.receiverReachable) {
-    console.error("[GPS] receiver unreachable");
+  const logMessage = receiverCommunicationState === "reconnecting"
+    ? "[GPS] receiver auth/session recovery pending (reconnecting)"
+    : receiverCommunicationState === "auth-recovery"
+      ? "[GPS] receiver auth/session recovery pending (auth-recovery)"
+      : !effectiveReceiverReachable
+        ? "[GPS] receiver unreachable"
+        : !effectiveLoginOk
+          ? "[GPS] receiver reachable but login/authentication not ready"
+          : null;
+  const logKey = `${receiverCommunicationState}:${effectiveReceiverReachable ? "reachable" : "unreachable"}:${effectiveLoginOk ? "login-ok" : "login-fail"}`;
+  if (logMessage) {
+    const now = Date.now();
+    const shouldLog = receiverFailureLogMemory.key !== logKey || (now - receiverFailureLogMemory.lastAt) >= 15000;
+    if (shouldLog) {
+      receiverFailureLogMemory = {
+        key: logKey,
+        lastAt: now,
+      };
+      if (receiverCommunicationState === "reconnecting" || receiverCommunicationState === "auth-recovery") {
+        console.warn(logMessage);
+      } else if (!effectiveReceiverReachable) {
+        console.error(logMessage);
+      } else {
+        console.warn(logMessage);
+      }
+    }
   }
 
   return {
     receiverConfigured: classified.receiverConfigured !== false,
-    receiverReachable: managerSnapshot.connected || classified.receiverReachable,
-    loginOk: managerSnapshot.connected ? true : classified.loginOk,
+    receiverReachable: effectiveReceiverReachable,
+    loginOk: effectiveLoginOk,
     isLocked: false,
     gpsLockState: error?.parsed?.gpsLockState || lastReceiverSnapshot.gpsLockState || "unknown",
     receiverCommunicationState,
@@ -1153,41 +1208,66 @@ async function readReceiverTime() {
     throw lockError;
   }
 
-  const calendarSelection = await calendarSelectionPromise;
-  const calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
-  const calendarParts = getOmanDateTimeParts(calendarTimestamp);
-  const gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
-  const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
+  const directReceiverTimestampMs = Number(parsed.timestamp);
+  const receiverDateLooksValid = Number.isInteger(parsed.receiverYear) && parsed.receiverYear >= 2005;
+  const canUseDirectReceiverDateTime = Number.isFinite(directReceiverTimestampMs) && receiverDateLooksValid;
 
-  let mergedTimestampMs = toUtcTimestampFromOmanParts({
-    year: calendarParts.year,
-    month: calendarParts.month,
-    day: calendarParts.day,
-    hour: gpsTimeParts.hour,
-    minute: gpsTimeParts.minute,
-    second: gpsTimeParts.second,
-  });
+  let mergedTimestampMs = canUseDirectReceiverDateTime ? directReceiverTimestampMs : null;
+  let calendarSelection = null;
+  let calendarTimestamp = null;
+  let calendarSource = "receiver";
+  let statusText = "GPS receiver date/time (direct)";
+  let gpsTimeParts = null;
 
-  if (
-    Number.isFinite(mergedClockState.lastGpsTodSeconds)
-    && Number.isFinite(mergedClockState.lastMergedTimestampMs)
-  ) {
-    const wrappedForward = gpsTodSeconds < mergedClockState.lastGpsTodSeconds
-      && (mergedClockState.lastGpsTodSeconds - gpsTodSeconds) > (12 * 3600);
-    if (wrappedForward && mergedTimestampMs <= mergedClockState.lastMergedTimestampMs) {
-      mergedTimestampMs += 86400000;
+  if (!canUseDirectReceiverDateTime) {
+    calendarSelection = await calendarSelectionPromise;
+    calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
+    const calendarParts = getOmanDateTimeParts(calendarTimestamp);
+    gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
+    const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
+
+    mergedTimestampMs = toUtcTimestampFromOmanParts({
+      year: calendarParts.year,
+      month: calendarParts.month,
+      day: calendarParts.day,
+      hour: gpsTimeParts.hour,
+      minute: gpsTimeParts.minute,
+      second: gpsTimeParts.second,
+    });
+
+    if (
+      Number.isFinite(mergedClockState.lastGpsTodSeconds)
+      && Number.isFinite(mergedClockState.lastMergedTimestampMs)
+    ) {
+      const wrappedForward = gpsTodSeconds < mergedClockState.lastGpsTodSeconds
+        && (mergedClockState.lastGpsTodSeconds - gpsTodSeconds) > (12 * 3600);
+      if (wrappedForward && mergedTimestampMs <= mergedClockState.lastMergedTimestampMs) {
+        mergedTimestampMs += 86400000;
+      }
     }
+
+    mergedClockState = {
+      lastGpsTodSeconds: gpsTodSeconds,
+      lastMergedTimestampMs: mergedTimestampMs,
+    };
+
+    calendarSource = calendarSelection.sourceKey === "local-clock" ? "local" : "internet";
+    statusText = calendarSource === "internet"
+      ? "GPS time-of-day with internet calendar merge"
+      : "GPS time-of-day with local calendar fallback";
+  } else {
+    calendarSelectionPromise.catch(() => null);
+    const receiverDate = new Date(directReceiverTimestampMs);
+    const receiverTodSeconds = (receiverDate.getUTCHours() * 3600) + (receiverDate.getUTCMinutes() * 60) + receiverDate.getUTCSeconds();
+    mergedClockState = {
+      lastGpsTodSeconds: receiverTodSeconds,
+      lastMergedTimestampMs: directReceiverTimestampMs,
+    };
   }
 
-  mergedClockState = {
-    lastGpsTodSeconds: gpsTodSeconds,
-    lastMergedTimestampMs: mergedTimestampMs,
-  };
-
-  const calendarSource = calendarSelection.sourceKey === "local-clock" ? "local" : "internet";
-  const statusText = calendarSource === "internet"
-    ? "GPS time with internet calendar"
-    : "GPS time with local calendar fallback";
+  if (!Number.isFinite(mergedTimestampMs)) {
+    throw new Error("Unable to construct a valid GPS timestamp");
+  }
 
   const payload = buildTimingPayload({
     ...getSourceDefinition("gps-xli"),
@@ -1206,6 +1286,9 @@ async function readReceiverTime() {
     statusText,
     sourceTime: "gps",
     sourceCalendar: calendarSource,
+    sourceTimestampMs: canUseDirectReceiverDateTime ? directReceiverTimestampMs : null,
+    authoritativeTimestampMs: mergedTimestampMs,
+    displayTimestampMs: mergedTimestampMs,
     receiverTimestampRaw: parsed.timestamp,
     receiverDateRaw: parsed.receiverDate,
     receiverTimeRaw: parsed.receiverTime,
@@ -1214,11 +1297,15 @@ async function readReceiverTime() {
     displayTimestampMs: mergedTimestampMs,
     displayIso: new Date(mergedTimestampMs).toISOString(),
     omanFormattedParts: getOmanDateTimeParts(mergedTimestampMs),
-    calendarReferenceTimestampMs: calendarTimestamp,
-    calendarSourceKey: calendarSelection.sourceKey,
-    calendarSourceLabel: calendarSelection.sourceLabel,
+    calendarReferenceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,
+    calendarSourceKey: calendarSelection?.sourceKey || "receiver-date",
+    calendarSourceLabel: calendarSelection?.sourceLabel || "Receiver date",
     fallbackReason: calendarSource === "local" ? "internet-calendar-unavailable" : null,
     freshnessMs: Math.max(0, Date.now() - receiverCapturedAtMs),
+    backendCapturedAtMs: receiverCapturedAtMs,
+    backendMonotonicCapturedAtMs: startedMonotonicMs,
+    sourceCapturedAtMs: receiverCapturedAtMs,
+    sourceMonotonicCapturedAtMs: startedMonotonicMs,
     hotPathLatencyMs: Math.round(performance.now() - startedMonotonicMs),
     timingDiagnostics: {
       receiverPathMs: Math.round(performance.now() - startedMonotonicMs),
@@ -1436,9 +1523,13 @@ app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
     const receiverTime = await readReceiverTime();
     const responseSentAtMs = Date.now();
     receiverTime.backendResponseSentAtMs = responseSentAtMs;
-    receiverTime.freshnessMsAtResponse = Number.isFinite(receiverTime.backendCapturedAtMs)
-      ? Math.max(0, responseSentAtMs - receiverTime.backendCapturedAtMs)
-      : receiverTime.freshnessMs;
+    const freshnessReferenceMs = Number.isFinite(receiverTime.backendCapturedAtMs)
+      ? receiverTime.backendCapturedAtMs
+      : Number.isFinite(receiverTime.backendPayloadBuiltAtMs)
+        ? receiverTime.backendPayloadBuiltAtMs
+        : responseSentAtMs;
+    receiverTime.freshnessMs = Math.max(0, (receiverTime.backendPayloadBuiltAtMs || responseSentAtMs) - freshnessReferenceMs);
+    receiverTime.freshnessMsAtResponse = Math.max(0, responseSentAtMs - freshnessReferenceMs);
     receiverStatusCache = {
       promise: null,
       data: sanitizeReceiverStatus(lastReceiverSnapshot),
@@ -1483,9 +1574,13 @@ app.get("/api/time", requireApiAuth, timeRateLimiter, async (req, res) => {
 
     const responseSentAtMs = Date.now();
     resolvedPayload.backendResponseSentAtMs = responseSentAtMs;
-    resolvedPayload.freshnessMsAtResponse = Number.isFinite(resolvedPayload.backendCapturedAtMs)
-      ? Math.max(0, responseSentAtMs - resolvedPayload.backendCapturedAtMs)
-      : null;
+    const freshnessReferenceMs = Number.isFinite(resolvedPayload.backendCapturedAtMs)
+      ? resolvedPayload.backendCapturedAtMs
+      : Number.isFinite(resolvedPayload.backendPayloadBuiltAtMs)
+        ? resolvedPayload.backendPayloadBuiltAtMs
+        : responseSentAtMs;
+    resolvedPayload.freshnessMs = Math.max(0, (resolvedPayload.backendPayloadBuiltAtMs || responseSentAtMs) - freshnessReferenceMs);
+    resolvedPayload.freshnessMsAtResponse = Math.max(0, responseSentAtMs - freshnessReferenceMs);
     res.json(resolvedPayload);
   }
 });
