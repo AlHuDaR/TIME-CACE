@@ -570,6 +570,44 @@ function parseReceiverTimeOfDay(receiverTimeRaw) {
   return { hour, minute, second };
 }
 
+function stabilizeMergedTimestamp({
+  mergedTimestampMs,
+  gpsTodSeconds,
+}) {
+  if (!Number.isFinite(mergedTimestampMs)) {
+    return mergedTimestampMs;
+  }
+
+  if (
+    !Number.isFinite(mergedClockState.lastGpsTodSeconds)
+    || !Number.isFinite(mergedClockState.lastMergedTimestampMs)
+  ) {
+    return mergedTimestampMs;
+  }
+
+  const lastGpsTodSeconds = mergedClockState.lastGpsTodSeconds;
+  const lastMergedTimestampMs = mergedClockState.lastMergedTimestampMs;
+  const wrappedForward = gpsTodSeconds < lastGpsTodSeconds
+    && (lastGpsTodSeconds - gpsTodSeconds) > (12 * 3600);
+
+  let stabilizedTimestamp = mergedTimestampMs;
+  if (wrappedForward) {
+    while (stabilizedTimestamp <= lastMergedTimestampMs) {
+      stabilizedTimestamp += 86400000;
+    }
+    return stabilizedTimestamp;
+  }
+
+  if (stabilizedTimestamp < lastMergedTimestampMs) {
+    const backwardGapMs = lastMergedTimestampMs - stabilizedTimestamp;
+    if (backwardGapMs <= (6 * 3600 * 1000)) {
+      return lastMergedTimestampMs;
+    }
+  }
+
+  return stabilizedTimestamp;
+}
+
 function updateLastResolvedTimeSource(selection = {}) {
   lastResolvedTimeSource = {
     ...lastResolvedTimeSource,
@@ -1208,62 +1246,34 @@ async function readReceiverTime() {
     throw lockError;
   }
 
-  const directReceiverTimestampMs = Number(parsed.timestamp);
-  const receiverDateLooksValid = Number.isInteger(parsed.receiverYear) && parsed.receiverYear >= 2005;
-  const canUseDirectReceiverDateTime = Number.isFinite(directReceiverTimestampMs) && receiverDateLooksValid;
+  const calendarSelection = await calendarSelectionPromise;
+  const calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
+  const calendarParts = getOmanDateTimeParts(calendarTimestamp);
+  const gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
+  const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
 
-  let mergedTimestampMs = canUseDirectReceiverDateTime ? directReceiverTimestampMs : null;
-  let calendarSelection = null;
-  let calendarTimestamp = null;
-  let calendarSource = "receiver";
-  let statusText = "GPS receiver date/time (direct)";
-  let gpsTimeParts = null;
+  let mergedTimestampMs = toUtcTimestampFromOmanParts({
+    year: calendarParts.year,
+    month: calendarParts.month,
+    day: calendarParts.day,
+    hour: gpsTimeParts.hour,
+    minute: gpsTimeParts.minute,
+    second: gpsTimeParts.second,
+  });
+  mergedTimestampMs = stabilizeMergedTimestamp({
+    mergedTimestampMs,
+    gpsTodSeconds,
+  });
 
-  if (!canUseDirectReceiverDateTime) {
-    calendarSelection = await calendarSelectionPromise;
-    calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
-    const calendarParts = getOmanDateTimeParts(calendarTimestamp);
-    gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
-    const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
+  mergedClockState = {
+    lastGpsTodSeconds: gpsTodSeconds,
+    lastMergedTimestampMs: mergedTimestampMs,
+  };
 
-    mergedTimestampMs = toUtcTimestampFromOmanParts({
-      year: calendarParts.year,
-      month: calendarParts.month,
-      day: calendarParts.day,
-      hour: gpsTimeParts.hour,
-      minute: gpsTimeParts.minute,
-      second: gpsTimeParts.second,
-    });
-
-    if (
-      Number.isFinite(mergedClockState.lastGpsTodSeconds)
-      && Number.isFinite(mergedClockState.lastMergedTimestampMs)
-    ) {
-      const wrappedForward = gpsTodSeconds < mergedClockState.lastGpsTodSeconds
-        && (mergedClockState.lastGpsTodSeconds - gpsTodSeconds) > (12 * 3600);
-      if (wrappedForward && mergedTimestampMs <= mergedClockState.lastMergedTimestampMs) {
-        mergedTimestampMs += 86400000;
-      }
-    }
-
-    mergedClockState = {
-      lastGpsTodSeconds: gpsTodSeconds,
-      lastMergedTimestampMs: mergedTimestampMs,
-    };
-
-    calendarSource = calendarSelection.sourceKey === "local-clock" ? "local" : "internet";
-    statusText = calendarSource === "internet"
-      ? "GPS time-of-day with internet calendar merge"
-      : "GPS time-of-day with local calendar fallback";
-  } else {
-    calendarSelectionPromise.catch(() => null);
-    const receiverDate = new Date(directReceiverTimestampMs);
-    const receiverTodSeconds = (receiverDate.getUTCHours() * 3600) + (receiverDate.getUTCMinutes() * 60) + receiverDate.getUTCSeconds();
-    mergedClockState = {
-      lastGpsTodSeconds: receiverTodSeconds,
-      lastMergedTimestampMs: directReceiverTimestampMs,
-    };
-  }
+  const calendarIsLocalFallback = calendarSelection.sourceKey === "local-clock";
+  const statusText = calendarIsLocalFallback
+    ? "RX receiver time-of-day with local calendar fallback"
+    : "RX receiver time-of-day with external calendar source";
 
   if (!Number.isFinite(mergedTimestampMs)) {
     throw new Error("Unable to construct a valid GPS timestamp");
@@ -1284,11 +1294,13 @@ async function readReceiverTime() {
     gpsLockState: parsed.gpsLockState,
     receiverCommunicationState: connection.loginOk ? "authenticated" : "reachable",
     statusText,
-    sourceTime: "gps",
-    sourceCalendar: calendarSource,
-    sourceTimestampMs: canUseDirectReceiverDateTime ? directReceiverTimestampMs : null,
+    sourceTime: "rx-receiver",
+    sourceCalendar: calendarSelection.sourceKey,
+    sourceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,
     authoritativeTimestampMs: mergedTimestampMs,
     displayTimestampMs: mergedTimestampMs,
+    receiverTimeUsed: true,
+    receiverCalendarIgnored: true,
     receiverTimestampRaw: parsed.timestamp,
     receiverDateRaw: parsed.receiverDate,
     receiverTimeRaw: parsed.receiverTime,
@@ -1297,9 +1309,9 @@ async function readReceiverTime() {
     displayIso: new Date(mergedTimestampMs).toISOString(),
     omanFormattedParts: getOmanDateTimeParts(mergedTimestampMs),
     calendarReferenceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,
-    calendarSourceKey: calendarSelection?.sourceKey || "receiver-date",
-    calendarSourceLabel: calendarSelection?.sourceLabel || "Receiver date",
-    fallbackReason: calendarSource === "local" ? "internet-calendar-unavailable" : null,
+    calendarSourceKey: calendarSelection?.sourceKey || "local-clock",
+    calendarSourceLabel: calendarSelection?.sourceLabel || "Internal Clock",
+    fallbackReason: calendarIsLocalFallback ? "internet-calendar-unavailable" : null,
     freshnessMs: Math.max(0, Date.now() - receiverCapturedAtMs),
     backendCapturedAtMs: receiverCapturedAtMs,
     backendMonotonicCapturedAtMs: startedMonotonicMs,
@@ -1308,7 +1320,7 @@ async function readReceiverTime() {
     hotPathLatencyMs: Math.round(performance.now() - startedMonotonicMs),
     timingDiagnostics: {
       receiverPathMs: Math.round(performance.now() - startedMonotonicMs),
-      calendarSourceKey: calendarSelection?.sourceKey || "receiver-date",
+      calendarSourceKey: calendarSelection?.sourceKey || "local-clock",
     },
   });
 

@@ -352,8 +352,11 @@
     const gpsLockState = String(state.gpsLockState || "").trim();
     const isPrimaryGps = currentSource === "gps-xli" && sourceTier === "primary-reference";
     const sourceCalendar = String(state.sourceCalendar || "").trim();
+    const calendarIsLocal = sourceCalendar === "local"
+      || sourceCalendar === "local-clock"
+      || sourceCalendar === "browser-local-clock";
 
-    if (isPrimaryGps && gpsLockState === "locked" && sourceCalendar !== "local") {
+    if (isPrimaryGps && gpsLockState === "locked" && !calendarIsLocal) {
       return {
         source: normalized.sourceLabel,
         status: normalized.statusText,
@@ -386,14 +389,17 @@
 
   function formatStandardStatusLines(state = {}) {
     const standard = getStandardStatusInfo(state);
-    const sourceTime = state?.sourceTime === "gps"
-      ? "GPS receiver"
+    const sourceTime = state?.sourceTime === "gps" || state?.sourceTime === "rx-receiver"
+      ? "RX Receiver"
       : (state?.sourceTime || "Fallback");
-    const sourceCalendar = state?.sourceCalendar === "internet"
-      ? "Internet"
-      : state?.sourceCalendar === "local"
-        ? "Local device fallback"
-        : null;
+    const sourceCalendar = state?.calendarSourceLabel
+      || (state?.sourceCalendar === "internet"
+        ? "Internet"
+        : state?.sourceCalendar === "local" || state?.sourceCalendar === "local-clock"
+          ? "Local device fallback"
+          : state?.sourceCalendar
+            ? getSourceLabel(state.sourceCalendar)
+            : null);
     const sourceSuffix = sourceCalendar
       ? ` · Time source: ${sourceTime} · Calendar source: ${sourceCalendar}`
       : "";
