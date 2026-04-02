@@ -35,18 +35,6 @@ body.dark-mode.official-digital-time-page {
   gap: clamp(0.55rem, 1.3vw, 1rem);
 }
 
-.digital-hero__watermark {
-  position: absolute;
-  inset: auto auto 10% 50%;
-  transform: translateX(-50%);
-  width: min(40vw, 450px);
-  opacity: 0.065;
-  pointer-events: none;
-  user-select: none;
-  z-index: -1;
-  filter: grayscale(1) contrast(1.1);
-}
-
 .digital-page-nav,
 .digital-hero__header,
 .digital-hero__main,
@@ -182,7 +170,8 @@ body.dark-mode .digital-hero__source {
 }
 
 .digital-hero__clock-panel,
-.digital-hero__clock-wrap {
+.digital-hero__clock-wrap,
+.digital-hero__side-rail {
   min-width: 0;
 }
 
@@ -202,6 +191,30 @@ body.dark-mode .digital-hero__source {
   align-items: flex-start;
   gap: clamp(0.04rem, 0.16vw, 0.1rem);
   margin-top: 0;
+}
+
+.official-digital-time-page .digital-hero__side-rail {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: clamp(0.45rem, 1.25vw, 1rem);
+}
+
+.official-digital-time-page .official-digital-logo-slot {
+  width: 100%;
+  max-width: clamp(150px, 22vw, 260px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-block: clamp(0.2rem, 0.9vw, 0.55rem);
+}
+
+.official-digital-time-page .official-digital-logo {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
 }
 
 .digital-hero__clock {
@@ -533,6 +546,11 @@ body.dark-mode .world-clock-card__time {
     align-self: start;
   }
 
+  .official-digital-time-page .digital-hero__side-rail {
+    justify-items: start;
+    align-content: start;
+  }
+
   .digital-hero__clock {
     font-size: clamp(3.8rem, 15vw, 7.5rem);
     white-space: normal;
@@ -542,6 +560,11 @@ body.dark-mode .world-clock-card__time {
     width: min(100%, 28rem);
     justify-items: start;
     text-align: left;
+  }
+
+  .official-digital-time-page .official-digital-logo-slot {
+    max-width: clamp(130px, 42vw, 220px);
+    margin-block: clamp(0.15rem, 0.8vw, 0.45rem);
   }
 
   .digital-world-strip__grid {
@@ -561,12 +584,6 @@ body.dark-mode .world-clock-card__time {
 @media (max-width: 640px) {
   .digital-hero {
     padding-top: 0.75rem;
-  }
-
-  .digital-hero__watermark {
-    width: min(56vw, 340px);
-    inset: auto auto 16% 50%;
-    opacity: 0.075;
   }
 
   .digital-page-nav .mode-btn {
