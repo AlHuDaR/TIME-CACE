@@ -540,10 +540,10 @@
         ...satellites.map((satellite) => {
           const row = document.createElement("tr");
           [
-            satellite.prn,
-            this.formatDetailValue(satellite.status, telemetryState),
-            this.formatDetailValue(satellite.utilization, telemetryState),
-            this.formatLevelDbw(satellite.level, telemetryState),
+            this.formatDetailValue(satellite?.prn, telemetryState),
+            this.formatDetailValue(satellite?.status, telemetryState),
+            this.formatDetailValue(satellite?.utilization, telemetryState),
+            this.formatLevelDbw(satellite?.level, telemetryState),
           ].forEach((value) => {
             const cell = document.createElement("td");
             cell.textContent = String(value);

@@ -269,6 +269,66 @@ async function runTests() {
   assert.equal(webTable.satelliteTracking[0].level, '-160 dBW');
   assert.equal(webTable.satelliteTrackingPage, '/XLIGPSSatList.html?slot=1');
 
+  const xliSatelliteHtmlWithNestedTags = `
+    <html><body>
+      <table>
+        <tr><th>Tracked <span>Satellite</span> List</th></tr>
+        <tr><th><strong>PRN</strong></th><th>status</th><th>UTILIZATION</th><th>Level</th></tr>
+        <tr><td><div>PRN <span>8</span></div></td><td><span>Good</span></td><td><em>Tracked</em></td><td><strong>-149.7 dBW</strong></td></tr>
+      </table>
+    </body></html>
+  `;
+  const nestedWebTable = parseXliWebSatelliteTable(xliSatelliteHtmlWithNestedTags, { slot: 2 });
+  assert.equal(nestedWebTable.satelliteTracking.length, 1);
+  assert.deepEqual(nestedWebTable.satelliteTracking[0], {
+    prn: '8',
+    status: 'Good',
+    utilization: 'Tracked',
+    level: '-150 dBW',
+  });
+  assert.equal(nestedWebTable.satelliteTrackingPage, '/XLIGPSSatList.html?slot=2');
+
+  const xliSatelliteHtmlWithWhitespace = `
+    <HTML><BODY>
+      <TABLE>
+        <TR><TH>   Tracked   Satellite   List   </TH></TR>
+        <TR><TH> PRN </TH><TH> STATUS </TH><TH> UTILIZATION </TH><TH> LEVEL </TH></TR>
+        <TR><TD>   PRN   21   </TD><TD>  Good  </TD><TD> Current </TD><TD>   -153    dBW   </TD></TR>
+      </TABLE>
+    </BODY></HTML>
+  `;
+  const whitespaceTable = parseXliWebSatelliteTable(xliSatelliteHtmlWithWhitespace, { slot: 3 });
+  assert.equal(whitespaceTable.satelliteTracking.length, 1);
+  assert.equal(whitespaceTable.satelliteTracking[0].prn, '21');
+  assert.equal(whitespaceTable.satelliteTracking[0].level, '-153 dBW');
+
+  const missingTable = parseXliWebSatelliteTable('<html><body><h1>Login</h1><form></form></body></html>', { slot: 4 });
+  assert.deepEqual(missingTable, {
+    satelliteTracking: [],
+    satelliteTrackingSource: 'xli-web',
+    satelliteTrackingPage: '/XLIGPSSatList.html?slot=4',
+  });
+
+  const malformedLevelHtml = `
+    <html><body>
+      <table>
+        <tr><th>Tracked Satellite List</th></tr>
+        <tr><th>PRN</th><th>Status</th><th>Utilization</th><th>Level</th></tr>
+        <tr><td>6</td><td>Good</td><td>Tracked</td><td>N/A</td></tr>
+      </table>
+    </body></html>
+  `;
+  const malformedLevelTable = parseXliWebSatelliteTable(malformedLevelHtml, { slot: 5 });
+  assert.equal(malformedLevelTable.satelliteTracking.length, 1);
+  assert.equal(malformedLevelTable.satelliteTracking[0].level, null);
+
+  const emptyHtmlTable = parseXliWebSatelliteTable('', { slot: 6 });
+  assert.deepEqual(emptyHtmlTable, {
+    satelliteTracking: [],
+    satelliteTrackingSource: 'xli-web',
+    satelliteTrackingPage: '/XLIGPSSatList.html?slot=6',
+  });
+
   const ack = parseReceiverAcknowledgement('\0\0OK\r\n');
   assert.equal(ack.acknowledged, true);
   assert.equal(ack.raw, 'OK');
@@ -303,6 +363,14 @@ async function runTests() {
   assert.throws(() => validateConfig({ ...validConfig, requestTimeoutMs: Number.NaN }), /REQUEST_TIMEOUT_MS/);
   assert.throws(() => validateConfig({ ...validConfig, gpsUsername: '' }), /GPS_USERNAME/);
   assert.throws(() => validateConfig({ ...validConfig, authEnabled: true, authToken: '' }), /API_AUTH_TOKEN/);
+  assert.throws(() => validateConfig({ ...validConfig, xliWebEnabled: true, xliWebBaseUrl: '' }), /XLI_WEB_BASE_URL/);
+  assert.throws(() => validateConfig({ ...validConfig, xliWebEnabled: true, xliWebBaseUrl: 'javascript:alert(1)' }), /XLI_WEB_BASE_URL/);
+  assert.throws(() => validateConfig({ ...validConfig, xliWebEnabled: true, xliWebBaseUrl: 'http://user:pass@192.168.1.10' }), /embedded credentials/);
+  assert.throws(() => validateConfig({ ...validConfig, xliWebEnabled: true, xliWebBaseUrl: 'http://192.168.1.10?foo=1' }), /query strings/);
+  assert.throws(() => validateConfig({ ...validConfig, xliGpsSlot: 0 }), /XLI_GPS_SLOT/);
+  assert.throws(() => validateConfig({ ...validConfig, xliGpsSlot: 33 }), /XLI_GPS_SLOT/);
+  const disabledWebConfig = validateConfig({ ...validConfig, xliWebEnabled: false, xliWebBaseUrl: '' });
+  assert.equal(disabledWebConfig.xliWebEnabled, false);
   assert.equal(validateConfig({ ...validConfig, receiverEnabled: false, gpsUsername: '', gpsPassword: '', gpsHost: '' }).receiverEnabled, false);
 
   console.log('Protocol harness passed.');

@@ -353,12 +353,13 @@ async function fetchXliWebSatelliteTelemetry() {
 
     const html = await response.text();
     const parsed = parseXliWebSatelliteTable(html, { slot: CONFIG.xliGpsSlot });
+    const hasTrackingRows = Array.isArray(parsed.satelliteTracking) && parsed.satelliteTracking.length > 0;
     return sanitizeGpsReceiverDetails({
-      available: parsed.satelliteTracking.length > 0,
+      available: hasTrackingRows,
       satelliteTracking: parsed.satelliteTracking,
-      satelliteTrackingUpdatedAt: new Date().toISOString(),
-      satelliteTrackingSource: parsed.satelliteTrackingSource,
-      satelliteTrackingPage: parsed.satelliteTrackingPage,
+      satelliteTrackingUpdatedAt: hasTrackingRows ? new Date().toISOString() : null,
+      satelliteTrackingSource: hasTrackingRows ? parsed.satelliteTrackingSource : null,
+      satelliteTrackingPage: hasTrackingRows ? parsed.satelliteTrackingPage : null,
     });
   } catch (error) {
     return sanitizeGpsReceiverDetails({
@@ -366,8 +367,8 @@ async function fetchXliWebSatelliteTelemetry() {
       error: error?.name === "AbortError" ? "XLi web telemetry request timed out" : (error?.message || "XLi web telemetry unavailable"),
       satelliteTracking: [],
       satelliteTrackingUpdatedAt: null,
-      satelliteTrackingSource: "xli-web",
-      satelliteTrackingPage: pagePath,
+      satelliteTrackingSource: null,
+      satelliteTrackingPage: null,
     });
   } finally {
     clearTimeout(timeout);
@@ -1091,8 +1092,8 @@ async function readGpsReceiverDetails() {
   } else if (CONFIG.xliWebEnabled) {
     details.satelliteTracking = [];
     details.satelliteTrackingUpdatedAt = null;
-    details.satelliteTrackingSource = webTelemetry.satelliteTrackingSource || "xli-web";
-    details.satelliteTrackingPage = webTelemetry.satelliteTrackingPage || `/XLIGPSSatList.html?slot=${CONFIG.xliGpsSlot}`;
+    details.satelliteTrackingSource = null;
+    details.satelliteTrackingPage = null;
   }
 
   if (errors.length > 0 && !details.satellites.length && !details.satelliteTracking.length && !Object.values(details.metadata).some(Boolean) && !Object.values(details.position).some((value) => value !== null)) {
