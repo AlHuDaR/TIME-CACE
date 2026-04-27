@@ -41,17 +41,17 @@ function createHarness(fetchImpl) {
     }
     getSourceLabel(sourceKey) {
       return {
-        'gps-xli': 'GPS RECEIVER (XLi)',
-        'ntp-nist': 'Internet (NIST)',
-        'ntp-npl-india': 'Internet (NPL India)',
-        'https-worldtimeapi': 'Internet (WorldTimeAPI)',
-        'https-timeapiio': 'Internet (timeapi.io)',
-        'http-date': 'Internet (HTTP Date)',
-        'frontend-worldtimeapi': 'Internet (WorldTimeAPI)',
-        'frontend-timeapiio': 'Internet (timeapi.io)',
-        'frontend-http-date': 'Internet (HTTP Date)',
-        'local-clock': 'Internal Clock',
-        'browser-local-clock': 'Internal Clock',
+        'gps-xli': 'GPS Receiver (XLi)',
+        'ntp-nist': 'NTP (NIST)',
+        'ntp-npl-india': 'NTP (NPL India)',
+        'https-worldtimeapi': 'HTTPS Time API (WorldTimeAPI)',
+        'https-timeapiio': 'HTTPS Time API (TimeAPI.io)',
+        'http-date': 'HTTP Date',
+        'frontend-worldtimeapi': 'HTTPS Time API (WorldTimeAPI)',
+        'frontend-timeapiio': 'HTTPS Time API (TimeAPI.io)',
+        'frontend-http-date': 'HTTP Date',
+        'local-clock': 'Local Clock',
+        'browser-local-clock': 'Local Clock',
       }[sourceKey] || String(sourceKey || 'UNKNOWN').toUpperCase();
     }
     updateFallbackInfo() {}
@@ -90,17 +90,17 @@ function createHarness(fetchImpl) {
       dataState: receiver.dataState || 'waiting',
     }),
     humanizeSource: (sourceKey) => ({
-      'gps-xli': 'GPS RECEIVER (XLi)',
-      'ntp-nist': 'Internet (NIST)',
-      'ntp-npl-india': 'Internet (NPL India)',
-      'https-worldtimeapi': 'Internet (WorldTimeAPI)',
-      'https-timeapiio': 'Internet (timeapi.io)',
-      'http-date': 'Internet (HTTP Date)',
-      'frontend-worldtimeapi': 'Internet (WorldTimeAPI)',
-      'frontend-timeapiio': 'Internet (timeapi.io)',
-      'frontend-http-date': 'Internet (HTTP Date)',
-      'local-clock': 'Internal Clock',
-      'browser-local-clock': 'Internal Clock',
+      'gps-xli': 'GPS Receiver (XLi)',
+      'ntp-nist': 'NTP (NIST)',
+      'ntp-npl-india': 'NTP (NPL India)',
+      'https-worldtimeapi': 'HTTPS Time API (WorldTimeAPI)',
+      'https-timeapiio': 'HTTPS Time API (TimeAPI.io)',
+      'http-date': 'HTTP Date',
+      'frontend-worldtimeapi': 'HTTPS Time API (WorldTimeAPI)',
+      'frontend-timeapiio': 'HTTPS Time API (TimeAPI.io)',
+      'frontend-http-date': 'HTTP Date',
+      'local-clock': 'Local Clock',
+      'browser-local-clock': 'Local Clock',
     }[sourceKey] || String(sourceKey || '').replace(/-/g, ' ')),
     getStandardStatusInfo: (state = {}) => ({
       source: state.sourceLabel || state.currentSourceLabel || state.currentSource || 'Unknown',
@@ -153,9 +153,9 @@ async function testBackendHealthyDoesNotUseFrontendFallbackApis() {
     statusText: 'Primary reference active',
     status: 'Primary reference active',
     currentSource: 'gps-xli',
-    currentSourceLabel: 'GPS RECEIVER (XLi)',
+    currentSourceLabel: 'GPS Receiver (XLi)',
     sourceKey: 'gps-xli',
-    sourceLabel: 'GPS RECEIVER (XLi)',
+    sourceLabel: 'GPS Receiver (XLi)',
     sourceTier: 'primary-reference',
     fallback: false,
     traceable: true,
@@ -188,9 +188,9 @@ async function testTraceableFallbackRemainsVisible() {
     statusText: 'Traceable fallback active',
     status: 'Traceable fallback active',
     currentSource: 'ntp-nist',
-    currentSourceLabel: 'Internet (NIST)',
+    currentSourceLabel: 'NTP (NIST)',
     sourceKey: 'ntp-nist',
-    sourceLabel: 'Internet (NIST)',
+    sourceLabel: 'NTP (NIST)',
     sourceTier: 'traceable-fallback',
     fallback: true,
     traceable: true,
@@ -207,8 +207,8 @@ async function testTraceableFallbackRemainsVisible() {
 
   assert.equal(state.backendOnline, true);
   assert.equal(state.currentSource, 'ntp-nist');
-  assert.equal(state.sourceLabel, 'Internet (NIST)');
-  assert.equal(sync.getSourceDisplayName(state), 'Internet (NIST)');
+  assert.equal(state.sourceLabel, 'NTP (NIST)');
+  assert.equal(sync.getSourceDisplayName(state), 'NTP (NIST)');
 }
 
 async function testInternetFallbackRemainsBackendAuthoritative() {
@@ -222,9 +222,9 @@ async function testInternetFallbackRemainsBackendAuthoritative() {
     statusText: 'Internet fallback active',
     status: 'Internet fallback active',
     currentSource: 'https-worldtimeapi',
-    currentSourceLabel: 'Internet (WorldTimeAPI)',
+    currentSourceLabel: 'HTTPS Time API (WorldTimeAPI)',
     sourceKey: 'https-worldtimeapi',
-    sourceLabel: 'Internet (WorldTimeAPI)',
+    sourceLabel: 'HTTPS Time API (WorldTimeAPI)',
     sourceTier: 'internet-fallback',
     fallback: true,
     traceable: false,
@@ -241,7 +241,7 @@ async function testInternetFallbackRemainsBackendAuthoritative() {
 
   assert.equal(state.backendOnline, true);
   assert.equal(state.currentSource, 'https-worldtimeapi');
-  assert.equal(sync.getSourceDisplayName(state), 'Internet (WorldTimeAPI)');
+  assert.equal(sync.getSourceDisplayName(state), 'HTTPS Time API (WorldTimeAPI)');
 }
 
 async function testStatusSuccessFalseDoesNotMeanBackendOffline() {
@@ -256,9 +256,9 @@ async function testStatusSuccessFalseDoesNotMeanBackendOffline() {
     statusText: 'Traceable fallback active',
     status: 'Traceable fallback active',
     currentSource: 'ntp-nist',
-    currentSourceLabel: 'Internet (NIST)',
+    currentSourceLabel: 'NTP (NIST)',
     sourceKey: 'ntp-nist',
-    sourceLabel: 'Internet (NIST)',
+    sourceLabel: 'NTP (NIST)',
     sourceTier: 'traceable-fallback',
     fallback: true,
     traceable: true,
@@ -274,7 +274,7 @@ async function testStatusSuccessFalseDoesNotMeanBackendOffline() {
 
   assert.equal(status.backendOnline, true);
   assert.equal(status.currentSource, 'ntp-nist');
-  assert.equal(status.sourceLabel, 'Internet (NIST)');
+  assert.equal(status.sourceLabel, 'NTP (NIST)');
   assert.equal(status.dataState, 'unavailable');
 }
 
@@ -284,7 +284,7 @@ async function testInvalidStatusJsonMarksBackendUnavailable() {
   const status = await sync.pollStatus();
 
   assert.equal(status.backendOnline, false);
-  assert.equal(status.statusText, 'Lost (no valid time source)');
+  assert.equal(status.statusText, 'Receiver Unavailable');
 }
 
 async function testBackendFailureFallsBackToFrontendWorldTimeApi() {
@@ -302,9 +302,9 @@ async function testBackendFailureFallsBackToFrontendWorldTimeApi() {
 
   assert.equal(state.backendOnline, false);
   assert.equal(state.currentSource, 'frontend-worldtimeapi');
-  assert.equal(state.sourceLabel, 'Internet (WorldTimeAPI)');
-  assert.equal(state.status, 'Degraded (primary source unavailable)');
-  assert.equal(state.statusText, 'Degraded (primary source unavailable)');
+  assert.equal(state.sourceLabel, 'HTTPS Time API (WorldTimeAPI)');
+  assert.equal(state.status, 'Fallback Active');
+  assert.equal(state.statusText, 'Fallback Active');
 }
 
 async function testBackendFailureFallsBackToFrontendTimeApiIo() {
@@ -324,8 +324,8 @@ async function testBackendFailureFallsBackToFrontendTimeApiIo() {
   const state = await sync.syncTime();
 
   assert.equal(state.currentSource, 'frontend-timeapiio');
-  assert.equal(state.sourceLabel, 'Internet (timeapi.io)');
-  assert.equal(state.status, 'Degraded (primary source unavailable)');
+  assert.equal(state.sourceLabel, 'HTTPS Time API (TimeAPI.io)');
+  assert.equal(state.status, 'Fallback Active');
 }
 
 async function testBackendFailureFallsBackToHttpDate() {
@@ -349,7 +349,7 @@ async function testBackendFailureFallsBackToHttpDate() {
   const state = await sync.syncTime();
 
   assert.equal(state.currentSource, 'frontend-http-date');
-  assert.equal(state.sourceLabel, 'Internet (HTTP Date)');
+  assert.equal(state.sourceLabel, 'HTTP Date');
   assert.equal(state.protocol, 'https');
 }
 
@@ -365,7 +365,69 @@ async function testTimeFetchFailureFallsBackToBrowserLocalClock() {
 
   assert.equal(state.backendOnline, false);
   assert.equal(state.currentSource, 'browser-local-clock');
-  assert.equal(state.statusText, 'Holdover (using last valid sync)');
+  assert.equal(state.statusText, 'Local Emergency Mode');
+}
+
+async function testSourceLabelNormalizationPrefersXliName() {
+  const payload = {
+    backendOnline: true,
+    receiverConfigured: true,
+    receiverReachable: true,
+    loginOk: true,
+    isLocked: true,
+    gpsLockState: 'locked',
+    statusText: 'Normal',
+    status: 'Normal',
+    currentSource: 'gps-xli',
+    currentSourceLabel: 'GPS Receiver (XLi)',
+    sourceKey: 'gps-xli',
+    sourceLabel: 'GPS Receiver (XLi)',
+    sourceTier: 'primary-reference',
+    fallback: false,
+    traceable: true,
+    authoritative: true,
+    timestamp: Date.now(),
+    isoTimestamp: new Date().toISOString(),
+    date: '03/22/2026',
+    time: '12:00:00',
+  };
+  const { GPSTimeSync } = createHarness(async () => createResponse(payload));
+  const sync = new GPSTimeSync();
+  const state = await sync.syncTime();
+  assert.equal(sync.getSourceDisplayName(state), 'GPS Receiver (XLi)');
+}
+
+async function testNoDuplicateAutoSyncSchedulerStart() {
+  const payload = {
+    backendOnline: true,
+    receiverConfigured: true,
+    receiverReachable: true,
+    loginOk: true,
+    isLocked: true,
+    gpsLockState: 'locked',
+    statusText: 'Normal',
+    status: 'Normal',
+    currentSource: 'gps-xli',
+    currentSourceLabel: 'GPS Receiver (XLi)',
+    sourceKey: 'gps-xli',
+    sourceLabel: 'GPS Receiver (XLi)',
+    sourceTier: 'primary-reference',
+    fallback: false,
+    traceable: true,
+    authoritative: true,
+    timestamp: Date.now(),
+    isoTimestamp: new Date().toISOString(),
+    date: '03/22/2026',
+    time: '12:00:00',
+  };
+  const { GPSTimeSync } = createHarness(async () => createResponse(payload));
+  const sync = new GPSTimeSync();
+  await sync.syncTime();
+  sync.startAutoSync();
+  const firstTimer = sync.syncSchedulerTimer;
+  sync.startAutoSync();
+  assert.equal(sync.syncSchedulerTimer, firstTimer);
+  sync.stopAutoSync();
 }
 
 (async () => {
@@ -378,6 +440,8 @@ async function testTimeFetchFailureFallsBackToBrowserLocalClock() {
   await testBackendFailureFallsBackToFrontendTimeApiIo();
   await testBackendFailureFallsBackToHttpDate();
   await testTimeFetchFailureFallsBackToBrowserLocalClock();
+  await testSourceLabelNormalizationPrefersXliName();
+  await testNoDuplicateAutoSyncSchedulerStart();
   console.log('runtime-sync harness passed');
 })().catch((error) => {
   console.error(error);

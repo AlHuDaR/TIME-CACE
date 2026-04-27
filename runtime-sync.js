@@ -25,17 +25,17 @@
 
     const key = String(source || "").trim();
     const labels = {
-      "gps-xli": "GPS Receiver",
-      "ntp-nist": "Internet (NIST)",
-      "ntp-npl-india": "Internet (NPL India)",
-      "https-worldtimeapi": "Internet (WorldTimeAPI)",
-      "https-timeapiio": "Internet (timeapi.io)",
-      "http-date": "Internet (HTTP Date)",
-      "frontend-worldtimeapi": "Internet (WorldTimeAPI)",
-      "frontend-timeapiio": "Internet (timeapi.io)",
-      "frontend-http-date": "Internet (HTTP Date)",
-      "local-clock": "Internal Clock",
-      "browser-local-clock": "Internal Clock",
+      "gps-xli": "GPS Receiver (XLi)",
+      "ntp-nist": "NTP (NIST)",
+      "ntp-npl-india": "NTP (NPL India)",
+      "https-worldtimeapi": "HTTPS Time API (WorldTimeAPI)",
+      "https-timeapiio": "HTTPS Time API (TimeAPI.io)",
+      "http-date": "HTTP Date",
+      "frontend-worldtimeapi": "HTTPS Time API (WorldTimeAPI)",
+      "frontend-timeapiio": "HTTPS Time API (TimeAPI.io)",
+      "frontend-http-date": "HTTP Date",
+      "local-clock": "Local Clock",
+      "browser-local-clock": "Browser Local Clock",
     };
 
     if (labels[key]) {
@@ -100,7 +100,7 @@
       this.chosenSampleRTT = null;
       this.sessionState = this.createSessionState();
       this.receiverStatus = this.createReceiverStatus();
-      this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "Internal Clock", sourceTier: "browser-emergency-fallback", status: "Holdover (using last valid sync)", statusText: "Holdover (using last valid sync)" });
+      this.currentState = this.createState({ currentSource: "browser-local-clock", sourceKey: "browser-local-clock", sourceLabel: "Browser Local Clock", sourceTier: "browser-emergency-fallback", status: "Local Emergency Mode", statusText: "Local Emergency Mode" });
     }
 
   createSessionState(overrides = {}) {
@@ -123,12 +123,12 @@
       loginOk: false,
       isLocked: false,
       gpsLockState: "unknown",
-      statusText: "Lost (no valid time source)",
-      status: "Lost (no valid time source)",
+      statusText: "Receiver Unavailable",
+      status: "Receiver Unavailable",
       currentSource: "local-clock",
-      currentSourceLabel: "Internal Clock",
+      currentSourceLabel: "Local Clock",
       sourceKey: "local-clock",
-      sourceLabel: "Internal Clock",
+      sourceLabel: "Local Clock",
       sourceTier: "emergency-fallback",
       authoritative: false,
       traceable: false,
@@ -197,12 +197,12 @@
         loginOk: false,
         isLocked: false,
         gpsLockState: "unknown",
-        statusText: "Holdover (using last valid sync)",
-        status: "Holdover (using last valid sync)",
+        statusText: "Local Emergency Mode",
+        status: "Local Emergency Mode",
         currentSource: "browser-local-clock",
-        currentSourceLabel: "Internal Clock",
+        currentSourceLabel: "Browser Local Clock",
         sourceKey: "browser-local-clock",
-        sourceLabel: "Internal Clock",
+        sourceLabel: "Browser Local Clock",
         sourceTier: "browser-emergency-fallback",
         authoritative: false,
         traceable: false,
@@ -408,10 +408,10 @@
     return this.createFallbackStateFromTimestamp({
       timestamp: Date.now(),
       sourceKey: "browser-local-clock",
-      sourceLabel: "Internal Clock",
+      sourceLabel: "Browser Local Clock",
       sourceTier: "browser-emergency-fallback",
-      status: "Holdover (using last valid sync)",
-      statusText: "Holdover (using last valid sync)",
+      status: "Local Emergency Mode",
+      statusText: "Local Emergency Mode",
       upstream: "browser-local-clock",
       protocol: "local",
       fallbackReason: "backend-unreachable-or-invalid",
@@ -444,8 +444,8 @@
       sourceTier: this.currentState.sourceTier,
       status: this.currentState.status,
       statusText: isBrowserFallback
-        ? "Holdover (using last valid sync)"
-        : "Degraded (primary source unavailable)",
+        ? "Local Emergency Mode"
+        : "Fallback Active",
       upstream: this.currentState.upstream,
       protocol: this.currentState.protocol,
       fallbackReason: this.currentState.fallbackReason || "backend-unreachable-or-invalid",
@@ -469,10 +469,10 @@
     return this.createFallbackStateFromTimestamp({
       timestamp,
       sourceKey: "frontend-worldtimeapi",
-      sourceLabel: "Internet (WorldTimeAPI)",
+      sourceLabel: "HTTPS Time API (WorldTimeAPI)",
       sourceTier: "internet-fallback",
-      status: "Degraded (primary source unavailable)",
-      statusText: "Degraded (primary source unavailable)",
+      status: "Fallback Active",
+      statusText: "Fallback Active",
       upstream: "worldtimeapi",
       protocol: "https",
       fallbackReason: "backend-unreachable-or-invalid",
@@ -503,10 +503,10 @@
     return this.createFallbackStateFromTimestamp({
       timestamp,
       sourceKey: "frontend-timeapiio",
-      sourceLabel: "Internet (timeapi.io)",
+      sourceLabel: "HTTPS Time API (TimeAPI.io)",
       sourceTier: "internet-fallback",
-      status: "Degraded (primary source unavailable)",
-      statusText: "Degraded (primary source unavailable)",
+      status: "Fallback Active",
+      statusText: "Fallback Active",
       upstream: "timeapi.io",
       protocol: "https",
       fallbackReason: "backend-unreachable-or-invalid",
@@ -663,10 +663,10 @@
         return this.createFallbackStateFromTimestamp({
           timestamp: parsedTimestamp + Math.round(roundTripMs / 2),
           sourceKey: "frontend-http-date",
-          sourceLabel: "Internet (HTTP Date)",
+          sourceLabel: "HTTP Date",
           sourceTier: "internet-fallback",
-          status: "Degraded (primary source unavailable)",
-          statusText: "Degraded (primary source unavailable)",
+          status: "Fallback Active",
+          statusText: "Fallback Active",
           upstream: "http-date",
           protocol: "https",
           fallbackReason: "backend-unreachable-or-invalid",
@@ -868,9 +868,9 @@
           loginOk: false,
           isLocked: false,
           gpsLockState: "unknown",
-          statusText: "Lost (no valid time source)",
+          statusText: "Receiver Unavailable",
           currentSource: this.receiverStatus.currentSource || "local-clock",
-          currentSourceLabel: this.receiverStatus.currentSourceLabel || "Internal Clock",
+          currentSourceLabel: this.receiverStatus.currentSourceLabel || "Local Clock",
           receiverCommunicationState: "backend-offline",
           fallbackReason: "backend-offline",
           lastError: error.message,
@@ -1431,15 +1431,15 @@
     const tier = this.currentState.sourceTier || "browser-emergency-fallback";
     const confidence = this.confidenceLevel || "low";
     if (tier === "primary-reference" && confidence === "high") {
-      return Math.max(APP_CONFIG.syncIntervalMs, 5000);
+      return Math.max(APP_CONFIG.syncIntervalMs, 6000);
     }
     if (tier === "traceable-fallback") {
-      return Math.min(Math.max(2500, APP_CONFIG.syncIntervalMs), 4500);
+      return Math.max(APP_CONFIG.syncIntervalMs, 5500);
     }
     if (tier === "internet-fallback") {
-      return Math.min(APP_CONFIG.syncIntervalMs, 2200);
+      return Math.max(APP_CONFIG.syncIntervalMs, 5000);
     }
-    return Math.min(APP_CONFIG.syncIntervalMs, 1800);
+    return Math.max(APP_CONFIG.syncIntervalMs, 4500);
   }
 
   startAutoSync() {
