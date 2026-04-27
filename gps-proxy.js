@@ -158,10 +158,6 @@ let receiverFailureLogMemory = {
   lastAt: 0,
 };
 let lastKnownGoodReceiverSnapshot = null;
-let mergedClockState = {
-  lastGpsTodSeconds: null,
-  lastMergedTimestampMs: null,
-};
 let inFlightHighPriorityTimeRead = null;
 let lastFastRxTimePayload = null;
 
@@ -547,118 +543,6 @@ function getOmanDateTimeParts(timestamp) {
   };
 }
 
-function getUtcDateTimeParts(timestamp) {
-  const date = new Date(Number(timestamp));
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
-    hour: date.getUTCHours(),
-    minute: date.getUTCMinutes(),
-    second: date.getUTCSeconds(),
-  };
-}
-
-function toUtcTimestampFromOmanParts({
-  year,
-  month,
-  day,
-  hour = 0,
-  minute = 0,
-  second = 0,
-}) {
-  // Oman is UTC+04:00 with no DST.
-  return Date.UTC(year, month - 1, day, hour - 4, minute, second, 0);
-}
-
-function composeMergedTimestampFromCalendar({
-  calendarTimestamp,
-  gpsTimeParts,
-  receiverTimeMode,
-}) {
-  const normalizedMode = String(receiverTimeMode || "UTC").toUpperCase();
-  if (normalizedMode === "UTC") {
-    const utcParts = getUtcDateTimeParts(calendarTimestamp);
-    return Date.UTC(
-      utcParts.year,
-      utcParts.month - 1,
-      utcParts.day,
-      gpsTimeParts.hour,
-      gpsTimeParts.minute,
-      gpsTimeParts.second,
-      0,
-    );
-  }
-
-  const calendarParts = getOmanDateTimeParts(calendarTimestamp);
-  return toUtcTimestampFromOmanParts({
-    year: calendarParts.year,
-    month: calendarParts.month,
-    day: calendarParts.day,
-    hour: gpsTimeParts.hour,
-    minute: gpsTimeParts.minute,
-    second: gpsTimeParts.second,
-  });
-}
-
-function parseReceiverTimeOfDay(receiverTimeRaw) {
-  const match = String(receiverTimeRaw || "").trim().match(/^(\d{2}):(\d{2}):(\d{2})$/);
-  if (!match) {
-    throw new Error("Could not parse receiver time-of-day");
-  }
-
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const second = Number(match[3]);
-  if (
-    !Number.isInteger(hour) || hour < 0 || hour > 23
-    || !Number.isInteger(minute) || minute < 0 || minute > 59
-    || !Number.isInteger(second) || second < 0 || second > 59
-  ) {
-    throw new Error("Receiver time-of-day out of range");
-  }
-
-  return { hour, minute, second };
-}
-
-function stabilizeMergedTimestamp({
-  mergedTimestampMs,
-  gpsTodSeconds,
-}) {
-  if (!Number.isFinite(mergedTimestampMs)) {
-    return mergedTimestampMs;
-  }
-
-  if (
-    !Number.isFinite(mergedClockState.lastGpsTodSeconds)
-    || !Number.isFinite(mergedClockState.lastMergedTimestampMs)
-  ) {
-    return mergedTimestampMs;
-  }
-
-  const lastGpsTodSeconds = mergedClockState.lastGpsTodSeconds;
-  const lastMergedTimestampMs = mergedClockState.lastMergedTimestampMs;
-  const wrappedForward = gpsTodSeconds < lastGpsTodSeconds
-    && (lastGpsTodSeconds - gpsTodSeconds) > (12 * 3600);
-
-  let stabilizedTimestamp = mergedTimestampMs;
-  if (wrappedForward) {
-    while (stabilizedTimestamp <= lastMergedTimestampMs) {
-      stabilizedTimestamp += 86400000;
-    }
-    return stabilizedTimestamp;
-  }
-
-  if (stabilizedTimestamp < lastMergedTimestampMs) {
-    const backwardGapMs = lastMergedTimestampMs - stabilizedTimestamp;
-    if (backwardGapMs <= (6 * 3600 * 1000)) {
-      return lastMergedTimestampMs;
-    }
-  }
-
-  return stabilizedTimestamp;
-}
-
 function updateLastResolvedTimeSource(selection = {}) {
   lastResolvedTimeSource = {
     ...lastResolvedTimeSource,
@@ -733,7 +617,7 @@ function buildTimingPayload(selection, extra = {}) {
     displayTimestampMs,
     displayIso: selection.isoTimestamp || new Date(effectiveTimestamp).toISOString(),
     sourceTime: extra.sourceTime || (sourceDefinition.sourceKey === "gps-xli" ? "gps" : sourceDefinition.sourceKey),
-    sourceCalendar: extra.sourceCalendar || (sourceDefinition.sourceKey === "gps-xli" ? "internet" : "local"),
+    sourceCalendar: extra.sourceCalendar || (sourceDefinition.sourceKey === "gps-xli" ? "gps-receiver" : "local"),
     omanFormattedParts: extra.omanFormattedParts || getOmanDateTimeParts(effectiveTimestamp),
     backendOnline: true,
     receiverConfigured: extra.receiverConfigured !== false,
@@ -1287,7 +1171,6 @@ function buildCachedReceiverStatus(error, { fallbackReason = "receiver-unavailab
 async function readReceiverTime() {
   const startedMonotonicMs = performance.now();
   const startedAtMs = Date.now();
-  const calendarSelectionPromise = timingSourceService.resolveFallbackHierarchy();
   await throttleReceiverAccess({ commandPriority: "high" });
   const connection = await connectToReceiver("F3\r\n", {
     responseMode: "pattern",
@@ -1313,39 +1196,15 @@ async function readReceiverTime() {
     throw lockError;
   }
 
-  const calendarSelection = await calendarSelectionPromise;
-  const calendarTimestamp = Number(calendarSelection.timestamp || Date.now());
-  const gpsTimeParts = parseReceiverTimeOfDay(parsed.receiverTime);
-  const gpsTodSeconds = (gpsTimeParts.hour * 3600) + (gpsTimeParts.minute * 60) + gpsTimeParts.second;
-
-  let mergedTimestampMs = composeMergedTimestampFromCalendar({
-    calendarTimestamp,
-    gpsTimeParts,
-    receiverTimeMode: parsed.receiverTimeMode,
-  });
-  mergedTimestampMs = stabilizeMergedTimestamp({
-    mergedTimestampMs,
-    gpsTodSeconds,
-  });
-
-  mergedClockState = {
-    lastGpsTodSeconds: gpsTodSeconds,
-    lastMergedTimestampMs: mergedTimestampMs,
-  };
-
-  const calendarIsLocalFallback = calendarSelection.sourceKey === "local-clock";
-  const statusText = calendarIsLocalFallback
-    ? "RX receiver time-of-day with local calendar fallback"
-    : "RX receiver time-of-day with external calendar source";
-
-  if (!Number.isFinite(mergedTimestampMs)) {
+  const receiverTimestampMs = Number(parsed.timestamp);
+  if (!Number.isFinite(receiverTimestampMs)) {
     throw new Error("Unable to construct a valid GPS timestamp");
   }
 
   const payload = buildTimingPayload({
     ...getSourceDefinition("gps-xli"),
-    timestamp: mergedTimestampMs,
-    isoTimestamp: new Date(mergedTimestampMs).toISOString(),
+    timestamp: receiverTimestampMs,
+    isoTimestamp: new Date(receiverTimestampMs).toISOString(),
     upstream: CONFIG.gpsHost,
     protocol: "receiver",
   }, {
@@ -1356,26 +1215,24 @@ async function readReceiverTime() {
     isLocked: true,
     gpsLockState: parsed.gpsLockState,
     receiverCommunicationState: connection.loginOk ? "authenticated" : "reachable",
-    statusText,
+    statusText: parsed.statusText,
     sourceTime: "rx-receiver",
-    sourceCalendar: calendarSelection.sourceKey,
-    sourceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,
-    authoritativeTimestampMs: mergedTimestampMs,
-    displayTimestampMs: mergedTimestampMs,
-    receiverTimeUsed: true,
-    receiverCalendarIgnored: true,
+    sourceCalendar: "gps-receiver",
+    sourceTimestampMs: receiverTimestampMs,
+    authoritativeTimestampMs: receiverTimestampMs,
+    displayTimestampMs: receiverTimestampMs,
     receiverTimestampRaw: parsed.timestamp,
     receiverDateRaw: parsed.receiverDate,
     receiverTimeRaw: parsed.receiverTime,
     receiverDoyRaw: Number.isFinite(parsed.receiverDoy) ? parsed.receiverDoy : null,
     receiverYearRaw: parsed.receiverYear ?? null,
     receiverTimeMode: parsed.receiverTimeMode,
-    displayIso: new Date(mergedTimestampMs).toISOString(),
-    omanFormattedParts: getOmanDateTimeParts(mergedTimestampMs),
-    calendarReferenceTimestampMs: Number.isFinite(calendarTimestamp) ? calendarTimestamp : null,
-    calendarSourceKey: calendarSelection?.sourceKey || "local-clock",
-    calendarSourceLabel: calendarSelection?.sourceLabel || "Internal Clock",
-    fallbackReason: calendarIsLocalFallback ? "internet-calendar-unavailable" : null,
+    displayIso: new Date(receiverTimestampMs).toISOString(),
+    omanFormattedParts: getOmanDateTimeParts(receiverTimestampMs),
+    calendarReferenceTimestampMs: receiverTimestampMs,
+    calendarSourceKey: "gps-receiver",
+    calendarSourceLabel: "GPS Receiver",
+    fallbackReason: null,
     freshnessMs: Math.max(0, Date.now() - receiverCapturedAtMs),
     backendCapturedAtMs: receiverCapturedAtMs,
     backendMonotonicCapturedAtMs: startedMonotonicMs,
@@ -1389,7 +1246,6 @@ async function readReceiverTime() {
     hotPathLatencyMs: Math.round(performance.now() - startedMonotonicMs),
     timingDiagnostics: {
       receiverPathMs: Math.round(performance.now() - startedMonotonicMs),
-      calendarSourceKey: calendarSelection?.sourceKey || "local-clock",
       queueWaitMs: connection?.timings?.queueWaitMs ?? null,
       receiverResponseWindowMs: connection?.timings?.receiverResponseWindowMs ?? null,
     },

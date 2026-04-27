@@ -113,16 +113,13 @@ function parseGpsTimeResponse(raw) {
   const hasHoldover = /HOLDOVER/i.test(normalized);
   const explicitUnlocked = /(UNLOCK|NO\s+GPS|ANTENNA\s+FAULT|SEARCHING)/i.test(normalized);
   const explicitLocked = /(LOCKED|TRACKING|GPS\s+LOCK)/i.test(normalized);
-  const defaultDatePattern = /01\/01\/(1999|2000|2026)/.test(dateStr);
   const gpsLockState = explicitLocked
     ? "locked"
     : hasHoldover
       ? "holdover"
       : explicitUnlocked
         ? "unlocked"
-        : defaultDatePattern
-          ? "unknown"
-          : "locked";
+        : "locked";
   const isLocked = gpsLockState === "locked";
   const statusText = gpsLockState === "locked"
     ? "GPS receiver reachable and locked"
