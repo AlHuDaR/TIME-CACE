@@ -11,10 +11,12 @@ const {
   parseGpsReceiverInfo,
   parseGpsPosition,
   parseGpsSatelliteList,
+  parseXliWebSatelliteTable,
   classifyReceiverError,
   createReceiverConnectionManager,
 } = require("./receiver-protocol");
 const { createTimingSourceService, getSourceDefinition } = require("./time-source-service");
+const nodeFetch = require("node-fetch");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -73,6 +75,9 @@ const CONFIG = validateConfig({
   receiverReconnectMaxMs: readEnvNumber("RECEIVER_RECONNECT_MAX_MS", 15000),
   receiverConnectStabilizationMs: readEnvNumber("RECEIVER_CONNECT_STABILIZATION_MS", 120),
   receiverDetailCacheMs: readEnvNumber("GPS_DETAIL_CACHE_MS", 30000),
+  xliWebEnabled: parseBoolean(process.env.XLI_WEB_ENABLED),
+  xliWebBaseUrl: process.env.XLI_WEB_BASE_URL || "",
+  xliGpsSlot: readEnvNumber("XLI_GPS_SLOT", 1),
   authEnabled: process.env.API_AUTH_ENABLED === "true",
   authToken: process.env.API_AUTH_TOKEN || "",
   rateLimitWindowMs: readEnvNumber("RATE_LIMIT_WINDOW_MS", 60000),
@@ -90,6 +95,8 @@ const CONFIG = validateConfig({
   httpDateUrls: Object.freeze((process.env.HTTP_DATE_URLS || "https://www.google.com,https://www.microsoft.com").split(",").map((value) => value.trim()).filter(Boolean)),
   receiverEnabled,
 });
+
+const HTTP_FETCH = typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : nodeFetch;
 
 const GPS_DETAIL_CACHE_MS = CONFIG.receiverDetailCacheMs;
 const GPS_DETAIL_COMMANDS = Object.freeze({
@@ -223,6 +230,10 @@ function createEmptyGpsReceiverDetails(overrides = {}) {
       zMeters: null,
     },
     satellites: [],
+    satelliteTracking: [],
+    satelliteTrackingUpdatedAt: null,
+    satelliteTrackingSource: null,
+    satelliteTrackingPage: null,
     ...overrides,
   };
 }
@@ -236,6 +247,7 @@ function sanitizeGpsReceiverDetails(details) {
   const safeMetadata = isRecord(safeDetails.metadata) ? safeDetails.metadata : {};
   const safePosition = isRecord(safeDetails.position) ? safeDetails.position : {};
   const safeSatellites = Array.isArray(safeDetails.satellites) ? safeDetails.satellites : [];
+  const safeSatelliteTracking = Array.isArray(safeDetails.satelliteTracking) ? safeDetails.satelliteTracking : [];
 
   const metadata = {
     acquisitionState: safeMetadata.acquisitionState ?? null,
@@ -260,9 +272,17 @@ function sanitizeGpsReceiverDetails(details) {
       levelDbw: Number.isFinite(Number(satellite?.levelDbw)) ? Number(satellite.levelDbw) : null,
     }))
     .filter((satellite) => satellite.prn !== null);
+  const satelliteTracking = safeSatelliteTracking
+    .map((satellite) => ({
+      prn: satellite?.prn !== undefined && satellite?.prn !== null ? String(satellite.prn).trim() : null,
+      status: satellite?.status ? String(satellite.status).trim() : null,
+      utilization: satellite?.utilization ? String(satellite.utilization).trim() : null,
+      level: satellite?.level ? String(satellite.level).replace(/\s+/g, " ").trim() : null,
+    }))
+    .filter((satellite) => satellite.prn);
   const hasMetadata = Object.values(metadata).some(Boolean);
   const hasPosition = Object.values(position).some((value) => value !== null);
-  const available = Boolean(safeDetails.available) || hasMetadata || hasPosition || satellites.length > 0;
+  const available = Boolean(safeDetails.available) || hasMetadata || hasPosition || satellites.length > 0 || satelliteTracking.length > 0;
 
   return createEmptyGpsReceiverDetails({
     available,
@@ -271,6 +291,10 @@ function sanitizeGpsReceiverDetails(details) {
     metadata,
     position,
     satellites,
+    satelliteTracking,
+    satelliteTrackingUpdatedAt: typeof safeDetails.satelliteTrackingUpdatedAt === "string" && safeDetails.satelliteTrackingUpdatedAt ? safeDetails.satelliteTrackingUpdatedAt : null,
+    satelliteTrackingSource: typeof safeDetails.satelliteTrackingSource === "string" && safeDetails.satelliteTrackingSource ? safeDetails.satelliteTrackingSource : null,
+    satelliteTrackingPage: typeof safeDetails.satelliteTrackingPage === "string" && safeDetails.satelliteTrackingPage ? safeDetails.satelliteTrackingPage : null,
   });
 }
 
@@ -298,7 +322,56 @@ function mergeGpsReceiverDetails(primary, fallback) {
       zMeters: next.position.zMeters ?? base.position.zMeters,
     },
     satellites: next.satellites.length > 0 ? next.satellites : base.satellites,
+    satelliteTracking: next.satelliteTracking.length > 0 ? next.satelliteTracking : base.satelliteTracking,
+    satelliteTrackingUpdatedAt: next.satelliteTrackingUpdatedAt || base.satelliteTrackingUpdatedAt,
+    satelliteTrackingSource: next.satelliteTrackingSource || base.satelliteTrackingSource,
+    satelliteTrackingPage: next.satelliteTrackingPage || base.satelliteTrackingPage,
   });
+}
+
+async function fetchXliWebSatelliteTelemetry() {
+  if (!CONFIG.xliWebEnabled) {
+    return createEmptyGpsReceiverDetails();
+  }
+
+  const pagePath = `/XLIGPSSatList.html?slot=${CONFIG.xliGpsSlot}`;
+  const url = `${CONFIG.xliWebBaseUrl}${pagePath}`;
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), CONFIG.httpDateTimeoutMs);
+
+  try {
+    const response = await HTTP_FETCH(url, {
+      method: "GET",
+      signal: abortController.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`XLi web telemetry request failed (${response.status})`);
+    }
+
+    const html = await response.text();
+    const parsed = parseXliWebSatelliteTable(html, { slot: CONFIG.xliGpsSlot });
+    return sanitizeGpsReceiverDetails({
+      available: parsed.satelliteTracking.length > 0,
+      satelliteTracking: parsed.satelliteTracking,
+      satelliteTrackingUpdatedAt: new Date().toISOString(),
+      satelliteTrackingSource: parsed.satelliteTrackingSource,
+      satelliteTrackingPage: parsed.satelliteTrackingPage,
+    });
+  } catch (error) {
+    return sanitizeGpsReceiverDetails({
+      available: false,
+      error: error?.name === "AbortError" ? "XLi web telemetry request timed out" : (error?.message || "XLi web telemetry unavailable"),
+      satelliteTracking: [],
+      satelliteTrackingUpdatedAt: null,
+      satelliteTrackingSource: "xli-web",
+      satelliteTrackingPage: pagePath,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function getReceiverManagerSnapshot() {
@@ -1009,8 +1082,21 @@ async function readGpsReceiverDetails() {
     details.satellites = satelliteList.satellites || [];
   }
 
-  if (errors.length > 0 && !details.satellites.length && !Object.values(details.metadata).some(Boolean) && !Object.values(details.position).some((value) => value !== null)) {
-    details.error = errors[0];
+  const webTelemetry = await fetchXliWebSatelliteTelemetry();
+  if (webTelemetry.satelliteTracking.length > 0) {
+    details.satelliteTracking = webTelemetry.satelliteTracking;
+    details.satelliteTrackingUpdatedAt = webTelemetry.satelliteTrackingUpdatedAt;
+    details.satelliteTrackingSource = webTelemetry.satelliteTrackingSource;
+    details.satelliteTrackingPage = webTelemetry.satelliteTrackingPage;
+  } else if (CONFIG.xliWebEnabled) {
+    details.satelliteTracking = [];
+    details.satelliteTrackingUpdatedAt = null;
+    details.satelliteTrackingSource = webTelemetry.satelliteTrackingSource || "xli-web";
+    details.satelliteTrackingPage = webTelemetry.satelliteTrackingPage || `/XLIGPSSatList.html?slot=${CONFIG.xliGpsSlot}`;
+  }
+
+  if (errors.length > 0 && !details.satellites.length && !details.satelliteTracking.length && !Object.values(details.metadata).some(Boolean) && !Object.values(details.position).some((value) => value !== null)) {
+    details.error = webTelemetry.error || errors[0];
   }
 
   return sanitizeGpsReceiverDetails(details);
@@ -1071,6 +1157,12 @@ function sanitizeReceiverStatus(snapshot = lastReceiverSnapshot, overrides = {})
     ...sanitizeGpsReceiverDetails(status.gpsReceiverDetails),
     cacheState: status.telemetryState === "normal" ? "live" : status.telemetryState === "cached" ? "cached" : "retained",
   };
+  status.satelliteTracking = Array.isArray(status.gpsReceiverDetails?.satelliteTracking)
+    ? status.gpsReceiverDetails.satelliteTracking
+    : [];
+  status.satelliteTrackingUpdatedAt = status.gpsReceiverDetails?.satelliteTrackingUpdatedAt || null;
+  status.satelliteTrackingSource = status.gpsReceiverDetails?.satelliteTrackingSource || null;
+  status.satelliteTrackingPage = status.gpsReceiverDetails?.satelliteTrackingPage || null;
   if (status.stale) {
     monitoringMemory.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt || status.checkedAt || new Date().toISOString();
     status.statusBecameStaleAt = monitoringMemory.statusBecameStaleAt;

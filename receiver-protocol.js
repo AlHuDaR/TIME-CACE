@@ -38,11 +38,14 @@ function validateConfig(config) {
     httpsApiTimeoutMs: validateFiniteNumber("HTTPS_TIME_API_TIMEOUT_MS", config.httpsApiTimeoutMs, { min: 100, max: 300000, integer: true }),
     httpDateTimeoutMs: validateFiniteNumber("HTTP_DATE_TIMEOUT_MS", config.httpDateTimeoutMs, { min: 100, max: 300000, integer: true }),
     receiverEnabled: Boolean(config.receiverEnabled),
+    xliWebEnabled: Boolean(config.xliWebEnabled),
+    xliGpsSlot: validateFiniteNumber("XLI_GPS_SLOT", config.xliGpsSlot ?? 1, { min: 1, max: 32, integer: true }),
   };
 
   validated.gpsHost = String(validated.gpsHost || "").trim();
   validated.gpsUsername = String(validated.gpsUsername || "").trim();
   validated.gpsPassword = String(validated.gpsPassword || "").trim();
+  validated.xliWebBaseUrl = String(config.xliWebBaseUrl || "").trim().replace(/\/+$/, "");
 
   if (validated.receiverEnabled) {
     if (!validated.gpsHost) {
@@ -55,6 +58,16 @@ function validateConfig(config) {
 
     if (!validated.gpsPassword) {
       throw new Error("Invalid GPS_PASSWORD: receiver mode requires a password");
+    }
+  }
+
+  if (validated.xliWebEnabled) {
+    if (!validated.xliWebBaseUrl) {
+      throw new Error("Invalid XLI_WEB_BASE_URL: XLI web telemetry requires a base URL");
+    }
+
+    if (!/^https?:\/\//i.test(validated.xliWebBaseUrl)) {
+      throw new Error("Invalid XLI_WEB_BASE_URL: expected an absolute http(s) URL");
     }
   }
 
@@ -312,6 +325,100 @@ function parseGpsSatelliteList(raw) {
   return {
     raw: normalizeReceiverRaw(raw),
     satellites: satellites.sort((left, right) => left.prn - right.prn),
+  };
+}
+
+function decodeHtmlEntities(raw) {
+  return String(raw || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'");
+}
+
+function stripHtmlTags(raw) {
+  return decodeHtmlEntities(String(raw || "").replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSatelliteLevelText(raw) {
+  const match = String(raw || "").match(/(-?\d+(?:\.\d+)?)\s*(?:dBW)?/i);
+  if (!match) {
+    return null;
+  }
+
+  return `${Number(match[1]).toFixed(0)} dBW`;
+}
+
+function parseXliWebSatelliteTable(html, { slot = 1 } = {}) {
+  const sourcePage = `/XLIGPSSatList.html?slot=${slot}`;
+  const page = String(html || "");
+  if (!page.trim()) {
+    throw new Error("XLi satellite page is empty");
+  }
+
+  const tableMatches = Array.from(page.matchAll(/<table\b[\s\S]*?<\/table>/gi));
+  const targetTable = tableMatches.find((entry) => {
+    const text = stripHtmlTags(entry[0]).toLowerCase();
+    return text.includes("tracked satellite list")
+      && text.includes("prn")
+      && text.includes("status")
+      && text.includes("utilization")
+      && text.includes("level");
+  });
+
+  if (!targetTable) {
+    throw new Error("Tracked Satellite List table not found");
+  }
+
+  const rows = Array.from(targetTable[0].matchAll(/<tr\b[\s\S]*?<\/tr>/gi)).map((entry) => entry[0]);
+  if (rows.length === 0) {
+    return {
+      satelliteTracking: [],
+      satelliteTrackingSource: "xli-web",
+      satelliteTrackingPage: sourcePage,
+    };
+  }
+
+  const parsedRows = rows
+    .map((rowHtml) => {
+      const columnCells = Array.from(rowHtml.matchAll(/<t[hd]\b[\s\S]*?<\/t[hd]>/gi))
+        .map((entry) => stripHtmlTags(entry[0]))
+        .filter(Boolean);
+
+      if (columnCells.length < 4) {
+        return null;
+      }
+
+      const headerProbe = columnCells.join(" ").toLowerCase();
+      if (headerProbe.includes("prn") && headerProbe.includes("status") && headerProbe.includes("utilization") && headerProbe.includes("level")) {
+        return null;
+      }
+
+      const firstCell = columnCells[0] || "";
+      const prnMatch = firstCell.match(/(?:prn\s*)?(\d{1,2})\b/i);
+      if (!prnMatch) {
+        return null;
+      }
+
+      const level = normalizeSatelliteLevelText(columnCells[3]);
+      return {
+        prn: String(Number(prnMatch[1])),
+        status: columnCells[1] || null,
+        utilization: columnCells[2] || null,
+        level,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(left.prn) - Number(right.prn));
+
+  return {
+    satelliteTracking: parsedRows,
+    satelliteTrackingSource: "xli-web",
+    satelliteTrackingPage: sourcePage,
   };
 }
 
@@ -973,6 +1080,7 @@ module.exports = {
   parseGpsReceiverInfo,
   parseGpsPosition,
   parseGpsSatelliteList,
+  parseXliWebSatelliteTable,
   classifyReceiverError,
   ReceiverConnectionManager,
   createReceiverConnectionManager,
