@@ -66,9 +66,30 @@ function validateConfig(config) {
       throw new Error("Invalid XLI_WEB_BASE_URL: XLI web telemetry requires a base URL");
     }
 
-    if (!/^https?:\/\//i.test(validated.xliWebBaseUrl)) {
+    let parsedWebUrl = null;
+    try {
+      parsedWebUrl = new URL(validated.xliWebBaseUrl);
+    } catch (error) {
       throw new Error("Invalid XLI_WEB_BASE_URL: expected an absolute http(s) URL");
     }
+
+    if (!/^https?:$/i.test(parsedWebUrl.protocol)) {
+      throw new Error("Invalid XLI_WEB_BASE_URL: expected an absolute http(s) URL");
+    }
+
+    if (!parsedWebUrl.hostname) {
+      throw new Error("Invalid XLI_WEB_BASE_URL: host is required");
+    }
+
+    if (parsedWebUrl.username || parsedWebUrl.password) {
+      throw new Error("Invalid XLI_WEB_BASE_URL: embedded credentials are not allowed");
+    }
+
+    if (parsedWebUrl.search || parsedWebUrl.hash) {
+      throw new Error("Invalid XLI_WEB_BASE_URL: query strings and fragments are not allowed");
+    }
+
+    validated.xliWebBaseUrl = parsedWebUrl.toString().replace(/\/+$/, "");
   }
 
   if (validated.authEnabled && !String(validated.authToken || "").trim()) {
@@ -357,7 +378,11 @@ function parseXliWebSatelliteTable(html, { slot = 1 } = {}) {
   const sourcePage = `/XLIGPSSatList.html?slot=${slot}`;
   const page = String(html || "");
   if (!page.trim()) {
-    throw new Error("XLi satellite page is empty");
+    return {
+      satelliteTracking: [],
+      satelliteTrackingSource: "xli-web",
+      satelliteTrackingPage: sourcePage,
+    };
   }
 
   const tableMatches = Array.from(page.matchAll(/<table\b[\s\S]*?<\/table>/gi));
@@ -371,7 +396,11 @@ function parseXliWebSatelliteTable(html, { slot = 1 } = {}) {
   });
 
   if (!targetTable) {
-    throw new Error("Tracked Satellite List table not found");
+    return {
+      satelliteTracking: [],
+      satelliteTrackingSource: "xli-web",
+      satelliteTrackingPage: sourcePage,
+    };
   }
 
   const rows = Array.from(targetTable[0].matchAll(/<tr\b[\s\S]*?<\/tr>/gi)).map((entry) => entry[0]);
