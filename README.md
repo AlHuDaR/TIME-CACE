@@ -20,44 +20,30 @@ TIME-CACE is the Royal Air Force of Oman Calibration Center (CACE) reference-tim
 
 ## Time Source Priority and Fallback Logic
 
-The backend resolves **calendar date** in this exact order:
+The backend resolves runtime time in this exact order:
 
-1. **NTP (NIST)**
-   - Used by the backend over the internet.
-   - First preferred external calendar source.
+1. **GPS Receiver (XLi)**
+   - Primary authoritative source when reachable and locked.
+   - `F3` response date and time are used directly.
 
-2. **NTP (NPL India)**
-   - Used by the backend over the internet.
-   - Second preferred external calendar source.
+2. **NTP (NIST)**
+   - First backend internet fallback when receiver data cannot be used.
 
-3. **HTTPS Time API (WorldTimeAPI)**
-   - Used by the backend over the internet.
-   - Non-traceable internet calendar fallback.
+3. **NTP (NPL India)**
+   - Second backend internet fallback.
 
-4. **HTTPS Time API (TimeAPI.io)**
-   - Used by the backend over standard HTTPS internet access.
-   - Non-traceable internet calendar fallback.
+4. **HTTPS Time API (WorldTimeAPI)**
+   - Non-traceable backend internet fallback.
 
-5. **HTTP Date Header**
-   - Used by the backend by reading server Date headers from reachable HTTPS/HTTP endpoints.
-   - Lower-confidence internet calendar fallback.
+5. **HTTPS Time API (TimeAPI.io)**
+   - Non-traceable backend internet fallback.
 
-6. **Local Clock**
-   - Used by the backend only as the final emergency fallback if all remote backend sources fail.
+6. **HTTP Date Header**
+   - Lower-confidence backend internet fallback.
+
+7. **Local Clock**
+   - Final backend emergency fallback only if receiver and internet sources fail.
    - If the backend itself is unavailable or returns invalid data, the frontend uses its own emergency fallback chain described below.
-
-### Split-source merge rule (GPS week-rollover workaround)
-
-- The backend always reads and parses receiver `F3` responses.
-- **Time-of-day (`hour`, `minute`, `second`) is taken from the RX receiver only.**
-- **Date (`day`, `month`, `year`) is taken only from the external hierarchy above (or local clock as last fallback).**
-- Receiver time mode is honored during merge (`UTC` receiver mode merges with UTC calendar day; non-UTC mode merges with Oman calendar day).
-- Receiver date fields are preserved for diagnostics (`receiverDateRaw`, `receiverYearRaw`, `receiverDoyRaw`) but are not used as authoritative display date values.
-- `/api/time` returns a merged timestamp (`displayTimestampMs`) plus separation metadata:
-  - `sourceTime` (RX receiver),
-  - `sourceCalendar` / `calendarSourceKey` / `calendarSourceLabel` (external calendar provider),
-  - `receiverTimeUsed: true`,
-  - `receiverCalendarIgnored: true`.
 
 ## Frontend Emergency Fallback Mode
 
@@ -122,7 +108,7 @@ When backend runtime data cannot be used, the frontend now tries:
 - `GET /api/status` — receiver reachability, GPS lock state, active backend source, and monitoring snapshot.
 - `GET /api/time` — authoritative runtime time using the full source priority chain.
 - `GET /api/time/internet` — backend fallback-only resolver that skips the receiver and uses the internet/local hierarchy.
-- `POST /api/time/set` — writes time to the receiver using either the local workstation time or the backend fallback hierarchy.
+- `POST /api/time/set` — manual administrative endpoint to write time to the receiver (not required for normal runtime operation).
 
 ## Key implementation files
 
