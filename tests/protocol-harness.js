@@ -13,6 +13,7 @@ const {
   parseGpsReceiverInfo,
   parseGpsPosition,
   parseGpsSatelliteList,
+  parseXliWebSatelliteTable,
   classifyReceiverError,
   createReceiverConnectionManager,
   connectToGPS,
@@ -249,6 +250,24 @@ async function runTests() {
   assert.equal(satellites.satellites[0].prn, 1);
   assert.equal(satellites.satellites[0].utilization, 'Current');
   assert.equal(satellites.satellites[1].utilization, 'Tracked');
+
+  const xliSatelliteHtml = `
+    <html><body>
+      <table>
+        <tr><th>Tracked Satellite List</th></tr>
+        <tr><th>PRN</th><th>Status</th><th>Utilization</th><th>Level</th></tr>
+        <tr><td><span>PRN 5</span></td><td><b>Good</b></td><td>Current</td><td>-160dBW</td></tr>
+        <tr><td>11</td><td>Good</td><td>Current</td><td>-154 dBW</td></tr>
+      </table>
+    </body></html>
+  `;
+  const webTable = parseXliWebSatelliteTable(xliSatelliteHtml, { slot: 1 });
+  assert.equal(webTable.satelliteTracking.length, 2);
+  assert.equal(webTable.satelliteTracking[0].prn, '5');
+  assert.equal(webTable.satelliteTracking[0].status, 'Good');
+  assert.equal(webTable.satelliteTracking[0].utilization, 'Current');
+  assert.equal(webTable.satelliteTracking[0].level, '-160 dBW');
+  assert.equal(webTable.satelliteTrackingPage, '/XLIGPSSatList.html?slot=1');
 
   const ack = parseReceiverAcknowledgement('\0\0OK\r\n');
   assert.equal(ack.acknowledged, true);

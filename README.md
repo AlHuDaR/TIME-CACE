@@ -11,6 +11,7 @@ TIME-CACE is the Royal Air Force of Oman Calibration Center (CACE) reference-tim
 - Receiver logic remains backend-only and uses the configured LAN / receiver connection.
 - The backend keeps a **persistent receiver session** whenever possible and serializes receiver commands through one queue.
 - Receiver telemetry uses a **last-known-good cache** so brief receiver/network churn does not immediately blank valid dashboard data.
+- Optional XLi web telemetry can be polled by the backend for receiver detail cards (for example, the tracked satellite table), without changing the authoritative time-source path.
 
 ## Pages and routes
 
@@ -179,6 +180,9 @@ Then open either:
 | `GPS_PORT` | No | Receiver TCP port. Default: `23` |
 | `GPS_USERNAME` | Conditional | Receiver username |
 | `GPS_PASSWORD` | Conditional | Receiver password |
+| `XLI_WEB_ENABLED` | No | Enables backend HTTP polling of XLi web telemetry pages |
+| `XLI_WEB_BASE_URL` | Conditional | Base URL for XLi web telemetry when enabled (for example `http://192.168.50.2`) |
+| `XLI_GPS_SLOT` | No | Receiver GPS slot used for web telemetry (`/XLIGPSSatList.html?slot=<value>`) |
 | `ALLOWED_ORIGIN` | Recommended | Allowed frontend origin(s) for CORS |
 | `SERVE_STATIC` | No | Serve frontend files from Express when `true` |
 | `NODE_ENV` | No | Node environment |

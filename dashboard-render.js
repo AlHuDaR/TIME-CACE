@@ -463,7 +463,9 @@
       this.lastGpsDetailsSignature = signature;
       const metadata = details.metadata || {};
       const position = details.position || {};
-      const satellites = Array.isArray(details.satellites) ? details.satellites : [];
+      const satellites = Array.isArray(receiverStatus?.satelliteTracking) && receiverStatus.satelliteTracking.length > 0
+        ? receiverStatus.satelliteTracking
+        : (Array.isArray(details.satelliteTracking) ? details.satelliteTracking : []);
 
       const telemetryState = receiverStatus?.telemetryState || "unavailable";
 
@@ -511,11 +513,11 @@
     }
 
     formatLevelDbw(value, telemetryState = "unavailable") {
-      if (!Number.isFinite(Number(value))) {
+      if (!value || !String(value).trim()) {
         return this.getUnavailableDetailLabel(telemetryState);
       }
 
-      return `${Number(value).toFixed(1)} dBW`;
+      return String(value).replace(/\s+/g, " ").trim();
     }
 
     renderSatelliteTable(satellites, telemetryState = "unavailable") {
@@ -528,9 +530,7 @@
         const cell = document.createElement("td");
         cell.colSpan = 4;
         cell.className = "gps-satellite-empty";
-        cell.textContent = telemetryState === "unavailable"
-          ? "Satellite tracking data is unavailable."
-          : "Recent satellite tracking data is being retained.";
+        cell.textContent = "Satellite tracking data is unavailable from the receiver.";
         row.append(cell);
         this.elements.gpsSatelliteTableBody.replaceChildren(row);
         return;
@@ -543,7 +543,7 @@
             satellite.prn,
             this.formatDetailValue(satellite.status, telemetryState),
             this.formatDetailValue(satellite.utilization, telemetryState),
-            this.formatLevelDbw(satellite.levelDbw, telemetryState),
+            this.formatLevelDbw(satellite.level, telemetryState),
           ].forEach((value) => {
             const cell = document.createElement("td");
             cell.textContent = String(value);
