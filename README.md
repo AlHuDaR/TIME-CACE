@@ -12,12 +12,14 @@ TIME-CACE is the Royal Air Force of Oman Calibration Center (CACE) reference-tim
 - The backend keeps a **persistent receiver session** whenever possible and serializes receiver commands through one queue.
 - Receiver telemetry uses a **last-known-good cache** so brief receiver/network churn does not immediately blank valid dashboard data.
 - Optional XLi web telemetry can be polled by the backend for receiver detail cards (for example, the tracked satellite table), without changing the authoritative time-source path.
+- Public-page polling is intentionally controlled (not aggressive) so `/api/time` and `/api/status` remain stable while clocks still render smoothly.
 
 ## Pages and routes
 
-- `/official-time` — the single supported watch/presentation page.
+- `/official-time` — primary official watch/presentation page.
+- `/official-digital-time` — official digital time view with synchronized world references.
 - `/dashboard` — operational dashboard with receiver status, source cards, controls, and monitoring.
-- `/` — redirects to `/official-time` when served by Express and to `/official-time.html` in Netlify.
+- `/` — redirects to `/official-time` when served by Express.
 
 ## Time Source Priority and Fallback Logic
 
