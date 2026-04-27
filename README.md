@@ -56,22 +56,22 @@ The frontend keeps the backend-first design intact:
 
 When backend runtime data cannot be used, the frontend now tries:
 
-1. **HTTPS TIME API (WorldTimeAPI)**
-2. **HTTPS TIME API (TimeAPI.io)**
-3. **INTERNET/HTTP DATE**
-4. **BROWSER LOCAL CLOCK**
+1. **HTTPS Time API (WorldTimeAPI)**
+2. **HTTPS Time API (TimeAPI.io)**
+3. **HTTP Date**
+4. **BROWSER Local Clock**
 
 ### Frontend emergency labels
 
-- `HTTPS TIME API (WorldTimeAPI)` / `Internet fallback active`
-- `HTTPS TIME API (TimeAPI.io)` / `Internet fallback active`
-- `INTERNET/HTTP DATE` / `Internet fallback active`
-- `BROWSER LOCAL CLOCK` / `Browser emergency fallback active`
+- `HTTPS Time API (WorldTimeAPI)` / `Fallback Active`
+- `HTTPS Time API (TimeAPI.io)` / `Fallback Active`
+- `HTTP Date` / `Fallback Active`
+- `BROWSER Local Clock` / `Local Emergency Mode`
 
 ### Interpretation notes
 
-- `LOCAL CLOCK` means the **backend** is still online and explicitly selected its own workstation/local emergency fallback.
-- `BROWSER LOCAL CLOCK` means the **frontend** could not get usable backend timing and also could not get usable browser-accessible internet time.
+- `Local Clock` means the **backend** is still online and explicitly selected its own workstation/local emergency fallback.
+- `BROWSER Local Clock` means the **frontend** could not get usable backend timing and also could not get usable browser-accessible internet time.
 - Browser fallbacks are intentionally labeled differently so they are never confused with GPS, NTP, or backend-selected sources.
 
 ### Browser / CORS limitations
@@ -86,22 +86,23 @@ When backend runtime data cannot be used, the frontend now tries:
 
 ### Source labels
 
-- `GPS RECEIVER (XLi)`
+- `GPS Receiver (XLi)`
 - `NTP (NIST)`
 - `NTP (NPL India)`
-- `HTTPS TIME API (WorldTimeAPI)`
-- `HTTPS TIME API (TimeAPI.io)`
-- `INTERNET/HTTP DATE`
-- `LOCAL CLOCK`
-- `BROWSER LOCAL CLOCK`
+- `HTTPS Time API (WorldTimeAPI)`
+- `HTTPS Time API (TimeAPI.io)`
+- `HTTP Date`
+- `Local Clock`
+- `Browser Local Clock`
 
 ### Status wording
 
-- `Primary reference active`
-- `Traceable fallback active`
-- `Internet fallback active`
-- `Emergency local fallback active`
-- `Browser emergency fallback active`
+- `Normal`
+- `Degraded`
+- `Holdover`
+- `Fallback Active`
+- `Receiver Unavailable`
+- `Local Emergency Mode`
 
 ## Backend API endpoints
 
@@ -222,11 +223,12 @@ Then open either:
 ## Frontend behavior notes
 
 - When backend JSON is valid, the frontend trusts the backend-selected `sourceKey`, `sourceLabel`, `status`, and monitoring metadata.
+- Frontend sync polling is intentionally controlled: `/api/time` uses adaptive polling (typically 5–6 seconds in primary-reference mode) while `/api/status` polls less frequently (default 12 seconds).
 - Receiver unreachability **does not** mean the backend is offline; the backend may still select a valid fallback source.
 - Receiver telemetry can now be surfaced as `Normal`, `Cached`, `Reconnecting`, or `Unavailable` without wiping the last valid telemetry immediately.
 - Brief receiver churn keeps the last-known-good acquisition state, antenna state, version data, position, and satellite data until the stale threshold is exceeded.
-- `LOCAL CLOCK` appears only when the backend explicitly selects it.
-- `BROWSER LOCAL CLOCK` appears only when `/api/time` cannot provide valid backend data and the browser-accessible emergency internet hierarchy also fails.
+- `Local Clock` appears only when the backend explicitly selects it.
+- `Browser Local Clock` appears only when `/api/time` cannot provide valid backend data and the browser-accessible emergency internet hierarchy also fails.
 - Frontend emergency internet labels indicate a browser-side continuity mode, not a traceable or authoritative replacement for backend GPS/NTP selection.
 - The UI keeps the dashboard and official-time pages aligned with the backend model while updating source cards, lock state messaging, fallback wording, and the official analog clock.
 - Legacy dashboard watch modes have been removed; `/official-time` is the only maintained watch view.

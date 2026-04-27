@@ -69,7 +69,7 @@ const CONFIG = validateConfig({
   nodeEnv: process.env.NODE_ENV || "development",
   minConnectionIntervalMs: readEnvNumber("MIN_CONNECTION_INTERVAL_MS", 250),
   requestTimeoutMs: readEnvNumber("REQUEST_TIMEOUT_MS", 3000),
-  receiverStatusCacheMs: readEnvNumber("RECEIVER_STATUS_CACHE_MS", 1500),
+  receiverStatusCacheMs: readEnvNumber("RECEIVER_STATUS_CACHE_MS", 4000),
   statusStaleMs: readEnvNumber("STATUS_STALE_MS", 45000),
   receiverReconnectInitialMs: readEnvNumber("RECEIVER_RECONNECT_INITIAL_MS", 1000),
   receiverReconnectMaxMs: readEnvNumber("RECEIVER_RECONNECT_MAX_MS", 15000),
@@ -128,7 +128,7 @@ let lastReceiverSnapshot = {
   loginOk: false,
   isLocked: false,
   gpsLockState: "unknown",
-  statusText: getSourceDefinition('local-clock').status,
+    statusText: getSourceDefinition('local-clock').status,
   currentSource: 'local-clock',
   currentSourceLabel: getSourceDefinition('local-clock').sourceLabel,
   sourceKey: 'local-clock',
@@ -765,7 +765,7 @@ function createLocalFallback(extra = {}) {
     roundTripMs: null,
     resolutionErrors: extra.resolutionErrors || [],
   }, {
-    statusText: extra.statusText || 'Holdover (using last valid sync)',
+    statusText: extra.statusText || 'Local Emergency Mode',
     fallbackReason: extra.fallbackReason || 'all-remote-sources-unavailable',
     lastError: extra.lastError || null,
     stale: true,
@@ -1230,7 +1230,7 @@ function buildReceiverFailureContext(error, { fallbackReason = "receiver-unavail
       ? "Receiver reconnecting"
       : receiverCommunicationState === "auth-recovery"
         ? "Receiver reachable; authentication recovery in progress"
-      : classified.statusText,
+        : "Primary GPS receiver is temporarily unavailable. Backup time source is active.",
   };
 }
 
@@ -1439,6 +1439,41 @@ async function readReceiverStatusCached({ force = false } = {}) {
 
   if (!force && receiverStatusCache.promise) {
     return receiverStatusCache.promise;
+  }
+
+  if (
+    !force
+    && lastFastRxTimePayload
+    && Number.isFinite(lastFastRxTimePayload.backendCapturedAtMs)
+    && (Date.now() - lastFastRxTimePayload.backendCapturedAtMs) <= Math.max(2000, CONFIG.receiverStatusCacheMs)
+  ) {
+    const gpsReceiverDetails = await readGpsReceiverDetailsCached(lastReceiverSnapshot, { force: false });
+    const status = sanitizeReceiverStatus({
+      ...lastReceiverSnapshot,
+      receiverReachable: lastFastRxTimePayload.receiverReachable,
+      loginOk: lastFastRxTimePayload.loginOk,
+      isLocked: lastFastRxTimePayload.isLocked,
+      gpsLockState: lastFastRxTimePayload.gpsLockState,
+      statusText: lastFastRxTimePayload.statusText,
+      currentSource: lastFastRxTimePayload.currentSource,
+      currentSourceLabel: lastFastRxTimePayload.currentSourceLabel,
+      sourceKey: lastFastRxTimePayload.sourceKey,
+      sourceLabel: lastFastRxTimePayload.sourceLabel,
+      sourceTier: lastFastRxTimePayload.sourceTier,
+      authoritative: lastFastRxTimePayload.authoritative,
+      traceable: lastFastRxTimePayload.traceable,
+      fallback: lastFastRxTimePayload.fallback,
+      receiverCommunicationState: lastFastRxTimePayload.loginOk ? "authenticated" : "reachable",
+      lastError: null,
+      gpsReceiverDetails,
+    }, { dataState: "live", fetchedFromCache: true });
+
+    receiverStatusCache = {
+      promise: null,
+      data: status,
+      expiresAt: Date.now() + CONFIG.receiverStatusCacheMs,
+    };
+    return status;
   }
 
   receiverStatusCache.promise = readReceiverTime()
