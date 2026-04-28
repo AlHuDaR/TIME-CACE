@@ -133,6 +133,14 @@ When backend runtime data cannot be used, the frontend now tries:
 
 ## Installation and startup
 
+Before starting, configure the XLi web telemetry keys in `.env` when you want receiver detail cards (satellite table and board metadata):
+
+```env
+XLI_WEB_ENABLED=true
+XLI_WEB_BASE_URL=http://192.168.50.2
+XLI_GPS_SLOT=1
+```
+
 ### Windows Command Prompt
 
 ```bat

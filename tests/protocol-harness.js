@@ -19,6 +19,7 @@ const {
   connectToGPS,
   validateConfig,
 } = require('../receiver-protocol');
+const { createGpsDetailEligibilitySnapshot } = require('../gps-proxy');
 
 async function withTcpServer(handler, run) {
   const server = net.createServer(handler);
@@ -232,6 +233,38 @@ async function runTests() {
   assert.equal(receiverInfo.fpgaVersion, '2.30');
   assert.equal(receiverInfo.antennaStatus, 'OK');
   assert.equal(receiverInfo.acquisitionState, 'DYNAMIC MODE');
+
+  const xliReceiverInfo = parseGpsReceiverInfo(`
+    F119 B1 S
+    GPS PART NUMBER 87-8028-02
+    SOFTWARE 230-01510-04v1.20
+    FPGA 184-8024v1
+    GPS STATUS LOCKED
+    GPS ANTENNA OK
+    GPS ACQUISITION STATE: TRAIM ACTIVE
+  `);
+  assert.equal(xliReceiverInfo.boardPartNumber, '87-8028-02');
+  assert.equal(xliReceiverInfo.softwareVersion, '230-01510-04v1.20');
+  assert.equal(xliReceiverInfo.fpgaVersion, '184-8024v1');
+  assert.equal(xliReceiverInfo.antennaStatus, 'OK');
+  assert.equal(xliReceiverInfo.acquisitionState, 'TRAIM ACTIVE');
+
+  const detailEligibilitySnapshot = createGpsDetailEligibilitySnapshot({
+    receiverConfigured: true,
+    receiverReachable: false,
+    loginOk: false,
+    gpsLockState: 'unknown',
+    receiverCommunicationState: 'unreachable',
+  }, {
+    receiverReachable: true,
+    loginOk: true,
+    gpsLockState: 'locked',
+  });
+  assert.equal(detailEligibilitySnapshot.receiverConfigured, true);
+  assert.equal(detailEligibilitySnapshot.receiverReachable, true);
+  assert.equal(detailEligibilitySnapshot.loginOk, true);
+  assert.equal(detailEligibilitySnapshot.gpsLockState, 'locked');
+  assert.equal(detailEligibilitySnapshot.receiverCommunicationState, 'authenticated');
 
   const llaPosition = parseGpsPosition('F50 B1 LLA N23d35\'44.1" E058d24\'12.3" 42.5m');
   assert.equal(llaPosition.mode, 'lla');
