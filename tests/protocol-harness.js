@@ -235,7 +235,7 @@ async function runTests() {
   assert.equal(receiverInfo.acquisitionState, 'DYNAMIC MODE');
 
   const xliReceiverInfo = parseGpsReceiverInfo(`
-    F119 B1 S
+    F119 B1:
     GPS PART NUMBER 87-8028-02
     SOFTWARE 230-01510-04v1.20
     FPGA 184-8024v1
