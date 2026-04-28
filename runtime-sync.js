@@ -162,6 +162,7 @@
           boardPartNumber: null,
           softwareVersion: null,
           fpgaVersion: null,
+          gpsStatus: null,
         },
         position: {
           latitude: null,

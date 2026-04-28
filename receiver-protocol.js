@@ -229,6 +229,9 @@ function parseGpsReceiverInfo(raw) {
   };
 
   for (const line of lines) {
+    if (/^F119\s+B\d+:?$/i.test(line)) {
+      continue;
+    }
     const contentLine = line.replace(/^F\d+\s+B\d+\s*:?\s*/i, "").replace(/^F\d+\s*:?\s*/i, "").trim();
     if (!contentLine) {
       continue;
@@ -254,7 +257,7 @@ function parseGpsReceiverInfo(raw) {
       continue;
     }
 
-    maybeAssign(contentLine, /^GPS\s+ACQUISITION\s+STATE\s*[:#]?\s*(.+)$/i, "acquisitionState");
+    maybeAssign(contentLine, /^GPS\s+ACQUISITION\s+STATE:?\s+(.+)$/i, "acquisitionState");
   }
 
   const normalized = normalizeReceiverRaw(raw)
@@ -378,38 +381,30 @@ function parseGpsSatelliteList(raw) {
     .filter(Boolean);
 
   const satellites = [];
-  const utilizationWords = new Set(["CURRENT", "TRACKED", "TRACKING", "USED", "UTILIZED"]);
 
   for (const line of lines) {
-    const match = line.match(/(?:PRN\s*)?(\d{1,2})\b\s+(.+?)\s+(-?\d+(?:\.\d+)?)\s*dBW\b/i);
+    const match = line.match(/^F60\s+B\d+\s+prn(\d+)\s+(unknown|good|bad)(?:\s+(current|tracked|not used|notused))?(?:\s+(-?\d+)\s*dBW)?/i);
     if (!match) {
       continue;
     }
 
     const prn = Number(match[1]);
-    const middleTokens = match[2]
-      .trim()
-      .split(/\s+/)
-      .map((token) => token.toUpperCase())
-      .filter(Boolean);
-    const statusTokens = middleTokens.filter((token) => !utilizationWords.has(token));
-    const utilization = [];
-
-    if (middleTokens.includes("CURRENT")) {
-      utilization.push("Current");
-    }
-    if (middleTokens.includes("TRACKED") || middleTokens.includes("TRACKING")) {
-      utilization.push("Tracked");
-    }
-    if (middleTokens.includes("USED") || middleTokens.includes("UTILIZED")) {
-      utilization.push("Used");
-    }
+    const health = String(match[2] || "").toLowerCase();
+    const usageToken = String(match[3] || "").toLowerCase().trim();
+    const usage = usageToken === "notused"
+      ? "not used"
+      : usageToken || null;
+    const signalDbw = Number.isFinite(Number(match[4])) ? Number(match[4]) : null;
 
     satellites.push({
       prn,
-      status: titleCaseWords(statusTokens) || "Unknown",
-      utilization: utilization.join(" + ") || "Available",
-      levelDbw: Number(match[3]),
+      health,
+      usage,
+      signalDbw,
+      status: health,
+      utilization: usage,
+      levelDbw: signalDbw,
+      level: signalDbw,
       raw: normalizeReceiverRaw(line),
     });
   }

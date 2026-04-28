@@ -101,11 +101,12 @@ const HTTP_FETCH = typeof globalThis.fetch === "function" ? globalThis.fetch.bin
 const GPS_DETAIL_CACHE_MS = CONFIG.receiverDetailCacheMs;
 const gpsSlotCommandToken = `B${CONFIG.xliGpsSlot}`;
 const GPS_DETAIL_COMMANDS = Object.freeze({
-  receiverInfo: Object.freeze([`F119 ${gpsSlotCommandToken} S\r\n`, "F119 B1 S\r\n", "F119 S\r\n", "F119\r\n"]),
+  receiverInfo: Object.freeze([`F119 ${gpsSlotCommandToken} S\r\n`, "F119 B1 S\r\n"]),
   gpsMode: Object.freeze([`F53 ${gpsSlotCommandToken}\r\n`, "F53 B1\r\n", "F53\r\n"]),
   positionLla: Object.freeze([`F50 ${gpsSlotCommandToken} LLA\r\n`, "F50 B1 LLA\r\n", "F50 LLA\r\n", `F50 ${gpsSlotCommandToken}\r\n`, "F50 B1\r\n", "F50\r\n"]),
   positionXyz: Object.freeze([`F50 ${gpsSlotCommandToken} XYZ\r\n`, "F50 B1 XYZ\r\n", "F50 XYZ\r\n", `F50 ${gpsSlotCommandToken}\r\n`, "F50 B1\r\n", "F50\r\n"]),
-  satellites: Object.freeze([`F60 ${gpsSlotCommandToken} ALL\r\n`, "F60 B1 ALL\r\n", "F60 ALL\r\n"]),
+  satellitesCurrent: Object.freeze([`F60 ${gpsSlotCommandToken} CURRENT\r\n`, "F60 B1 CURRENT\r\n"]),
+  satellitesTracked: Object.freeze([`F60 ${gpsSlotCommandToken} TRACKED\r\n`, "F60 B1 TRACKED\r\n"]),
 });
 
 const publicPath = path.resolve(__dirname);
@@ -222,6 +223,7 @@ function createEmptyGpsReceiverDetails(overrides = {}) {
       boardPartNumber: null,
       softwareVersion: null,
       fpgaVersion: null,
+      gpsStatus: null,
     },
     position: {
       latitude: null,
@@ -257,6 +259,7 @@ function sanitizeGpsReceiverDetails(details) {
     boardPartNumber: safeMetadata.boardPartNumber ?? null,
     softwareVersion: safeMetadata.softwareVersion ?? null,
     fpgaVersion: safeMetadata.fpgaVersion ?? null,
+    gpsStatus: safeMetadata.gpsStatus ?? null,
   };
   const position = {
     latitude: safePosition.latitude ?? null,
@@ -269,19 +272,26 @@ function sanitizeGpsReceiverDetails(details) {
   const satellites = safeSatellites
     .map((satellite) => ({
       prn: Number.isFinite(Number(satellite?.prn)) ? Number(satellite.prn) : null,
+      health: satellite?.health ? String(satellite.health).trim().toLowerCase() : null,
+      usage: satellite?.usage ? String(satellite.usage).trim().toLowerCase() : null,
+      signalDbw: Number.isFinite(Number(satellite?.signalDbw)) ? Number(satellite.signalDbw) : null,
       status: satellite?.status ? String(satellite.status) : null,
       utilization: satellite?.utilization ? String(satellite.utilization) : null,
       levelDbw: Number.isFinite(Number(satellite?.levelDbw)) ? Number(satellite.levelDbw) : null,
+      level: Number.isFinite(Number(satellite?.level)) ? Number(satellite.level) : null,
     }))
     .filter((satellite) => satellite.prn !== null);
   const satelliteTracking = safeSatelliteTracking
     .map((satellite) => ({
-      prn: satellite?.prn !== undefined && satellite?.prn !== null ? String(satellite.prn).trim() : null,
+      prn: Number.isFinite(Number(satellite?.prn)) ? Number(satellite.prn) : null,
+      health: satellite?.health ? String(satellite.health).trim().toLowerCase() : null,
+      usage: satellite?.usage ? String(satellite.usage).trim().toLowerCase() : null,
+      signalDbw: Number.isFinite(Number(satellite?.signalDbw)) ? Number(satellite.signalDbw) : null,
       status: satellite?.status ? String(satellite.status).trim() : null,
       utilization: satellite?.utilization ? String(satellite.utilization).trim() : null,
       level: satellite?.level ? String(satellite.level).replace(/\s+/g, " ").trim() : null,
     }))
-    .filter((satellite) => satellite.prn);
+    .filter((satellite) => satellite.prn !== null);
   const hasMetadata = Object.values(metadata).some(Boolean);
   const hasPosition = Object.values(position).some((value) => value !== null);
   const available = Boolean(safeDetails.available) || hasMetadata || hasPosition || satellites.length > 0 || satelliteTracking.length > 0;
@@ -314,6 +324,7 @@ function mergeGpsReceiverDetails(primary, fallback) {
       boardPartNumber: next.metadata.boardPartNumber ?? base.metadata.boardPartNumber,
       softwareVersion: next.metadata.softwareVersion ?? base.metadata.softwareVersion,
       fpgaVersion: next.metadata.fpgaVersion ?? base.metadata.fpgaVersion,
+      gpsStatus: next.metadata.gpsStatus ?? base.metadata.gpsStatus,
     },
     position: {
       latitude: next.position.latitude ?? base.position.latitude,
@@ -1087,6 +1098,7 @@ async function readGpsReceiverDetails() {
       boardPartNumber: receiverInfo.boardPartNumber || null,
       softwareVersion: receiverInfo.softwareVersion || null,
       fpgaVersion: receiverInfo.fpgaVersion || null,
+      gpsStatus: receiverInfo.gpsStatus || null,
     };
   } else if (gpsMode?.mode) {
     details.metadata.acquisitionState = gpsMode.mode;
@@ -1106,9 +1118,17 @@ async function readGpsReceiverDetails() {
     details.position.zMeters = Number.isFinite(xyzPosition.zMeters) ? xyzPosition.zMeters : null;
   }
 
-  const satelliteList = await readTask('satellites', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.satellites, parseGpsSatelliteList, { timeoutMs: CONFIG.requestTimeoutMs + 2500 }));
-  if (satelliteList) {
-    details.satellites = satelliteList.satellites || [];
+  const satelliteCurrentList = await readTask('satellitesCurrent', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.satellitesCurrent, parseGpsSatelliteList, { timeoutMs: CONFIG.requestTimeoutMs + 2500 }));
+  if (satelliteCurrentList) {
+    details.satellites = satelliteCurrentList.satellites || [];
+  }
+
+  const satelliteTrackedList = await readTask('satellitesTracked', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.satellitesTracked, parseGpsSatelliteList, { timeoutMs: CONFIG.requestTimeoutMs + 2500 }));
+  if (satelliteTrackedList?.satellites?.length) {
+    details.satelliteTracking = satelliteTrackedList.satellites;
+    details.satelliteTrackingUpdatedAt = new Date().toISOString();
+    details.satelliteTrackingSource = "receiver-command";
+    details.satelliteTrackingPage = `F60 ${gpsSlotCommandToken} TRACKED`;
   }
 
   const webTelemetry = await fetchXliWebSatelliteTelemetry();
@@ -1132,6 +1152,14 @@ async function readGpsReceiverDetails() {
 }
 
 async function readGpsReceiverDetailsCached(snapshot = lastReceiverSnapshot, { force = false } = {}) {
+  if (force) {
+    gpsDetailCache = {
+      expiresAt: 0,
+      promise: null,
+      data: null,
+    };
+  }
+
   if (snapshot.receiverConfigured === false || !snapshot.receiverReachable || !snapshot.loginOk) {
     return sanitizeGpsReceiverDetails(
       gpsDetailCache.data

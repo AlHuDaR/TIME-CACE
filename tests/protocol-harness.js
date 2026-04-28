@@ -246,8 +246,12 @@ async function runTests() {
   assert.equal(xliReceiverInfo.boardPartNumber, '87-8028-02');
   assert.equal(xliReceiverInfo.softwareVersion, '230-01510-04v1.20');
   assert.equal(xliReceiverInfo.fpgaVersion, '184-8024v1');
+  assert.equal(xliReceiverInfo.gpsStatus, 'LOCKED');
   assert.equal(xliReceiverInfo.antennaStatus, 'OK');
   assert.equal(xliReceiverInfo.acquisitionState, 'TRAIM ACTIVE');
+
+  const xliReceiverInfoHeaderOnly = parseGpsReceiverInfo('F119 B1:\r\n');
+  assert.equal(xliReceiverInfoHeaderOnly.acquisitionState, null);
 
   const detailEligibilitySnapshot = createGpsDetailEligibilitySnapshot({
     receiverConfigured: true,
@@ -278,11 +282,49 @@ async function runTests() {
   assert.equal(xyzPosition.yMeters, 5388121.5);
   assert.equal(xyzPosition.zMeters, 2579210.2);
 
-  const satellites = parseGpsSatelliteList('PRN 01 GOOD CURRENT -152.5 dBW\r\nPRN 12 GOOD TRACKED -148.0 dBW\r\n');
-  assert.equal(satellites.satellites.length, 2);
-  assert.equal(satellites.satellites[0].prn, 1);
-  assert.equal(satellites.satellites[0].utilization, 'Current');
-  assert.equal(satellites.satellites[1].utilization, 'Tracked');
+  const satellitesCurrent = parseGpsSatelliteList(`
+    F60 B1 CURRENT
+    F60 B1 prn5 good current -159dBW
+    F60 B1 prn6 good current -162dBW
+    F60 B1 prn11 good current -152dBW
+    F60 B1 prn12 good current -151dBW
+    F60 B1 prn19 good current -157dBW
+    F60 B1 prn21 good current -159dBW
+    F60 B1 prn24 good current -159dBW
+    F60 B1 prn25 good current -158dBW
+    F60 B1 prn29 good current -154dBW
+  `);
+  assert.equal(satellitesCurrent.satellites.length, 9);
+  assert.deepEqual(satellitesCurrent.satellites[0], {
+    prn: 5,
+    health: 'good',
+    usage: 'current',
+    signalDbw: -159,
+    status: 'good',
+    utilization: 'current',
+    levelDbw: -159,
+    level: -159,
+    raw: 'F60 B1 prn5 good current -159dBW',
+  });
+
+  const satellitesTracked = parseGpsSatelliteList(`
+    junk noise
+    F60 B1 TRACKED
+    F60 B1 prn5 good tracked -159dBW
+    F60 B1 prn6 good tracked -162dBW
+    F60 B1 prn11 good tracked -152dBW
+    F60 B1 prn12 good tracked -151dBW
+    F60 B1 prn19 good tracked -158dBW
+    F60 B1 prn21 good tracked -158dBW
+    F60 B1 prn24 good tracked -160dBW
+    F60 B1 prn25 good tracked -158dBW
+    F60 B1 prn29 good tracked -154dBW
+    incomplete fragment F60
+  `);
+  assert.equal(satellitesTracked.satellites.length, 9);
+  assert.equal(satellitesTracked.satellites[8].prn, 29);
+  assert.equal(satellitesTracked.satellites[8].usage, 'tracked');
+  assert.equal(satellitesTracked.satellites[8].signalDbw, -154);
 
   const xliSatelliteHtml = `
     <html><body>
