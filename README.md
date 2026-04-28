@@ -141,6 +141,8 @@ XLI_WEB_BASE_URL=http://192.168.50.2
 XLI_GPS_SLOT=1
 ```
 
+The `.env.example` defaults already include those values so a copied `.env` starts with a working XLi web telemetry baseline.
+
 ### Windows Command Prompt
 
 ```bat

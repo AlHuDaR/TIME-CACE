@@ -191,10 +191,14 @@ function parseVersionToken(raw, pattern) {
 }
 
 function parseGpsReceiverInfo(raw) {
-  const normalized = normalizeReceiverRaw(raw);
-  if (!normalized) {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .map((line) => normalizeReceiverLine(line))
+    .filter(Boolean);
+
+  if (lines.length === 0) {
     return {
-      raw: normalized,
+      raw: "",
       boardPartNumber: null,
       softwareVersion: null,
       fpgaVersion: null,
@@ -203,6 +207,59 @@ function parseGpsReceiverInfo(raw) {
       acquisitionState: null,
     };
   }
+
+  const metadata = {
+    boardPartNumber: null,
+    softwareVersion: null,
+    fpgaVersion: null,
+    gpsStatus: null,
+    antennaStatus: null,
+    acquisitionState: null,
+  };
+
+  const maybeAssign = (line, pattern, key) => {
+    const match = line.match(pattern);
+    if (!match) {
+      return false;
+    }
+
+    const value = String(match[1] || "").trim();
+    metadata[key] = value || null;
+    return true;
+  };
+
+  for (const line of lines) {
+    const contentLine = line.replace(/^F\d+\s+B\d+\s*:?\s*/i, "").replace(/^F\d+\s*:?\s*/i, "").trim();
+    if (!contentLine) {
+      continue;
+    }
+
+    if (maybeAssign(contentLine, /^GPS\s+PART\s+NUMBER\s*[:#]?\s*(.+)$/i, "boardPartNumber")) {
+      continue;
+    }
+
+    if (maybeAssign(contentLine, /^SOFTWARE\s*[:#]?\s*(.+)$/i, "softwareVersion")) {
+      continue;
+    }
+
+    if (maybeAssign(contentLine, /^FPGA\s*[:#]?\s*(.+)$/i, "fpgaVersion")) {
+      continue;
+    }
+
+    if (maybeAssign(contentLine, /^GPS\s+STATUS\s*[:#]?\s*(.+)$/i, "gpsStatus")) {
+      continue;
+    }
+
+    if (maybeAssign(contentLine, /^GPS\s+ANTENNA\s*[:#]?\s*(.+)$/i, "antennaStatus")) {
+      continue;
+    }
+
+    maybeAssign(contentLine, /^GPS\s+ACQUISITION\s+STATE\s*[:#]?\s*(.+)$/i, "acquisitionState");
+  }
+
+  const normalized = normalizeReceiverRaw(raw)
+    .replace(/\bF\d+\s+B\d+\s*:?\s*/gi, "")
+    .replace(/\bF\d+\s*:?\s*/gi, "");
 
   const captureField = (fieldName, nextFields = []) => {
     const lookahead = nextFields.length > 0
@@ -213,14 +270,28 @@ function parseGpsReceiverInfo(raw) {
     return match ? match[1].trim() : null;
   };
 
+  if (!metadata.boardPartNumber) {
+    metadata.boardPartNumber = captureField("GPS\\s+PART\\s+NUMBER", ["SOFTWARE", "FPGA", "GPS\\s+STATUS", "GPS\\s+ANTENNA", "GPS\\s+ACQUISITION"]) || null;
+  }
+  if (!metadata.softwareVersion) {
+    metadata.softwareVersion = parseVersionToken(normalized, /\bSOFTWARE\s+([^\s]+)(?=\s+(?:FPGA|GPS\s+STATUS|GPS\s+ANTENNA|GPS\s+ACQUISITION)|$)/i);
+  }
+  if (!metadata.fpgaVersion) {
+    metadata.fpgaVersion = parseVersionToken(normalized, /\bFPGA\s*#?\s+([^\s]+)(?=\s+(?:GPS\s+STATUS|GPS\s+ANTENNA|GPS\s+ACQUISITION)|$)/i);
+  }
+  if (!metadata.gpsStatus) {
+    metadata.gpsStatus = captureField("GPS\\s+STATUS", ["GPS\\s+ANTENNA", "GPS\\s+ACQUISITION"]) || null;
+  }
+  if (!metadata.antennaStatus) {
+    metadata.antennaStatus = captureField("GPS\\s+ANTENNA", ["GPS\\s+ACQUISITION"]) || null;
+  }
+  if (!metadata.acquisitionState) {
+    metadata.acquisitionState = captureField("GPS\\s+ACQUISITION\\s+STATE", []) || null;
+  }
+
   return {
-    raw: normalized,
-    boardPartNumber: captureField("GPS\\s+PART\\s+NUMBER", ["SOFTWARE", "FPGA", "GPS\\s+STATUS", "GPS\\s+ANTENNA", "GPS\\s+ACQUISITION"]) || null,
-    softwareVersion: parseVersionToken(normalized, /\bSOFTWARE\s+([^\s]+)(?=\s+(?:FPGA|GPS\s+STATUS|GPS\s+ANTENNA|GPS\s+ACQUISITION)|$)/i),
-    fpgaVersion: parseVersionToken(normalized, /\bFPGA\s*#?\s+([^\s]+)(?=\s+(?:GPS\s+STATUS|GPS\s+ANTENNA|GPS\s+ACQUISITION)|$)/i),
-    gpsStatus: captureField("GPS\\s+STATUS", ["GPS\\s+ANTENNA", "GPS\\s+ACQUISITION"]) || null,
-    antennaStatus: captureField("GPS\\s+ANTENNA", ["GPS\\s+ACQUISITION"]) || null,
-    acquisitionState: captureField("GPS\\s+ACQUISITION\\s+STATE", []) || null,
+    raw: lines.join(" "),
+    ...metadata,
   };
 }
 
