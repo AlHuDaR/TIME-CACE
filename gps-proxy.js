@@ -1052,11 +1052,26 @@ async function executeReceiverCommandVariants(commands, parser, { timeoutMs = CO
 }
 
 function parseGpsModeResponse(raw) {
-  const normalized = String(raw || "").replace(/\0/g, " ").replace(/\s+/g, " ").trim();
-  const match = normalized.match(/\bF53(?:\s+B\d+)?\s+(.+)$/i);
+  const normalized = String(raw || "")
+    .replace(/\0/g, " ")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+  const validModes = ["TIME MODE", "DYNAMIC MODE", "AUTO MODE"];
+
+  let detectedMode = null;
+  for (const mode of validModes) {
+    if (new RegExp(`\\b${mode}\\b`, "i").test(normalized)) {
+      detectedMode = mode;
+      break;
+    }
+  }
+
   return {
     raw: normalized,
-    mode: match ? match[1].trim() : null,
+    mode: detectedMode,
   };
 }
 
@@ -1093,7 +1108,7 @@ async function readGpsReceiverDetails() {
   const gpsMode = await readTask('gpsMode', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.gpsMode, parseGpsModeResponse));
   if (receiverInfo) {
     details.metadata = {
-      acquisitionState: receiverInfo.acquisitionState || gpsMode?.mode || null,
+      acquisitionState: receiverInfo.acquisitionState || null,
       antennaStatus: receiverInfo.antennaStatus || null,
       boardPartNumber: receiverInfo.boardPartNumber || null,
       softwareVersion: receiverInfo.softwareVersion || null,
@@ -1631,7 +1646,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/status", requireApiAuth, statusRateLimiter, async (req, res) => {
-  const forceRefresh = parseBoolean(req.query.refresh);
+  const forceRefresh = parseBoolean(req.query.refresh) || parseBoolean(req.query.force);
   try {
     const status = await readReceiverStatusCached({ force: forceRefresh });
     res.json(status);
@@ -1958,6 +1973,7 @@ module.exports = {
   validateConfig,
   parseReceiverAcknowledgement,
   parseGpsTimeResponse,
+  parseGpsModeResponse,
   classifyReceiverError,
   deriveMonitoringState,
   createGpsDetailEligibilitySnapshot,

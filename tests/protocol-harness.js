@@ -19,7 +19,7 @@ const {
   connectToGPS,
   validateConfig,
 } = require('../receiver-protocol');
-const { createGpsDetailEligibilitySnapshot } = require('../gps-proxy');
+const { createGpsDetailEligibilitySnapshot, parseGpsModeResponse } = require('../gps-proxy');
 
 async function withTcpServer(handler, run) {
   const server = net.createServer(handler);
@@ -252,6 +252,12 @@ async function runTests() {
 
   const xliReceiverInfoHeaderOnly = parseGpsReceiverInfo('F119 B1:\r\n');
   assert.equal(xliReceiverInfoHeaderOnly.acquisitionState, null);
+
+  const gpsModeHeaderOnly = parseGpsModeResponse('F53 B1');
+  assert.equal(gpsModeHeaderOnly.mode, null);
+
+  const gpsModeTimeMode = parseGpsModeResponse('F53 B1 TIME MODE');
+  assert.equal(gpsModeTimeMode.mode, 'TIME MODE');
 
   const detailEligibilitySnapshot = createGpsDetailEligibilitySnapshot({
     receiverConfigured: true,
