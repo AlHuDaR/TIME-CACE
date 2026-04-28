@@ -1030,7 +1030,15 @@ function updateReceiverSnapshot(snapshot) {
 }
 
 
-async function executeReceiverCommandVariants(commands, parser, { timeoutMs = CONFIG.requestTimeoutMs + 1500 } = {}) {
+async function executeReceiverCommandVariants(
+  commands,
+  parser,
+  {
+    timeoutMs = CONFIG.requestTimeoutMs + 1500,
+    validateParsed = null,
+    commandOptions = {},
+  } = {},
+) {
   let lastError = null;
 
   for (const command of commands) {
@@ -1038,17 +1046,36 @@ async function executeReceiverCommandVariants(commands, parser, { timeoutMs = CO
       await throttleReceiverAccess({ commandPriority: "low" });
       const response = await connectToReceiver(command, {
         timeoutMs,
-        responseMode: 'idle',
-        idleGraceMs: 160,
+        responseMode: commandOptions.responseMode || "idle",
+        completionPattern: commandOptions.completionPattern,
+        idleGraceMs: commandOptions.idleGraceMs ?? 160,
         priority: "low",
       });
-      return parser(response.raw);
+      const parsed = parser(response.raw);
+      if (validateParsed && !validateParsed(parsed, response.raw, command)) {
+        if (CONFIG.nodeEnv !== "production") {
+          console.warn("[GPS details] F119 metadata parse incomplete:", String(response.raw || "").slice(0, 500));
+        }
+        throw new Error(`Parsed response failed validation for command ${command.trim()}`);
+      }
+      return parsed;
     } catch (error) {
       lastError = error;
     }
   }
 
   throw lastError || new Error('Unable to read GPS receiver details');
+}
+
+function hasReceiverInfoMetadata(parsed) {
+  return Boolean(
+    parsed?.boardPartNumber
+    || parsed?.softwareVersion
+    || parsed?.fpgaVersion
+    || parsed?.gpsStatus
+    || parsed?.antennaStatus
+    || parsed?.acquisitionState,
+  );
 }
 
 function parseGpsModeResponse(raw) {
@@ -1104,8 +1131,22 @@ async function readGpsReceiverDetails() {
     }
   };
 
-  const receiverInfo = await readTask('receiverInfo', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.receiverInfo, parseGpsReceiverInfo));
-  const gpsMode = await readTask('gpsMode', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.gpsMode, parseGpsModeResponse));
+  const receiverInfo = await readTask(
+    'receiverInfo',
+    () => executeReceiverCommandVariants(
+      GPS_DETAIL_COMMANDS.receiverInfo,
+      parseGpsReceiverInfo,
+      {
+        timeoutMs: CONFIG.requestTimeoutMs + 2500,
+        validateParsed: hasReceiverInfoMetadata,
+        commandOptions: {
+          responseMode: "pattern",
+          completionPattern: /GPS\s+ACQUISITION\s+STATE/i,
+          idleGraceMs: 300,
+        },
+      },
+    ),
+  );
   if (receiverInfo) {
     details.metadata = {
       acquisitionState: receiverInfo.acquisitionState || null,
@@ -1115,8 +1156,10 @@ async function readGpsReceiverDetails() {
       fpgaVersion: receiverInfo.fpgaVersion || null,
       gpsStatus: receiverInfo.gpsStatus || null,
     };
-  } else if (gpsMode?.mode) {
-    details.metadata.acquisitionState = gpsMode.mode;
+  } else {
+    const receiverInfoError = "F119 receiver metadata unavailable or incomplete";
+    errors.push(receiverInfoError);
+    details.error = receiverInfoError;
   }
 
   const llaPosition = await readTask('positionLla', () => executeReceiverCommandVariants(GPS_DETAIL_COMMANDS.positionLla, parseGpsPosition));
